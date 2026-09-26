@@ -18,6 +18,9 @@ Die Schrift Gabarito wird von Google Fonts geladen; ohne Netz greift der Fallbac
 - **Neu abspielen** startet die Animation von vorn.
 - Die fünf Kreise über der Erklärung springen direkt zu einem Schritt.
 - Ziehen mit Maus oder Finger dreht den Raum.
+- Sobald der Vektor angekommen ist, zoomt das Mausrad oder ein Zwei-Finger-Pinch am Zielpunkt hinein und heraus.
+  Unten rechts liegen dazu die Kreise „−“ und „+“; ein Klick auf die Zoomanzeige setzt auf 1,0× zurück.
+  Tastatur: `+`, `-` und `0`.
 - Bei aktivem `prefers-reduced-motion` startet die Seite im Endzustand.
 
 ## Anpassen

@@ -134,16 +134,38 @@
   .hint{font-size:13px;color:var(--full-black)}
   button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
 
+  .zoom{
+    position:absolute;right:var(--page-margin);bottom:var(--page-margin);z-index:2;
+    display:flex;align-items:center;gap:0;
+    opacity:0;pointer-events:none;transition:opacity .4s;
+  }
+  .zoom.ready{opacity:1;pointer-events:auto}
+  .zoom-btn{
+    width:40px;height:40px;border-radius:50%;border:0;padding:0;cursor:pointer;
+    background:rgba(var(--clarity-blue),.3);color:var(--ink);
+    font:700 22px/1 var(--font);transition:background .2s;
+  }
+  .zoom-btn:hover{background:rgba(var(--clarity-blue),.5)}
+  .zoom-level{
+    height:40px;min-width:64px;padding:0 12px;border:0;cursor:pointer;
+    background:var(--neutral-20);color:var(--ink);
+    font:700 14px/1 var(--font);font-variant-numeric:tabular-nums;
+  }
+  .zoom-level:hover{background:rgba(171,171,171,.35)}
+
   @media (max-width:760px){
     .stage{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(340px,62vh)}
     .art{position:relative;height:auto}
     .column{padding-inline:16px;padding-top:64px}
     .brand.desk{display:none}
     .brand.phone{display:block;top:16px;right:16px;height:24px;width:102px}
-    .art-note{left:16px;bottom:12px}
+    .art-note{left:16px;bottom:12px;max-width:calc(100% - 190px)}
+    .zoom{right:16px;bottom:12px}
+    .zoom-btn{width:36px;height:36px;font-size:20px}
+    .zoom-level{height:36px;min-width:56px}
   }
   @media (prefers-reduced-motion:reduce){
-    .caption,.list li,.dot,.pill{transition:none}
+    .caption,.list li,.dot,.pill,.zoom{transition:none}
   }
 </style>
 </head>
@@ -191,7 +213,7 @@
 
       <div class="controls">
         <button class="pill" type="button" id="replay">Neu abspielen</button>
-        <span class="hint">Ziehen dreht den Raum</span>
+        <span class="hint">Ziehen dreht den Raum, Scrollen zoomt.</span>
       </div>
     </aside>
 
@@ -199,6 +221,11 @@
       <div class="brand desk" role="img" aria-label="True Relevance"></div>
       <canvas id="space" role="img" aria-label="Ein Vektor fliegt als Trajektorie durch den Embedding-Raum, erreicht seinen Zielpunkt, und um diesen Punkt erscheinen nach und nach die Embeddings der digitalen Inhalte als Wolke."></canvas>
       <p class="art-note">Vektorraum mit über 1.000 Dimensionen, für die Darstellung auf drei Dimensionen projiziert. Beispieldaten.</p>
+      <div class="zoom" id="zoom" role="group" aria-label="Zoom am Zielpunkt">
+        <button class="zoom-btn" type="button" id="zoomOut" aria-label="Herauszoomen" disabled>−</button>
+        <button class="zoom-level" type="button" id="zoomReset" aria-label="Zoom zurücksetzen" title="Zoom zurücksetzen" disabled>1,0×</button>
+        <button class="zoom-btn" type="button" id="zoomIn" aria-label="Hineinzoomen" disabled>+</button>
+      </div>
     </div>
   </div>
 </div>
@@ -371,8 +398,11 @@ function fmtVec(v){ return (v<0?'−':'+')+Math.abs(v).toFixed(3).replace('.',',
 var W=0,H=0,DPR=1;
 var t0=performance.now(), lastNow=t0;
 var orbitYaw=0, dragYaw=0, dragPitch=0, dragging=false, userRotated=false;
+var ZOOM_MIN=0.35, ZOOM_MAX=5, ZOOM_STEP=1.4, zoom=1, zoomTarget=1;
 var reducedMotion=window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-var dom={ phase:-1, count:-1, shown:[], vecFrozen:false, vecTick:0 };
+var dom={ phase:-1, count:-1, shown:[], vecFrozen:false, vecTick:0, zoomReady:null, zoomLabel:'' };
+var elZoom=document.getElementById('zoom'), elZoomLevel=document.getElementById('zoomReset');
+var zoomButtons=[document.getElementById('zoomOut'),elZoomLevel,document.getElementById('zoomIn')];
 
 function resize(){
   var rect=canvas.getBoundingClientRect();
@@ -387,7 +417,15 @@ resize();
 function restart(fromSeconds){
   t0=performance.now()-(fromSeconds||0)*1000;
   orbitYaw=0; dragYaw=0; dragPitch=0; userRotated=false;
+  zoom=1; zoomTarget=1;
   dom.phase=-1; dom.count=-1; dom.shown=[]; dom.vecFrozen=false;
+}
+function elapsed(){ return (performance.now()-t0)/1000; }
+function zoomActive(){ return elapsed()>=TL.arrive; }
+function setZoom(v,immediate){
+  if(!zoomActive()) return;
+  zoomTarget=clamp(v,ZOOM_MIN,ZOOM_MAX);
+  if(immediate||reducedMotion) zoom=zoomTarget;
 }
 
 /* ---------- Kamera ---------- */
@@ -402,7 +440,7 @@ function camera(t){
     var e=easeInOutCubic(clamp((t-TL.arrive)/4.5,0,1));
     f=TARGET; yaw=0.2; pitch=lerp(0.26,0.2,e); dist=lerp(11,9.5,e);
   }
-  return { f:f, yaw:yaw+orbitYaw+dragYaw, pitch:clamp(pitch+dragPitch,-1.3,1.3), dist:dist, F:Math.min(W,H)*1.0 };
+  return { f:f, yaw:yaw+orbitYaw+dragYaw, pitch:clamp(pitch+dragPitch,-1.3,1.3), dist:dist/zoom, F:Math.min(W,H)*1.0 };
 }
 function project(pt,cam){
   var x=pt[0]-cam.f[0], y=pt[1]-cam.f[1], z=pt[2]-cam.f[2];
@@ -487,7 +525,9 @@ function draw(t){
     vis.sort(function(a,b){ return b.depth-a.depth; });
     for(i=0;i<vis.length;i++){
       pr=vis[i]; var cp=pr.pt, sc=easeOutBack(clamp((t-cp.t0)/0.7,0,1));
-      disc(pr.x,pr.y,Math.max(0,cp.r*pr.s*sc),'rgba('+TYPES[cp.type].rgb+','+cp.alpha+')');
+      var near=clamp((pr.depth-0.4)/1.8,0,1);
+      if(near<=0) continue;
+      disc(pr.x,pr.y,Math.max(0,cp.r*pr.s*sc),'rgba('+TYPES[cp.type].rgb+','+(cp.alpha*near)+')');
     }
   }
 
@@ -555,6 +595,14 @@ function syncDom(t,now){
     var show=t>=CLOUD[i].t0+0.25;
     if(dom.shown[i]!==show){ dom.shown[i]=show; listItems[i].classList.toggle('show',show); }
   }
+  var ready=t>=TL.arrive;
+  if(ready!==dom.zoomReady){
+    dom.zoomReady=ready;
+    elZoom.classList.toggle('ready',ready);
+    zoomButtons.forEach(function(b){ b.disabled=!ready; });
+  }
+  var zl=zoom.toFixed(1).replace('.',',')+'×';
+  if(zl!==dom.zoomLabel){ dom.zoomLabel=zl; elZoomLevel.textContent=zl; }
   if(t<TL.flight){
     if(now-dom.vecTick>70){ dom.vecTick=now; for(i=0;i<vecSpans.length;i++) vecSpans[i].textContent=fmtVec(gauss()*0.3); }
     dom.vecFrozen=false;
@@ -568,20 +616,56 @@ function syncDom(t,now){
 function frame(now){
   var t=(now-t0)/1000, dt=Math.min(0.1,(now-lastNow)/1000); lastNow=now;
   if(t>=TL.arrive+1&&!userRotated&&!reducedMotion) orbitYaw+=dt*0.06;
+  zoom+=(zoomTarget-zoom)*Math.min(1,dt*10);
   draw(t); syncDom(t,now);
   requestAnimationFrame(frame);
 }
 
 /* ---------- Interaktion ---------- */
-var lastX=0,lastY=0;
-canvas.addEventListener('pointerdown',function(e){ dragging=true; lastX=e.clientX; lastY=e.clientY; canvas.classList.add('dragging'); try{ canvas.setPointerCapture(e.pointerId); }catch(err){} });
+var lastX=0,lastY=0, pointers={}, pinchDist=0, pinchZoom=1;
+function pointerIds(){ return Object.keys(pointers); }
+function pinchDistance(ids){ var a=pointers[ids[0]], b=pointers[ids[1]]; return Math.sqrt((a.x-b.x)*(a.x-b.x)+(a.y-b.y)*(a.y-b.y)); }
+canvas.addEventListener('pointerdown',function(e){
+  pointers[e.pointerId]={x:e.clientX,y:e.clientY};
+  var ids=pointerIds();
+  if(ids.length===1){ dragging=true; lastX=e.clientX; lastY=e.clientY; canvas.classList.add('dragging'); }
+  else if(ids.length===2){ dragging=false; pinchDist=pinchDistance(ids); pinchZoom=zoomTarget; }
+  try{ canvas.setPointerCapture(e.pointerId); }catch(err){}
+});
 canvas.addEventListener('pointermove',function(e){
+  if(!pointers[e.pointerId]) return;
+  pointers[e.pointerId]={x:e.clientX,y:e.clientY};
+  var ids=pointerIds();
+  if(ids.length>=2){
+    if(pinchDist>0) setZoom(pinchZoom*pinchDistance(ids)/pinchDist,true);
+    return;
+  }
   if(!dragging) return;
   var dx=e.clientX-lastX, dy=e.clientY-lastY; lastX=e.clientX; lastY=e.clientY;
   if(dx||dy){ userRotated=true; dragYaw+=dx*0.006; dragPitch+=dy*0.006; }
 });
-function endDrag(){ dragging=false; canvas.classList.remove('dragging'); }
-canvas.addEventListener('pointerup',endDrag); canvas.addEventListener('pointercancel',endDrag);
+function endPointer(e){
+  delete pointers[e.pointerId];
+  var ids=pointerIds();
+  if(ids.length===0){ dragging=false; canvas.classList.remove('dragging'); pinchDist=0; }
+  else if(ids.length===1){ dragging=true; lastX=pointers[ids[0]].x; lastY=pointers[ids[0]].y; pinchDist=0; }
+}
+canvas.addEventListener('pointerup',endPointer); canvas.addEventListener('pointercancel',endPointer);
+canvas.addEventListener('wheel',function(e){
+  if(!zoomActive()) return;
+  e.preventDefault();
+  var step=e.deltaMode===1?0.05:e.deltaMode===2?0.5:0.0015;
+  setZoom(zoomTarget*Math.exp(-e.deltaY*step));
+},{passive:false});
+document.getElementById('zoomIn').addEventListener('click',function(){ setZoom(zoomTarget*ZOOM_STEP); });
+document.getElementById('zoomOut').addEventListener('click',function(){ setZoom(zoomTarget/ZOOM_STEP); });
+elZoomLevel.addEventListener('click',function(){ setZoom(1); });
+document.addEventListener('keydown',function(e){
+  if(e.ctrlKey||e.metaKey||e.altKey) return;
+  if(e.key==='+'||e.key==='='){ setZoom(zoomTarget*ZOOM_STEP); }
+  else if(e.key==='-'){ setZoom(zoomTarget/ZOOM_STEP); }
+  else if(e.key==='0'){ setZoom(1); }
+});
 document.getElementById('replay').addEventListener('click',function(){ restart(0); });
 dots.forEach(function(d){ d.addEventListener('click',function(){ restart(PHASE_START[Number(d.getAttribute('data-step'))]+0.001); }); });
 
