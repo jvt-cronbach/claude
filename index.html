@@ -167,6 +167,12 @@
   @media (prefers-reduced-motion:reduce){
     .caption,.list li,.dot,.pill,.zoom{transition:none}
   }
+  /* Render-Modus (Videoexport über window.embeddingFlight.seek) */
+  .render .caption,.render .list li,.render .dot,.render .zoom,.render .pill{transition:none}
+  .render .controls,.render .zoom{display:none}
+  /* Nur die Canvas, ohne Textspalte: index.html#canvas */
+  .canvas-only .column,.canvas-only .brand,.canvas-only .art-note,.canvas-only .zoom{display:none}
+  .canvas-only .stage{grid-template-columns:minmax(0,1fr)}
 </style>
 </head>
 <body>
@@ -400,6 +406,8 @@ var t0=performance.now(), lastNow=t0;
 var orbitYaw=0, dragYaw=0, dragPitch=0, dragging=false, userRotated=false;
 var ZOOM_MIN=0.35, ZOOM_MAX=5, ZOOM_STEP=1.4, zoom=1, zoomTarget=1;
 var reducedMotion=window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+var manualT=null; /* gesetzt im Render-Modus: feste Animationszeit in Sekunden */
+if(location.hash==='#canvas') document.documentElement.classList.add('canvas-only');
 var dom={ phase:-1, count:-1, shown:[], vecFrozen:false, vecTick:0, zoomReady:null, zoomLabel:'' };
 var elZoom=document.getElementById('zoom'), elZoomLevel=document.getElementById('zoomReset');
 var zoomButtons=[document.getElementById('zoomOut'),elZoomLevel,document.getElementById('zoomIn')];
@@ -420,7 +428,7 @@ function restart(fromSeconds){
   zoom=1; zoomTarget=1;
   dom.phase=-1; dom.count=-1; dom.shown=[]; dom.vecFrozen=false;
 }
-function elapsed(){ return (performance.now()-t0)/1000; }
+function elapsed(){ return manualT!==null ? manualT : (performance.now()-t0)/1000; }
 function zoomActive(){ return elapsed()>=TL.arrive; }
 function setZoom(v,immediate){
   if(!zoomActive()) return;
@@ -456,6 +464,7 @@ function project(pt,cam){
 
 /* ---------- Zeichnen ---------- */
 function disc(x,y,r,fill){ ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fillStyle=fill; ctx.fill(); }
+function onCanvas(pr){ return pr && pr.x>=-6 && pr.x<=W+6 && pr.y>=-6 && pr.y<=H+6; }
 function label(text,x,y,size,weight,align){
   ctx.font=(weight||700)+' '+size+'px '+FONT; ctx.textAlign=align||'left'; ctx.textBaseline='middle';
   var w=ctx.measureText(text).width, pad=4;
@@ -537,7 +546,7 @@ function draw(t){
     var pulse=t<TL.flight?1.6*Math.sin(t*4):0;
     ctx.strokeStyle='rgba('+INK+',1)'; ctx.lineWidth=1.5;
     ctx.beginPath(); ctx.arc(o.x,o.y,6+pulse,0,Math.PI*2); ctx.stroke();
-    label('Briefing',o.x+13,o.y-11,13,700,'left');
+    if(onCanvas(o)) label('Briefing',o.x+13,o.y-11,13,700,'left');
   }
 
   /* Kopf des Vektors bzw. Zielpunkt */
@@ -568,7 +577,7 @@ function draw(t){
       ctx.strokeStyle='rgba(255,255,255,1)'; ctx.lineWidth=3;
       ctx.beginPath(); ctx.arc(tg.x,tg.y,6.5,0,Math.PI*2); ctx.stroke();
       disc(tg.x,tg.y,5,'rgba('+INK+',1)');
-      label('Zielpunkt',tg.x+14,tg.y-12,13,700,'left');
+      if(onCanvas(tg)) label('Zielpunkt',tg.x+14,tg.y-12,13,700,'left');
     }
   }
 }
@@ -582,7 +591,7 @@ function syncDom(t,now){
     dom.phase=phase;
     dots.forEach(function(d,k){ d.classList.toggle('active',k===phase); d.classList.toggle('past',k<phase); });
     if(captionTimer) clearTimeout(captionTimer);
-    if(elCaption.textContent===''){ elCaption.textContent=CAPTIONS[phase]; }
+    if(elCaption.textContent===''||manualT!==null){ elCaption.textContent=CAPTIONS[phase]; elCaption.classList.remove('fade'); }
     else {
       elCaption.classList.add('fade');
       captionTimer=setTimeout(function(){ elCaption.textContent=CAPTIONS[phase]; elCaption.classList.remove('fade'); },220);
@@ -614,12 +623,33 @@ function syncDom(t,now){
 
 /* ---------- Schleife ---------- */
 function frame(now){
-  var t=(now-t0)/1000, dt=Math.min(0.1,(now-lastNow)/1000); lastNow=now;
-  if(t>=TL.arrive+1&&!userRotated&&!reducedMotion) orbitYaw+=dt*0.06;
-  zoom+=(zoomTarget-zoom)*Math.min(1,dt*10);
+  var dt=Math.min(0.1,(now-lastNow)/1000), t; lastNow=now;
+  if(manualT!==null){
+    t=manualT; now=manualT*1000;
+    if(!userRotated) orbitYaw=Math.max(0,t-(TL.arrive+1))*0.06;
+    zoom=zoomTarget;
+  } else {
+    t=(now-t0)/1000;
+    if(t>=TL.arrive+1&&!userRotated&&!reducedMotion) orbitYaw+=dt*0.06;
+    zoom+=(zoomTarget-zoom)*Math.min(1,dt*10);
+  }
   draw(t); syncDom(t,now);
   requestAnimationFrame(frame);
 }
+
+/* Render-API für den Videoexport (tools/render-video.js):
+   embeddingFlight.seek(sekunden, {zoom, yaw}) zeichnet genau diesen Zeitpunkt,
+   embeddingFlight.play() kehrt zur laufenden Animation zurück. */
+window.embeddingFlight={
+  seek:function(sec,opts){
+    manualT=Math.max(0,Number(sec)||0);
+    document.documentElement.classList.add('render');
+    if(opts&&typeof opts.zoom==='number'){ zoomTarget=clamp(opts.zoom,ZOOM_MIN,ZOOM_MAX); zoom=zoomTarget; }
+    if(opts&&typeof opts.yaw==='number'){ dragYaw=opts.yaw; }
+    return new Promise(function(res){ requestAnimationFrame(function(){ requestAnimationFrame(function(){ res(manualT); }); }); });
+  },
+  play:function(){ manualT=null; document.documentElement.classList.remove('render'); restart(0); }
+};
 
 /* ---------- Interaktion ---------- */
 var lastX=0,lastY=0, pointers={}, pinchDist=0, pinchZoom=1;

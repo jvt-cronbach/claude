@@ -23,6 +23,39 @@ Die Schrift Gabarito wird von Google Fonts geladen; ohne Netz greift der Fallbac
   Tastatur: `+`, `-` und `0`.
 - Bei aktivem `prefers-reduced-motion` startet die Seite im Endzustand.
 
+## In PowerPoint, Keynote oder Google Slides einbauen
+
+PowerPoint spielt kein HTML ab. Für die Folie gibt es deshalb zwei Wege:
+
+**1. Als Video (empfohlen für die Animation).** Im Ordner `export/` liegen fertige MP4-Dateien
+(H.264, 1920 × 1080, 30 fps, 26 s, ohne Ton):
+
+- `embedding-flight-full-1920x1080.mp4` – ganze Seite mit Textspalte und Logo
+- `embedding-flight-canvas-1920x1080.mp4` – nur die Animation, für eigene Folientexte daneben
+
+In PowerPoint: *Einfügen → Video → Dieses Gerät*, dann unter *Wiedergabe* „Automatisch starten“
+und bei Bedarf „Endlosschleife“ wählen. Am Ende des Videos fährt die Kamera einmal an den Zielpunkt
+heran und wieder heraus.
+
+Neu rendern (etwa zwei Minuten):
+
+```
+npm install playwright && npx playwright install chromium
+node tools/render-video.js --mode full
+node tools/render-video.js --mode canvas
+```
+
+Optionen: `--seconds`, `--fps`, `--width`, `--height`, `--no-zoom` (ohne Zoomfahrt), `--out`.
+Voraussetzung ist ein `ffmpeg` mit libx264 im PATH oder als `FFMPEG=/pfad/zu/ffmpeg`.
+
+**2. Live und interaktiv (Drehen und Zoomen im Vortrag).** Ein Bild der Animation auf die Folie legen
+und mit `index.html` verknüpfen (*Einfügen → Link*), entweder als Datei neben der Präsentation oder
+als gehostete Adresse. Im Vortrag öffnet der Klick den Browser (F11 für Vollbild), zurück geht es mit
+Alt + Tab. Alternativ zeigt das Microsoft-Add-in „Web Viewer“ eine per HTTPS gehostete Seite direkt auf
+der Folie; das setzt Internet im Vortragsraum voraus und ist in manchen Firmenumgebungen gesperrt.
+
+`index.html#canvas` öffnet die Seite ohne Textspalte und Logo.
+
 ## Anpassen
 
 Alle Inhalte und Zeiten stehen am Anfang des Skripts in `index.html`:
@@ -36,6 +69,9 @@ Alle Inhalte und Zeiten stehen am Anfang des Skripts in `index.html`:
 | `CAPTIONS` | Erklärtexte der fünf Schritte |
 | `TYPES`, `TYPE_WEIGHTS` | Content-Typen mit Markenfarbe und Anteil in der Wolke |
 | `TOP` | Die fünf nächsten Inhalte mit Titel, Typ und Ähnlichkeit |
+
+Für den Videoexport stellt die Seite `window.embeddingFlight.seek(sekunden, {zoom})` bereit;
+`tools/render-video.js` zeichnet damit Bild für Bild und übergibt die Bilder an ffmpeg.
 
 Das Beispiel-Briefing steht im HTML im Abschnitt `callout`.
 
