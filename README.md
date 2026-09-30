@@ -21,6 +21,12 @@ Die Schrift Gabarito wird von Google Fonts geladen; ohne Netz greift der Fallbac
 - Sobald der Vektor angekommen ist, zoomt das Mausrad oder ein Zwei-Finger-Pinch am Zielpunkt hinein und heraus.
   Unten rechts liegen dazu die Kreise „−“ und „+“; ein Klick auf die Zoomanzeige setzt auf 1,0× zurück.
   Tastatur: `+`, `-` und `0`.
+- **Ebenen:** Ein Klick auf einen Punkt der Wolke öffnet die nächste Ebene. Die Kamera fliegt zu diesem Inhalt,
+  und sein eigenes Umfeld erscheint als neue Wolke (die nächsten Inhalte zu diesem Inhalt). Das geht beliebig tief.
+  Zurück führen der Pfad oben links auf der Canvas, der Knopf „← Zurück“ oder die Escape-Taste.
+  Mit der Maus zeigt ein Hinweis Titel und Ähnlichkeit des Punkts unter dem Zeiger.
+- **Kontextfilter** (oben links auf der Canvas): „Alle“, „Direkter Kontext“ (Ähnlichkeit ab 0,85) oder
+  „Verwandter Kontext“ (0,75 bis 0,85). Zähler, Trefferliste und Markierungen folgen dem Filter, auch auf tieferen Ebenen.
 - Bei aktivem `prefers-reduced-motion` startet die Seite im Endzustand.
 
 ## In PowerPoint, Keynote oder Google Slides einbauen
@@ -64,7 +70,10 @@ Alle Inhalte und Zeiten stehen am Anfang des Skripts in `index.html`:
 | --- | --- |
 | `DIMENSIONS_LABEL` | Text hinter „Embedding ·“ (Standard: „über 1.000 Dimensionen“) |
 | `THRESHOLD_LABEL` | Angezeigte Ähnlichkeitsschwelle im Zählerpanel |
-| `CLOUD_COUNT` | Anzahl der Punkte in der Wolke |
+| `CLOUD_COUNT` | Anzahl der Punkte in der Wolke um das Briefing |
+| `SUB_COUNT`, `LEVEL_SCALE` | Punkte pro tieferer Ebene und wie viel kleiner jede Ebene ist |
+| `THRESHOLD`, `DIRECT_THRESHOLD` | Untergrenze der Wolke und Grenze zwischen direktem und verwandtem Kontext |
+| `TITLE_POOL` | Titel für die übrigen Punkte und für tiefere Ebenen |
 | `TL` | Zeitpunkte der Phasen in Sekunden (Flugstart, Ankunft, Wolke, Ergebnis) |
 | `CAPTIONS` | Erklärtexte der fünf Schritte |
 | `TYPES`, `TYPE_WEIGHTS` | Content-Typen mit Markenfarbe und Anteil in der Wolke |
@@ -72,6 +81,8 @@ Alle Inhalte und Zeiten stehen am Anfang des Skripts in `index.html`:
 
 Für den Videoexport stellt die Seite `window.embeddingFlight.seek(sekunden, {zoom})` bereit;
 `tools/render-video.js` zeichnet damit Bild für Bild und übergibt die Bilder an ffmpeg.
+Dieselbe Schnittstelle bietet `dive(index)`, `up()`, `filter('all'|'direct'|'related')` und `points()`,
+etwa um eine Ebenen-Fahrt zu skripten.
 
 Das Beispiel-Briefing steht im HTML im Abschnitt `callout`.
 
