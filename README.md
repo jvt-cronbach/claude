@@ -26,7 +26,8 @@ lassen sich in der JSON anhängen; Titel, Zählungen und Ablauf passen sich an.
 - Klick auf eine Dimension (oder einen Punkt, eine Zeile der Weltenliste, die Ziffern 1 bis 9 oder die Pfeile)
   stellt die Welt frontal dar; „Alle Welten“, Escape oder 0 führen zur Übersicht zurück. Die Listenzeilen sind
   auch per Tastatur erreichbar (Tab, Enter).
-- Hover zeigt Name, Ähnlichkeit, Begründung und das Mini-Raster des Inhalts.
+- Hover zeigt Name, Ähnlichkeit, Begründung und das Mini-Raster des Inhalts. Jede Welt hat 21 benannte Inhalte;
+  in der Nahansicht führen dünne Linien vom Markenpunkt zu den nahen davon (Ähnlichkeit ab 0,85, `LINE_MIN_SIM`).
 - Jede Dimension ist ein Quader mit Tiefe; die Inhalte verteilen sich im Volumen. Der runde Schalter rechts in der
   Weltenliste blendet eine Dimension aus, „Alle einschalten“ holt sie zurück.
 - In der Nahansicht erscheinen 800 weitere Inhalte vom Durchstoßpunkt nach außen, innerhalb und außerhalb des

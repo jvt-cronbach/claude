@@ -285,6 +285,86 @@
       0.9,
       0.8
      ]
+    },
+    {
+     "name": "Läderach Frischschoggi",
+     "detail": "Confiserie, Schweiz",
+     "reason": "Frische Schokolade als Luxusgeschenk",
+     "profile": [
+      0.95,
+      0.3,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.5,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Häagen-Dazs Macadamia Nut Brittle",
+     "detail": "Premium-Eis, General Mills",
+     "reason": "Premium-Eis, Belohnung mit Biss",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.9,
+      0.3,
+      0.35,
+      0.35,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Amorino Gelato",
+     "detail": "Gelateria, Paris",
+     "reason": "Gelato als Blume: Inszenierung des Genusses",
+     "profile": [
+      0.95,
+      0.25,
+      0.3,
+      0.85,
+      0.3,
+      0.25,
+      0.45,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Neuhaus Pralinen",
+     "detail": "Belgische Pralinen",
+     "reason": "Belgische Pralinenkunst, Status als Geschenk",
+     "profile": [
+      0.95,
+      0.4,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.25,
+      0.2
+     ]
+    },
+    {
+     "name": "Ladurée Macarons",
+     "detail": "Pâtisserie, Paris",
+     "reason": "Pastellfarbener Luxus, Pariser Glamour",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.55,
+      0.2,
+      0.2
+     ]
     }
    ]
   },
@@ -548,6 +628,86 @@
       0.45,
       0.95,
       0.65
+     ]
+    },
+    {
+     "name": "Gold auf dem Teller: Blattgold-Desserts in der Sterneküche",
+     "detail": "Food, Genuss-Magazin",
+     "reason": "Inszenierter Genuss als Statussymbol",
+     "profile": [
+      0.95,
+      0.25,
+      0.3,
+      0.85,
+      0.35,
+      0.25,
+      0.35,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Cannes 2026: Die spektakulärsten Roben der Filmfestspiele",
+     "detail": "Society, Promi-Portal",
+     "reason": "Glamour und Bewunderung auf dem roten Teppich",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.5,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Die neue Riva-Yacht: Dolce Vita auf dem Wasser",
+     "detail": "Luxus, Lifestyle-Magazin",
+     "reason": "Luxus-Erlebnis und Exklusivität",
+     "profile": [
+      0.95,
+      0.35,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.4,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Omakase in Tokio: Das teuerste Sushi-Menü der Welt",
+     "detail": "Reise, Genuss-Magazin",
+     "reason": "Exklusiver Genuss, Zugang für wenige",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.85,
+      0.45,
+      0.25,
+      0.35,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Hermès Birkin: Warum die Tasche zur Wertanlage wurde",
+     "detail": "Mode, Luxus-Magazin",
+     "reason": "Status, Begehrlichkeit und Distinktion",
+     "profile": [
+      0.95,
+      0.45,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.2,
+      0.2
      ]
     }
    ]
@@ -813,6 +973,86 @@
       0.55,
       0.75
      ]
+    },
+    {
+     "name": "Ferrari Roma",
+     "detail": "Grand Tourer, Ferrari",
+     "reason": "Italienische Eleganz, Dolce Vita und Prestige",
+     "profile": [
+      0.95,
+      0.25,
+      0.25,
+      0.85,
+      0.3,
+      0.25,
+      0.45,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Lamborghini Urus",
+     "detail": "Super-SUV, Lamborghini",
+     "reason": "Dominanz und großer Auftritt",
+     "profile": [
+      0.95,
+      0.4,
+      0.2,
+      0.85,
+      0.35,
+      0.25,
+      0.35,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Rolls-Royce Ghost",
+     "detail": "Luxuslimousine, Rolls-Royce",
+     "reason": "Höchster Luxus, Souveränität",
+     "profile": [
+      0.95,
+      0.35,
+      0.35,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Porsche Taycan Turbo S",
+     "detail": "Elektro-Sportwagen, Porsche",
+     "reason": "Leistung und Prestige, elektrisch",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.85,
+      0.5,
+      0.25,
+      0.35,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "BMW M8 Competition",
+     "detail": "Coupé, BMW M",
+     "reason": "Sportliche Dominanz und Status",
+     "profile": [
+      0.95,
+      0.3,
+      0.2,
+      0.85,
+      0.3,
+      0.4,
+      0.35,
+      0.2,
+      0.2
+     ]
     }
    ]
   },
@@ -1076,6 +1316,86 @@
       0.6,
       0.45,
       0.9
+     ]
+    },
+    {
+     "name": "Dior",
+     "detail": "Haute Couture, Paris",
+     "reason": "Haute Couture, Glamour und Eleganz",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.5,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Chanel",
+     "detail": "Luxusmode, Paris",
+     "reason": "Zeitloser Luxus, Status und Begehrlichkeit",
+     "profile": [
+      0.95,
+      0.25,
+      0.35,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Hermès",
+     "detail": "Luxusmode, Paris",
+     "reason": "Handwerk, Exklusivität und Prestige",
+     "profile": [
+      0.95,
+      0.4,
+      0.2,
+      0.85,
+      0.35,
+      0.25,
+      0.35,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Versace",
+     "detail": "Luxusmode, Mailand",
+     "reason": "Glamour, Gold und Inszenierung",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.9,
+      0.3,
+      0.25,
+      0.45,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Brunello Cucinelli",
+     "detail": "Luxusmode, Solomeo",
+     "reason": "Leiser Luxus, Erfolg ohne Lautstärke",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.85,
+      0.45,
+      0.25,
+      0.35,
+      0.3,
+      0.2
      ]
     }
    ]
@@ -1341,6 +1661,86 @@
       0.85,
       0.55
      ]
+    },
+    {
+     "name": "Ferrari",
+     "detail": "Sportwagen, Maranello",
+     "reason": "Markenmythos, Leistung und Stolz",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.85,
+      0.3,
+      0.35,
+      0.45,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Bain & Company",
+     "detail": "Strategieberatung",
+     "reason": "Exzellenz, Aufstieg und Prestige",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.85,
+      0.5,
+      0.25,
+      0.35,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Richemont",
+     "detail": "Luxuskonzern, Genf",
+     "reason": "Luxusuhren und Schmuck, Prestige",
+     "profile": [
+      0.95,
+      0.4,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "J.P. Morgan",
+     "detail": "Investmentbank, New York",
+     "reason": "Elite, Bonus und Status durch Erfolg",
+     "profile": [
+      0.95,
+      0.35,
+      0.2,
+      0.85,
+      0.45,
+      0.25,
+      0.35,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Emirates",
+     "detail": "Fluggesellschaft, Dubai",
+     "reason": "Premium-Service, Weltläufigkeit und Glanz",
+     "profile": [
+      0.95,
+      0.25,
+      0.25,
+      0.85,
+      0.3,
+      0.25,
+      0.5,
+      0.2,
+      0.2
+     ]
     }
    ]
   },
@@ -1604,6 +2004,86 @@
       0.8,
       0.85,
       0.7
+     ]
+    },
+    {
+     "name": "Chauffeur-Service für Führungskräfte",
+     "detail": "Mobilität, Status",
+     "reason": "Sichtbarer Status und Komfort",
+     "profile": [
+      0.95,
+      0.25,
+      0.35,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Jahresbonus mit Luxusreise",
+     "detail": "Vergütung, Erlebnis",
+     "reason": "Belohnung als Erlebnis",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.9,
+      0.3,
+      0.25,
+      0.45,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Mitgliedschaft im Private Members Club",
+     "detail": "Netzwerk, Exklusivität",
+     "reason": "Exklusiver Zugang und Netzwerk",
+     "profile": [
+      0.95,
+      0.4,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.4,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Premium-Krankenversicherung mit Chefarzt",
+     "detail": "Gesundheit, Privileg",
+     "reason": "Privilegierter Zugang, Sicherheit auf hohem Niveau",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.85,
+      0.45,
+      0.25,
+      0.35,
+      0.3,
+      0.2
+     ]
+    },
+    {
+     "name": "Firmenloge im Stadion",
+     "detail": "Erlebnis, Repräsentation",
+     "reason": "Prestige-Erlebnis für Gäste und Team",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.55,
+      0.2,
+      0.2
      ]
     }
    ]
@@ -1869,6 +2349,86 @@
       0.8,
       0.9
      ]
+    },
+    {
+     "name": "The White Lotus",
+     "detail": "Serie, HBO",
+     "reason": "Luxusresort, Status und Abgründe",
+     "profile": [
+      0.95,
+      0.35,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.4,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Below Deck",
+     "detail": "Reality-Serie, Bravo",
+     "reason": "Superyachten, Luxus und Drama",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.5,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "The Real Housewives of Beverly Hills",
+     "detail": "Reality-Serie, Bravo",
+     "reason": "Glamour, Status und Inszenierung",
+     "profile": [
+      0.95,
+      0.25,
+      0.3,
+      0.85,
+      0.3,
+      0.25,
+      0.45,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Das Traumschiff",
+     "detail": "Reihe, ZDF",
+     "reason": "Luxusreise als Sehnsuchtsort",
+     "profile": [
+      0.95,
+      0.25,
+      0.4,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.2,
+      0.3
+     ]
+    },
+    {
+     "name": "Top Gear",
+     "detail": "Auto-Show, BBC",
+     "reason": "Supersportwagen, Tempo und Spaß",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.85,
+      0.45,
+      0.3,
+      0.35,
+      0.2,
+      0.2
+     ]
     }
    ]
   },
@@ -2133,6 +2693,86 @@
       0.4,
       0.9
      ]
+    },
+    {
+     "name": "Masters in Augusta",
+     "detail": "Golf, Major",
+     "reason": "Golfs exklusivste Bühne, Prestige",
+     "profile": [
+      0.95,
+      0.25,
+      0.25,
+      0.85,
+      0.45,
+      0.25,
+      0.35,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Heli-Skiing in Kanada",
+     "detail": "Wintersport, Abenteuer",
+     "reason": "Exklusives Abenteuer, Status durch Zugang",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.9,
+      0.3,
+      0.25,
+      0.45,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "CHIO Aachen",
+     "detail": "Reitsport, Weltfest",
+     "reason": "Eleganz und Prestige im Reitsport",
+     "profile": [
+      0.95,
+      0.35,
+      0.2,
+      0.85,
+      0.3,
+      0.35,
+      0.35,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Beach Polo auf Sylt",
+     "detail": "Pferdesport, Event",
+     "reason": "Glamour und Gesellschaft am Strand",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.55,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Padel im Privatclub",
+     "detail": "Trendsport, Club",
+     "reason": "Trendsport im exklusiven Kreis",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.85,
+      0.35,
+      0.25,
+      0.5,
+      0.2,
+      0.2
+     ]
     }
    ]
   },
@@ -2396,6 +3036,86 @@
       0.6,
       0.9,
       0.5
+     ]
+    },
+    {
+     "name": "Platin-Stufe mit Concierge-Service",
+     "detail": "Statusstufe",
+     "reason": "Höchster Status, persönliche Betreuung",
+     "profile": [
+      0.95,
+      0.3,
+      0.3,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Persönlicher Einkaufsberater per Chat",
+     "detail": "Service",
+     "reason": "Service wie im Luxushandel",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.85,
+      0.35,
+      0.25,
+      0.5,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Exklusive Vorab-Verkostung neuer Premium-Produkte",
+     "detail": "Mitglieder-Events",
+     "reason": "Zuerst probieren, Zugang für wenige",
+     "profile": [
+      0.95,
+      0.25,
+      0.25,
+      0.85,
+      0.3,
+      0.25,
+      0.45,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Prämien-Upgrade: Champagner statt Punkte",
+     "detail": "Prämienshop",
+     "reason": "Belohnung mit Glamour",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.9,
+      0.3,
+      0.25,
+      0.45,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "VIP-Kasse ohne Wartezeit",
+     "detail": "Bezahlen, Privileg",
+     "reason": "Privileg, Zeit und Status",
+     "profile": [
+      0.95,
+      0.4,
+      0.2,
+      0.85,
+      0.3,
+      0.3,
+      0.35,
+      0.2,
+      0.2
      ]
     }
    ]
