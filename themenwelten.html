@@ -480,7 +480,7 @@ var reducedMotion=window.matchMedia && window.matchMedia('(prefers-reduced-motio
 var manualT=null;
 if(location.hash==='#canvas') document.documentElement.classList.add('canvas-only');
 var focused=-1, focusMix=0, hover=null;
-var OVERVIEW={ f:[(NW-1)/2*GAP-1.0,0.0,0], yaw:0.95, pitch:0.22, dist:13.5+0.5*NW };
+var OVERVIEW={ f:[(NW-1)/2*GAP-0.4*NW,0.0,0], yaw:0.95, pitch:0.22, dist:13.5+0.5*NW };
 function worldView(k){ return { f:[k*GAP,0,0], yaw:Math.PI/2, pitch:0, dist:5.2 }; }
 var view={ from:OVERVIEW, to:OVERVIEW, start:-100, cur:OVERVIEW };
 var dom={ phase:-1, ready:null, zoomLabel:'', focused:null, rows:[], cells:[] };
@@ -638,7 +638,7 @@ function draw(t,dt){
     if(ok) fillFaces(0,3);
     /* Name der Welt über dem Quader (in der Übersicht) */
     var top=project([w.x,HY+0.3,0],cam);
-    if(top&&over>0.02&&onCanvas(top)) label(w.name,top.x,top.y-(w.k%3)*18,12,700,'center',over*pa);
+    if(top&&over>0.02&&onCanvas(top)) label(w.name,top.x,top.y-(w.k%4)*18,12,700,'center',over*pa);
     /* Ring beim Durchstoß, in der Mittelebene des Quaders */
     var age=t-w.tk;
     if(age>=0&&age<=1.2){
