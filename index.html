@@ -59,7 +59,7 @@
   canvas.dragging{cursor:grabbing}
   .art-note{
     position:absolute;left:24px;bottom:var(--page-margin);margin:0;
-    max-width:min(60ch,calc(100% - 48px));
+    max-width:min(60ch,calc(100% - 48px - 170px));
     font-size:13px;line-height:1.35;color:var(--full-black);
     pointer-events:none;
   }
@@ -156,7 +156,7 @@
 
   @media (max-width:760px){
     .stage{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(340px,62vh)}
-    .art{position:relative;height:auto}
+    .art{position:relative;height:auto;align-self:stretch;min-height:340px}
     .column{padding-inline:16px;padding-top:64px}
     .brand.desk{display:none}
     .brand.phone{display:block;top:16px;right:16px;height:24px;width:102px}
@@ -480,7 +480,7 @@ function fmtVec(v){ return (v<0?'−':'+')+Math.abs(v).toFixed(3).replace('.',',
 var W=0,H=0,DPR=1;
 var t0=performance.now(), lastNow=t0;
 var orbitYaw=0, dragYaw=0, dragPitch=0, dragging=false, userRotated=false;
-var ZOOM_MIN=0.35, ZOOM_MAX=5, ZOOM_STEP=1.4, zoom=1, zoomTarget=1;
+var ZOOM_MIN=0.4, ZOOM_MAX=5, ZOOM_STEP=1.4, zoom=1, zoomTarget=1;
 var reducedMotion=window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 var manualT=null; /* gesetzt im Render-Modus: feste Animationszeit in Sekunden */
 if(location.hash==='#canvas') document.documentElement.classList.add('canvas-only');
@@ -512,7 +512,7 @@ function levelAlpha(L,t){
   if(L.reenter!==null) return clamp((t-L.reenter)/0.6,0,1);
   return 1;
 }
-function setView(f,d,t){ view.from={f:view.cur.f.slice(),d:view.cur.d}; view.to={f:f.slice(),d:d}; view.start=t; }
+function setView(f,d,t){ view.from={f:view.cur.f.slice(),d:view.cur.d/zoom}; view.to={f:f.slice(),d:d}; view.start=t; zoom=1; zoomTarget=1; }
 function viewAt(t){
   var u=easeInOutCubic(clamp((t-view.start)/1.1,0,1));
   view.cur={ f:lerpV(view.from.f,view.to.f,u), d:lerp(view.from.d,view.to.d,u) };
@@ -528,7 +528,7 @@ function dive(pt){
   var L=makeLevel(cur.depth+1,pt.p.slice(),seed,pt,t);
   levels.push(L);
   viewAt(t); setView(L.center,Math.pow(LEVEL_SCALE,L.depth),t);
-  zoomTarget=1; zoom=1; hover=null; hideTip();
+  hover=null; hideTip();
   updateLevelDom();
 }
 /* Zurück auf eine höhere Ebene */
@@ -539,7 +539,7 @@ function up(toDepth){
   while(levels.length-1>toDepth){ var popped=levels.pop(); popped.leave=t; ghosts.push(popped); }
   var cur=currentLevel(); cur.leave=null; cur.reenter=t;
   viewAt(t); setView(cur.center,Math.pow(LEVEL_SCALE,cur.depth),t);
-  zoomTarget=1; zoom=1; hover=null; hideTip();
+  hover=null; hideTip();
   updateLevelDom();
 }
 function setFilter(name){
@@ -809,7 +809,7 @@ function hideTip(){ elTip.hidden=true; canvas.classList.remove('pointer'); }
 function positionTip(){
   if(!hover||elTip.hidden) return;
   if(!hover.sr){ hover=null; hideTip(); return; }
-  var below=hover.sy<110;
+  var below=hover.sy-hover.sr-12<elTip.offsetHeight;
   elTip.classList.toggle('below',below);
   elTip.style.left=clamp(hover.sx,130,W-130)+'px';
   elTip.style.top=(below?hover.sy+hover.sr+4:hover.sy-hover.sr-4)+'px';
@@ -842,6 +842,9 @@ function syncDom(t,now){
   }
   var zl=zoom.toFixed(1).replace('.',',')+'×';
   if(zl!==dom.zoomLabel){ dom.zoomLabel=zl; elZoomLevel.textContent=zl; }
+  var zi=!ready||zoomTarget>=ZOOM_MAX-1e-6, zo=!ready||zoomTarget<=ZOOM_MIN+1e-6;
+  if(zoomButtons[2].disabled!==zi) zoomButtons[2].disabled=zi;
+  if(zoomButtons[0].disabled!==zo) zoomButtons[0].disabled=zo;
   var cur=currentLevel(), count=0;
   if(t>=TL.cloud){ for(i=0;i<cur.pts.length;i++){ var pt=cur.pts[i]; if(t>=pt.t0&&passes(pt)) count++; } }
   if(count!==dom.count){ dom.count=count; elCount.textContent=fmtDe(count); }
@@ -958,7 +961,7 @@ window.embeddingFlight={
   points:function(){ return currentLevel().pts.filter(function(p){ return p.sr>0; }).map(function(p){ return { index:p.index, x:p.sx, y:p.sy, r:p.sr, title:p.title, sim:p.sim, band:p.band }; }); }
 };
 
-if(document.fonts&&document.fonts.load){ document.fonts.load('700 13px Gabarito'); document.fonts.load('400 13px Gabarito'); }
+if(document.fonts&&document.fonts.load){ document.fonts.load('700 13px Gabarito').catch(function(){}); document.fonts.load('400 13px Gabarito').catch(function(){}); }
 restart(reducedMotion?TL.end:0);
 requestAnimationFrame(frame);
 })();

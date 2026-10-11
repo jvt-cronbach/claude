@@ -2135,6 +2135,270 @@
      ]
     }
    ]
+  },
+  {
+   "id": "loyalty",
+   "name": "Loyalty-App-Features",
+   "noun": "Feature",
+   "description": "Funktionen einer Bonus-App im Supermarkt, von exklusiven Status-Vorteilen bis zu Alltagshelfern und verantwortungsvollem Einkauf.",
+   "items": [
+    {
+     "name": "Gold-Status mit exklusiven Vorteilen",
+     "detail": "Statusstufe",
+     "reason": "Sichtbarer Status, Belohnung für Treue",
+     "profile": [
+      0.92,
+      0.3,
+      0.25,
+      0.85,
+      0.3,
+      0.3,
+      0.35,
+      0.1,
+      0.2
+     ]
+    },
+    {
+     "name": "Premium-Prämien aus dem Gourmet-Regal",
+     "detail": "Prämienshop",
+     "reason": "Belohnung als Genuss, exklusive Auswahl",
+     "profile": [
+      0.85,
+      0.25,
+      0.2,
+      0.9,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Vorab-Zugang zu limitierten Editionen",
+     "detail": "Exklusive Angebote",
+     "reason": "Zuerst haben, was andere noch nicht bekommen",
+     "profile": [
+      0.9,
+      0.3,
+      0.2,
+      0.8,
+      0.3,
+      0.2,
+      0.3,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Einladungen zu Verkostungen und Events",
+     "detail": "Mitglieder-Events",
+     "reason": "Erlebnis, Exklusivität und Zugehörigkeit zum Kreis",
+     "profile": [
+      0.8,
+      0.25,
+      0.2,
+      0.7,
+      0.25,
+      0.2,
+      0.55,
+      0.15,
+      0.2
+     ]
+    },
+    {
+     "name": "Persönliche Geburtstagsüberraschung",
+     "detail": "Geschenk",
+     "reason": "Wertschätzung als Belohnung, emotionaler Moment",
+     "profile": [
+      0.7,
+      0.2,
+      0.2,
+      0.75,
+      0.25,
+      0.25,
+      0.6,
+      0.15,
+      0.2
+     ]
+    },
+    {
+     "name": "Punkte-Boost bei Premium-Marken",
+     "detail": "Punkte sammeln",
+     "reason": "Belohnung fürs Besondere, Anreiz zum Aufstieg",
+     "profile": [
+      0.75,
+      0.35,
+      0.25,
+      0.85,
+      0.4,
+      0.3,
+      0.3,
+      0.15,
+      0.2
+     ]
+    },
+    {
+     "name": "Persönliche Empfehlungen für Genießer",
+     "detail": "Personalisierung",
+     "reason": "Genuss und Individualität, Gefühl des Erkanntwerdens",
+     "profile": [
+      0.65,
+      0.3,
+      0.25,
+      0.75,
+      0.35,
+      0.3,
+      0.45,
+      0.2,
+      0.25
+     ]
+    },
+    {
+     "name": "Sofort-Rabatt an der Kasse",
+     "detail": "Bezahlen",
+     "reason": "Komfort und Belohnung im Moment, ohne Aufwand",
+     "profile": [
+      0.55,
+      0.35,
+      0.3,
+      0.75,
+      0.45,
+      0.4,
+      0.35,
+      0.2,
+      0.3
+     ]
+    },
+    {
+     "name": "Jahresrückblick: gesammelte Punkte",
+     "detail": "Statistik",
+     "reason": "Erfolg sichtbar machen, Stolz auf das Erreichte",
+     "profile": [
+      0.5,
+      0.4,
+      0.3,
+      0.8,
+      0.55,
+      0.4,
+      0.3,
+      0.25,
+      0.3
+     ]
+    },
+    {
+     "name": "Rabatt auf Eigenmarken",
+     "detail": "Sparen",
+     "reason": "Vernünftig sparen im Alltag, wenig Glamour",
+     "profile": [
+      0.2,
+      0.35,
+      0.35,
+      0.4,
+      0.65,
+      0.55,
+      0.35,
+      0.4,
+      0.5
+     ]
+    },
+    {
+     "name": "Digitaler Kassenbon",
+     "detail": "Belege",
+     "reason": "Ordnung und Nutzen, reine Routine",
+     "profile": [
+      0.1,
+      0.3,
+      0.35,
+      0.3,
+      0.65,
+      0.7,
+      0.25,
+      0.45,
+      0.6
+     ]
+    },
+    {
+     "name": "Einkaufsliste mit Familienfreigabe",
+     "detail": "Planung",
+     "reason": "Gemeinsam planen, Alltag der Familie",
+     "profile": [
+      0.15,
+      0.2,
+      0.3,
+      0.3,
+      0.5,
+      0.6,
+      0.8,
+      0.45,
+      0.65
+     ]
+    },
+    {
+     "name": "Pfandbon in der App einlösen",
+     "detail": "Pfand",
+     "reason": "Praktische Gewohnheit ohne Statusbezug",
+     "profile": [
+      0.1,
+      0.2,
+      0.35,
+      0.25,
+      0.5,
+      0.75,
+      0.3,
+      0.45,
+      0.7
+     ]
+    },
+    {
+     "name": "Wochenplaner mit Familienrezepten",
+     "detail": "Rezepte",
+     "reason": "Fürsorge und Routine im Familienalltag",
+     "profile": [
+      0.15,
+      0.2,
+      0.3,
+      0.3,
+      0.45,
+      0.6,
+      0.85,
+      0.5,
+      0.7
+     ]
+    },
+    {
+     "name": "Punkte an soziale Projekte spenden",
+     "detail": "Spenden",
+     "reason": "Verantwortung und Gemeinschaft statt Belohnung",
+     "profile": [
+      0.1,
+      0.15,
+      0.2,
+      0.2,
+      0.3,
+      0.3,
+      0.85,
+      0.8,
+      0.5
+     ]
+    },
+    {
+     "name": "CO₂-Bilanz des Einkaufs",
+     "detail": "Nachhaltigkeit",
+     "reason": "Verantwortung und Vernunft, kein Statusbezug",
+     "profile": [
+      0.1,
+      0.2,
+      0.2,
+      0.25,
+      0.5,
+      0.3,
+      0.6,
+      0.9,
+      0.5
+     ]
+    }
+   ]
   }
  ]
 }

@@ -25,7 +25,7 @@ const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 
-const opts = { page: 'index.html', api: 'embeddingFlight', mode: 'full', out: '', seconds: 26, fps: 30, width: 1920, height: 1080, zoom: true };
+const opts = { page: 'index.html', api: 'embeddingFlight', mode: 'full', out: '', seconds: 26, fps: 30, width: 1920, height: 1080, zoom: null };
 const argv = process.argv.slice(2);
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i], v = argv[i + 1];
@@ -38,10 +38,18 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === '--width') { opts.width = Number(v); i++; }
   else if (a === '--height') { opts.height = Number(v); i++; }
   else if (a === '--no-zoom') { opts.zoom = false; }
+  else if (a === '--zoom') { opts.zoom = true; }
   else { console.error('Unbekannte Option: ' + a); process.exit(1); }
 }
+if (!(opts.seconds > 0 && opts.fps > 0 && opts.width > 0 && opts.height > 0)) {
+  console.error('Ungültige Werte: --seconds, --fps, --width und --height müssen Zahlen größer 0 sein.');
+  process.exit(1);
+}
+if (opts.mode !== 'full' && opts.mode !== 'canvas') { console.error('--mode muss full oder canvas sein.'); process.exit(1); }
+/* Die Zoomfahrt passt zur Zeitachse von index.html; für andere Seiten nur mit --zoom */
+if (opts.zoom === null) opts.zoom = opts.api === 'embeddingFlight';
 const pageBase = path.basename(opts.page, path.extname(opts.page)).replace(/^index$/, 'embedding-flight');
-if (!opts.out) opts.out = path.join('export', `${pageBase}-${opts.mode}-${opts.width}x${opts.height}.mp4`);
+if (!opts.out) opts.out = path.resolve(__dirname, '..', 'export', `${pageBase}-${opts.mode}-${opts.width}x${opts.height}.mp4`);
 
 const playwright = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const ffmpegBin = process.env.FFMPEG || 'ffmpeg';
@@ -81,6 +89,8 @@ function writeFrame(stream, buf) {
   });
   page.on('pageerror', (e) => console.error('Seitenfehler:', e));
   await page.goto(url);
+  const hasApi = await page.evaluate((api) => !!(window[api] && typeof window[api].seek === 'function'), opts.api);
+  if (!hasApi) { console.error(`Render-API "${opts.api}" nicht gefunden (window.${opts.api}.seek). Für themenwelten.html: --api siebenWelten`); await browser.close(); process.exit(1); }
   await page.evaluate(() => document.fonts.ready);
   const gabarito = await page.evaluate(() => document.fonts.check('700 16px Gabarito'));
   console.log('Schrift Gabarito verfügbar:', gabarito ? 'ja' : 'nein (Fallback-Schrift wird gerendert)');

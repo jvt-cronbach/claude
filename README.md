@@ -10,20 +10,22 @@ Die Seite zeigt in fünf Schritten, wie ein Briefing- oder Produkttext zu passen
 4. Um den Zielpunkt erscheinen nach und nach die Embeddings der digitalen Inhalte als Wolke. Je näher, desto ähnlicher.
 5. Die nächsten Inhalte sind das Ergebnis.
 
-## Zweite Seite: Acht Welten (`themenwelten.html`)
+## Zweite Seite: Neun Welten (`themenwelten.html`)
 
-Dieselbe Gestaltung, ein anderes Bild: Acht Themenwelten stehen als transparente Quader nebeneinander, wie
+Dieselbe Gestaltung, ein anderes Bild: Neun Themenwelten stehen als transparente Quader nebeneinander, wie
 die parallelen Dimensionen aus Darstellungen der Stringtheorie. Startpunkt ist eine Marke (Beispiel: Magnum
 Gold Billionaire Caramel). Ihr Bedeutungsvektor durchstößt jeden Quader, und um den Durchstoßpunkt erscheinen
 die Inhalte dieser Welt mit ähnlichem psychologischem Profil: Desserts, Online-Artikel, Automodelle,
-Bekleidungsmarken, Arbeitgebermarken, Arbeitgeber-Benefits, Fernsehshows und Sportarten. Weitere Welten
+Bekleidungsmarken, Arbeitgebermarken, Arbeitgeber-Benefits, Fernsehshows, Sportarten und die Features einer
+Supermarkt-Bonus-App. Weitere Welten
 lassen sich in der JSON anhängen; Titel, Zählungen und Ablauf passen sich an.
 
 - Das Profil ist ein 3×3-Motivraster: Spalten Macht, Leistung, Anschluss; Zeilen Emotional, Rational, Handlung.
   Die neun Werte in `profile` sind in der Reihenfolge Motiv × Haltung abgelegt (Macht-Emotional, Macht-Rational, …).
   Die Ähnlichkeit ist die Kosinus-Ähnlichkeit der Profile, als Winkelmaß gespreizt und auf 0,55 bis 0,97 abgebildet.
-- Klick auf eine Scheibe (oder einen Punkt, eine Zeile der Weltenliste, die Tasten 1 bis 7 oder die Pfeile)
-  stellt die Welt frontal dar; „Alle Welten“, Escape oder 0 führen zur Übersicht zurück.
+- Klick auf eine Dimension (oder einen Punkt, eine Zeile der Weltenliste, die Ziffern 1 bis 9 oder die Pfeile)
+  stellt die Welt frontal dar; „Alle Welten“, Escape oder 0 führen zur Übersicht zurück. Die Listenzeilen sind
+  auch per Tastatur erreichbar (Tab, Enter).
 - Hover zeigt Name, Ähnlichkeit, Begründung und das Mini-Raster des Inhalts.
 - Jede Dimension ist ein Quader mit Tiefe; die Inhalte verteilen sich im Volumen. Der runde Schalter rechts in der
   Weltenliste blendet eine Dimension aus, „Alle einschalten“ holt sie zurück.
