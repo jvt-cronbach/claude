@@ -10,13 +10,14 @@ Die Seite zeigt in fünf Schritten, wie ein Briefing- oder Produkttext zu passen
 4. Um den Zielpunkt erscheinen nach und nach die Embeddings der digitalen Inhalte als Wolke. Je näher, desto ähnlicher.
 5. Die nächsten Inhalte sind das Ergebnis.
 
-## Zweite Seite: Sieben Welten (`themenwelten.html`)
+## Zweite Seite: Acht Welten (`themenwelten.html`)
 
-Dieselbe Gestaltung, ein anderes Bild: Sieben Themenwelten stehen als Scheiben nebeneinander, wie die
-parallelen Dimensionen aus Darstellungen der Stringtheorie. Startpunkt ist eine Marke (Beispiel: Magnum
-Gold Billionaire Caramel). Ihr Bedeutungsvektor durchstößt jede Scheibe, und am Durchstoßpunkt erscheinen
+Dieselbe Gestaltung, ein anderes Bild: Acht Themenwelten stehen als transparente Quader nebeneinander, wie
+die parallelen Dimensionen aus Darstellungen der Stringtheorie. Startpunkt ist eine Marke (Beispiel: Magnum
+Gold Billionaire Caramel). Ihr Bedeutungsvektor durchstößt jeden Quader, und um den Durchstoßpunkt erscheinen
 die Inhalte dieser Welt mit ähnlichem psychologischem Profil: Desserts, Online-Artikel, Automodelle,
-Bekleidungsmarken, Arbeitgebermarken, Arbeitgeber-Benefits und Fernsehshows.
+Bekleidungsmarken, Arbeitgebermarken, Arbeitgeber-Benefits, Fernsehshows und Sportarten. Weitere Welten
+lassen sich in der JSON anhängen; Titel, Zählungen und Ablauf passen sich an.
 
 - Das Profil ist ein 3×3-Motivraster: Spalten Macht, Leistung, Anschluss; Zeilen Emotional, Rational, Handlung.
   Die neun Werte in `profile` sind in der Reihenfolge Motiv × Haltung abgelegt (Macht-Emotional, Macht-Rational, …).
