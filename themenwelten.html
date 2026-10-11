@@ -654,7 +654,7 @@ function draw(t,dt){
     if(w.extras){ for(i=0;i<w.extras.length;i++) w.extras[i].sr=0; }
   });
   order.sort(function(a,b){ return b.depth-a.depth; });
-  var headIdx=headIndex(t);
+  var headIdx=headIndex(t), labels=[];
 
   order.forEach(function(w){
     var pa=paneAlpha(w.k); if(pa<=0.01) return;
@@ -680,9 +680,9 @@ function draw(t,dt){
       }
     };
     if(ok) fillFaces(0,3);
-    /* Name der Welt über dem Quader (in der Übersicht) */
+    /* Name der Welt über dem Quader (in der Übersicht); gezeichnet nach allen Quadern */
     var top=project([w.x,HY+0.3,0],cam);
-    if(top&&over>0.02&&onCanvas(top)) label(w.name,top.x,top.y-(w.k%4)*18,12,700,'center',over*pa);
+    if(top&&over>0.02&&onCanvas(top)) labels.push({ w:w, x:top.x, y:top.y, a:over*pa });
     /* Ring beim Durchstoß, in der Mittelebene des Quaders */
     var age=t-w.tk;
     if(age>=0&&age<=1.2){
@@ -754,6 +754,17 @@ function draw(t,dt){
     disc(o.x,o.y,3,'rgba('+INK+','+over+')');
     if(onCanvas(o)) label(shortTitle(D.product.name,34),o.x-6,o.y+20,13,700,'left',over);
   }
+
+  /* Namen der Welten: von vorn nach hinten gesetzt, bei Überlappung nach oben ausweichen */
+  labels.sort(function(a,b){ return a.w.k-b.w.k; });
+  ctx.font='700 12px '+FONT;
+  var placed=[];
+  labels.forEach(function(L){
+    var tw=ctx.measureText(L.w.name).width+8, x0=L.x-tw/2, x1=L.x+tw/2, y=L.y-4, guard=0;
+    while(guard++<24&&placed.some(function(q){ return x0<q.x1&&x1>q.x0&&Math.abs(y-q.y)<16; })) y-=17;
+    placed.push({ x0:x0, x1:x1, y:y });
+    label(L.w.name,L.x,y,12,700,'center',L.a);
+  });
 
   /* Nummern der fünf nächsten Inhalte je Welt, in der Frontalansicht mit Namen */
   WORLDS.forEach(function(w){
