@@ -10,7 +10,7 @@
    "Belohnung",
    "Status"
   ],
-  "note": "Nachhaltigkeit und Verantwortung (Bindung, rational) sind für dieses Produkt kein Treiber.",
+  "note": "Nachhaltigkeit und Verantwortung (Anschluss, rational) sind für dieses Produkt kein Treiber.",
   "profile": [
    0.95,
    0.25,
@@ -1561,7 +1561,7 @@
     {
      "name": "Betriebsrente",
      "detail": "Vorsorge, Sicherheit",
-     "reason": "Sicherheit und Vorsorge, rationale Bindung",
+     "reason": "Sicherheit und Vorsorge, rationaler Anschluss",
      "profile": [
       0.1,
       0.2,

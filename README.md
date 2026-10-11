@@ -18,11 +18,14 @@ Gold Billionaire Caramel). Ihr Bedeutungsvektor durchstößt jede Scheibe, und a
 die Inhalte dieser Welt mit ähnlichem psychologischem Profil: Desserts, Online-Artikel, Automodelle,
 Bekleidungsmarken, Arbeitgebermarken, Arbeitgeber-Benefits und Fernsehshows.
 
-- Das Profil ist ein 3×3-Motivraster (Macht, Leistung, Bindung × emotional, rational, habituell).
+- Das Profil ist ein 3×3-Motivraster: Spalten Macht, Leistung, Anschluss; Zeilen Emotional, Rational, Handlung.
+  Die neun Werte in `profile` sind in der Reihenfolge Motiv × Haltung abgelegt (Macht-Emotional, Macht-Rational, …).
   Die Ähnlichkeit ist die Kosinus-Ähnlichkeit der Profile, als Winkelmaß gespreizt und auf 0,55 bis 0,97 abgebildet.
 - Klick auf eine Scheibe (oder einen Punkt, eine Zeile der Weltenliste, die Tasten 1 bis 7 oder die Pfeile)
   stellt die Welt frontal dar; „Alle Welten“, Escape oder 0 führen zur Übersicht zurück.
 - Hover zeigt Name, Ähnlichkeit, Begründung und das Mini-Raster des Inhalts.
+- Jede Dimension ist ein Quader mit Tiefe; die Inhalte verteilen sich im Volumen. Der runde Schalter rechts in der
+  Weltenliste blendet eine Dimension aus, „Alle einschalten“ holt sie zurück.
 - Die Daten liegen in `data/themenwelten.json` (Beispieldaten mit echten Marken- und Titelnamen).
   Nach einer Änderung bettet `python3 tools/inline-data.py` sie wieder in die Seite ein.
 - `themenwelten.html#canvas` zeigt nur die Animation. Für ein Video:
