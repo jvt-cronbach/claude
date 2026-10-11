@@ -1,0 +1,880 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sieben Welten</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gabarito:wght@400;700&display=swap">
+<style>
+  /* True Relevance Tokens (Brand Guidelines v1.1) */
+  :root{
+    color-scheme: light;
+    --full-white:#ffffff;
+    --off-white:#f8f7f8;
+    --ink:#000000;
+    --full-black:#2f2f2f;
+    --clarity-blue:78,194,223;
+    --empathy-pink:245,97,159;
+    --impulse-yellow:214,208,41;
+    --human-lime:157,207,87;
+    --callout-cream:rgba(241,215,81,.2);
+    --neutral-20:rgba(171,171,171,.2);
+    --page-margin:clamp(16px,4.2vw,80px);
+    --text-column:clamp(300px,27vw,480px);
+    --font:"Gabarito","Nunito Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --radius-pill:9999px;
+    --logo:url("data:image/png;base64,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");
+  }
+  html,body{height:100%}
+  body{
+    margin:0;
+    background:var(--full-white);
+    color:var(--ink);
+    font-family:var(--font);
+    font-size:clamp(15px,.95vw,17px);
+    line-height:1.35;
+    -webkit-font-smoothing:antialiased;
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}
+  .page{position:relative;min-height:100%;display:flex;flex-direction:column}
+  .brand{
+    position:absolute;top:var(--page-margin);right:var(--page-margin);z-index:3;
+    height:clamp(22px,2.1vw,34px);width:clamp(94px,8.94vw,145px);
+    background:var(--logo) no-repeat right center/contain;
+  }
+  .brand.phone{display:none}
+  .stage{flex:1;display:grid;grid-template-columns:var(--text-column) minmax(0,1fr);align-items:start}
+  .column{
+    min-width:0;
+    padding-top:var(--page-margin);padding-bottom:32px;
+    padding-left:var(--page-margin);padding-right:24px;
+    display:flex;flex-direction:column;gap:12px;
+  }
+  .art{position:sticky;top:0;height:100vh;height:100dvh;min-width:0}
+  canvas{
+    position:absolute;inset:0;width:100%;height:100%;display:block;
+    touch-action:none;cursor:grab;
+  }
+  canvas.dragging{cursor:grabbing}
+  canvas.pointer{cursor:pointer}
+  .art-note{
+    position:absolute;left:24px;bottom:var(--page-margin);margin:0;
+    max-width:min(60ch,calc(100% - 48px));
+    font-size:13px;line-height:1.35;color:var(--full-black);
+    pointer-events:none;
+  }
+
+  .eyebrow{margin:0;font-size:clamp(14px,1vw,19px);line-height:1.3}
+  .title{
+    margin:0;font-size:clamp(28px,2.4vw,48px);line-height:1.06;font-weight:400;
+    text-wrap:balance;
+  }
+  .title span{display:block}
+  .title .bold{font-weight:700}
+
+  .steps{display:flex;flex-direction:column;gap:10px}
+  .dots{display:flex;gap:0}
+  .dot{
+    width:18px;height:18px;border-radius:50%;border:0;padding:0;cursor:pointer;
+    background:rgba(var(--clarity-blue),.2);
+    transition:background .3s;
+  }
+  .dot.past{background:rgba(var(--clarity-blue),.3)}
+  .dot.active{background:rgba(var(--clarity-blue),.5)}
+  .caption{
+    margin:0;min-height:3.2em;
+    font-size:clamp(15px,1.05vw,19px);line-height:1.3;
+    transition:opacity .22s;
+  }
+  .caption.fade{opacity:0}
+
+  .label{margin:0;font-size:13px;line-height:1.3;font-weight:700}
+  .label.light{font-weight:400;color:var(--full-black)}
+
+  .callout{background:var(--callout-cream);padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+  .product{margin:0;font-weight:700;font-size:17px;line-height:1.25}
+  .product-kind{margin:0;font-size:13px;color:var(--full-black)}
+  .tags{margin:0;font-size:13px;font-weight:700}
+  .note{margin:0;font-size:13px;line-height:1.35}
+
+  /* 3×3-Motivraster: neun sich berührende Kreise, Deckkraft = Wert */
+  .grid-wrap{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .grid3{
+    display:grid;grid-template-columns:auto repeat(3,30px);grid-auto-rows:30px;
+    align-items:center;justify-items:center;column-gap:0;row-gap:0;
+    font-size:11px;line-height:1;color:var(--ink);
+  }
+  .grid3 .gr{justify-self:end;padding-right:8px;font-weight:700;font-size:11px}
+  .grid3 .cell{width:30px;height:30px;border-radius:50%;background:rgba(var(--empathy-pink),var(--a,.2))}
+  .grid-legend{margin:0;font-size:12px;line-height:1.3;color:var(--full-black);max-width:150px}
+
+  .matches-head{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline;justify-content:space-between}
+  .worlds{display:flex;flex-direction:column;gap:8px}
+  .wlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+  .wlist li{
+    display:grid;grid-template-columns:1.4em 12px 1fr auto;grid-template-rows:auto auto;gap:0 8px;align-items:baseline;
+    padding:3px 6px;margin:0 -6px;border-radius:0;cursor:pointer;font-size:14px;line-height:1.2;
+  }
+  .wlist li:hover{background:var(--neutral-20)}
+  .wlist li.active{background:var(--neutral-20)}
+  .wlist .rank{font-weight:700;font-variant-numeric:tabular-nums}
+  .wlist .chip{width:12px;height:12px;border-radius:50%;background:rgba(var(--c),.5);position:relative;top:1px}
+  .wlist .wname{font-weight:700}
+  .wlist .sim{font-weight:700;font-variant-numeric:tabular-nums;opacity:0;transition:opacity .4s}
+  .wlist .best{grid-column:3 / span 2;font-size:12.5px;color:var(--full-black);opacity:0;transition:opacity .4s;min-height:1.2em}
+  .wlist li.show .sim,.wlist li.show .best{opacity:1}
+
+  .matches{display:flex;flex-direction:column;gap:8px}
+  .list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+  .list li{
+    display:grid;grid-template-columns:1.4em 1fr auto;gap:0 8px;align-items:baseline;
+    font-size:14px;line-height:1.3;
+  }
+  .list .rank{font-weight:700;font-variant-numeric:tabular-nums}
+  .list .sim{font-weight:700;font-variant-numeric:tabular-nums}
+  .list .reason{grid-column:2 / span 2;font-size:13px;color:var(--full-black)}
+
+  .controls{display:flex;flex-wrap:wrap;align-items:center;gap:12px 16px;margin-top:4px}
+  .pill{
+    font:700 15px/1 var(--font);color:var(--ink);
+    padding:12px 20px;border:0;border-radius:var(--radius-pill);
+    background:rgba(var(--clarity-blue),.3);cursor:pointer;transition:background .2s;
+  }
+  .pill:hover{background:rgba(var(--clarity-blue),.5)}
+  .pill.small{padding:9px 14px;font-size:13px}
+  .pill:disabled{cursor:default;opacity:.5}
+  .hint{font-size:13px;color:var(--full-black)}
+  button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+
+  .zoom{
+    position:absolute;right:var(--page-margin);bottom:var(--page-margin);z-index:2;
+    display:flex;align-items:center;gap:0;
+    opacity:0;pointer-events:none;transition:opacity .4s;
+  }
+  .zoom.ready{opacity:1;pointer-events:auto}
+  .zoom-btn{
+    width:40px;height:40px;border-radius:50%;border:0;padding:0;cursor:pointer;
+    background:rgba(var(--clarity-blue),.3);color:var(--ink);
+    font:700 22px/1 var(--font);transition:background .2s;
+  }
+  .zoom-btn:hover{background:rgba(var(--clarity-blue),.5)}
+  .zoom-btn:disabled{cursor:default}
+  .zoom-level{
+    height:40px;min-width:64px;padding:0 12px;border:0;cursor:pointer;
+    background:var(--neutral-20);color:var(--ink);
+    font:700 14px/1 var(--font);font-variant-numeric:tabular-nums;
+  }
+  .zoom-level:hover{background:rgba(171,171,171,.35)}
+
+  /* Navigation der Welten über der Canvas */
+  .overlay-top{
+    position:absolute;left:24px;top:var(--page-margin);z-index:2;
+    display:flex;flex-direction:column;align-items:flex-start;gap:10px;
+    max-width:calc(100% - 220px);
+    opacity:0;pointer-events:none;transition:opacity .4s;
+  }
+  .overlay-top.ready{opacity:1;pointer-events:auto}
+  .worldnav{display:flex;flex-wrap:wrap;align-items:center;gap:0 6px}
+  .worldlabel{
+    height:40px;display:inline-flex;align-items:center;padding:0 14px;
+    background:var(--neutral-20);font:700 13px/1.2 var(--font);
+  }
+  .tip{
+    position:absolute;z-index:3;pointer-events:none;
+    background-color:var(--full-white);background-image:linear-gradient(var(--callout-cream),var(--callout-cream));
+    padding:8px 10px;font-size:13px;line-height:1.35;max-width:260px;
+    transform:translate(-50%,calc(-100% - 8px));
+  }
+  .tip.below{transform:translate(-50%,8px)}
+  .tip b,.tip span{display:block}
+  .tip-hint,.tip-reason{color:var(--full-black);font-size:12px}
+  .tip .mini{display:grid;grid-template-columns:repeat(3,12px);grid-auto-rows:12px;gap:0;margin-top:6px}
+  .tip .mini i{display:block;width:12px;height:12px;border-radius:50%;background:rgba(var(--c),var(--a,.2))}
+
+  @media (max-width:760px){
+    .stage{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(340px,62vh)}
+    .art{position:relative;height:auto}
+    .column{padding-inline:16px;padding-top:64px}
+    .brand.desk{display:none}
+    .brand.phone{display:block;top:16px;right:16px;height:24px;width:102px}
+    .art-note{left:16px;bottom:12px;max-width:calc(100% - 190px)}
+    .overlay-top{left:16px;top:12px;max-width:calc(100% - 32px)}
+    .zoom{right:16px;bottom:12px}
+    .zoom-btn{width:36px;height:36px;font-size:20px}
+    .zoom-level{height:36px;min-width:56px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .caption,.dot,.pill,.zoom,.overlay-top,.wlist .sim,.wlist .best{transition:none}
+  }
+  /* Render-Modus (Videoexport über window.siebenWelten.seek) */
+  .render .caption,.render .dot,.render .zoom,.render .pill,.render .wlist .sim,.render .wlist .best{transition:none}
+  .render .controls,.render .zoom,.render .overlay-top,.render .tip{display:none}
+  /* Nur die Canvas, ohne Textspalte: themenwelten.html#canvas */
+  .canvas-only .column,.canvas-only .brand,.canvas-only .art-note,.canvas-only .zoom{display:none}
+  .canvas-only .stage{grid-template-columns:minmax(0,1fr)}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="brand phone" role="img" aria-label="True Relevance"></div>
+  <div class="stage">
+    <aside class="column">
+      <p class="eyebrow">Psychologische Bedeutung</p>
+      <h1 class="title"><span class="bold">Eine Marke.</span><span>Sieben Welten.</span></h1>
+
+      <div class="steps">
+        <div class="dots" role="group" aria-label="Schritte der Animation">
+          <button class="dot" type="button" data-step="0" aria-label="Schritt 1: Profil der Marke"></button>
+          <button class="dot" type="button" data-step="1" aria-label="Schritt 2: Flug durch die Themenwelten"></button>
+          <button class="dot" type="button" data-step="2" aria-label="Schritt 3: Ergebnis"></button>
+        </div>
+        <p class="caption" id="caption" aria-live="polite"></p>
+      </div>
+
+      <section class="callout" aria-label="Startpunkt">
+        <p class="label">Startpunkt · Beispiel</p>
+        <p class="product" id="productName"></p>
+        <p class="product-kind" id="productKind"></p>
+        <div class="grid-wrap">
+          <div class="grid3" id="grid3" aria-label="Motivraster der Marke"></div>
+          <p class="grid-legend">Zeilen: Motive. Spalten: emotional, rational, habituell. Deckkraft = Stärke.</p>
+        </div>
+        <p class="tags" id="productTags"></p>
+        <p class="note" id="productNote"></p>
+      </section>
+
+      <section class="worlds" aria-label="Themenwelten">
+        <div class="matches-head">
+          <p class="label">Sieben Themenwelten</p>
+          <p class="label light">Nächster Inhalt je Welt</p>
+        </div>
+        <ol class="wlist" id="wlist"></ol>
+      </section>
+
+      <section class="matches" id="topSection" aria-label="Nächste Inhalte" hidden>
+        <p class="label" id="topLabel">Nächste Inhalte</p>
+        <ol class="list" id="list"></ol>
+      </section>
+
+      <div class="controls">
+        <button class="pill" type="button" id="replay">Neu abspielen</button>
+        <button class="pill" type="button" id="overviewBtn" hidden>Alle Welten</button>
+        <span class="hint">Ziehen dreht den Raum, Scrollen zoomt. Ein Klick auf eine Scheibe öffnet die Welt.</span>
+      </div>
+    </aside>
+
+    <div class="art">
+      <div class="brand desk" role="img" aria-label="True Relevance"></div>
+      <canvas id="space" role="img" aria-label="Sieben Themenwelten stehen als Scheiben nebeneinander. Der Bedeutungsvektor einer Marke durchstößt jede Scheibe, und um den Durchstoßpunkt erscheinen die Inhalte mit ähnlichem psychologischem Profil."></canvas>
+      <div class="overlay-top" id="overlayTop">
+        <div class="worldnav" role="group" aria-label="Themenwelt wählen">
+          <button class="zoom-btn" type="button" id="prevWorld" aria-label="Vorherige Welt" disabled>‹</button>
+          <span class="worldlabel" id="worldLabel">Übersicht</span>
+          <button class="zoom-btn" type="button" id="nextWorld" aria-label="Nächste Welt" disabled>›</button>
+          <button class="pill small" type="button" id="allWorlds" hidden>Alle Welten</button>
+        </div>
+      </div>
+      <div class="tip" id="tip" hidden></div>
+      <p class="art-note">Beispieldaten. Ähnlichkeit = Kosinus-Ähnlichkeit der 3×3-Profile (Motive × Haltungen), für die Darstellung auf drei Dimensionen projiziert.</p>
+      <div class="zoom" id="zoom" role="group" aria-label="Zoom">
+        <button class="zoom-btn" type="button" id="zoomOut" aria-label="Herauszoomen" disabled>−</button>
+        <button class="zoom-level" type="button" id="zoomReset" aria-label="Zoom zurücksetzen" title="Zoom zurücksetzen" disabled>1,0×</button>
+        <button class="zoom-btn" type="button" id="zoomIn" aria-label="Hineinzoomen" disabled>+</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/*DATA-START*/
+var THEMENWELTEN_DATA = {"product":{"name":"Magnum Gold Billionaire Caramel","brand":"Magnum (Unilever)","kind":"Premium-Eis","summary":"Premium-Genuss als goldene Belohnung: Status, Glamour und Inszenierung für den besonderen Moment.","tags":["Premium","Genuss","Belohnung","Status"],"note":"Nachhaltigkeit und Verantwortung (Bindung, rational) sind für dieses Produkt kein Treiber.","profile":[0.95,0.25,0.2,0.85,0.3,0.25,0.35,0.1,0.15]},"worlds":[{"id":"desserts","name":"Desserts","noun":"Dessert","description":"Weitere Desserts und Eismarken, vom Luxus-Genuss bis zum Alltagsprodukt für die Familie.","items":[{"name":"Häagen-Dazs Dulce de Leche","detail":"Premium-Eis, General Mills","reason":"Karamell-Genuss als Belohnung, Premium-Inszenierung","profile":[0.9,0.3,0.2,0.85,0.3,0.2,0.35,0.1,0.15]},{"name":"Godiva Pralinen","detail":"Luxus-Schokolade, Belgien","reason":"Luxus-Schokolade als Statusgeschenk, Glamour und Genuss","profile":[0.95,0.3,0.2,0.75,0.25,0.2,0.4,0.1,0.15]},{"name":"Venchi Gelato","detail":"Gelato, Venchi (Italien)","reason":"Italienisches Luxus-Gelato, Genuss und Prestige","profile":[0.85,0.3,0.2,0.75,0.3,0.2,0.45,0.15,0.15]},{"name":"Lindt Lindor","detail":"Pralinen, Lindt & Sprüngli","reason":"Goldene Verpackung, zartschmelzende Belohnung","profile":[0.85,0.3,0.3,0.8,0.3,0.3,0.45,0.1,0.2]},{"name":"Pierre Marcolini","detail":"Haute Chocolaterie, Brüssel","reason":"Haute Chocolaterie, Exklusivität und Prestige","profile":[0.95,0.35,0.15,0.7,0.3,0.15,0.3,0.1,0.1]},{"name":"Mövenpick Caramelita","detail":"Premium-Eis, Froneri","reason":"Schweizer Premium-Eis, Karamell-Genuss mit Stil","profile":[0.8,0.35,0.25,0.8,0.35,0.25,0.4,0.15,0.2]},{"name":"Sprüngli Luxemburgerli","detail":"Macarons, Confiserie Sprüngli","reason":"Confiserie-Luxus aus Zürich, exklusive Belohnung","profile":[0.85,0.3,0.3,0.7,0.3,0.3,0.5,0.15,0.25]},{"name":"Ferrero Rocher","detail":"Pralinen, Ferrero","reason":"Goldene Inszenierung, festlicher Genuss","profile":[0.85,0.25,0.35,0.65,0.25,0.35,0.55,0.1,0.3]},{"name":"Cremissimo Salted Caramel","detail":"Haushaltseis, Langnese","reason":"Genuss für die ganze Familie, mehr Alltag als Glamour","profile":[0.45,0.3,0.45,0.5,0.35,0.5,0.8,0.2,0.55]},{"name":"Milka Alpenmilch","detail":"Schokolade, Mondelez","reason":"Zarte Alltags-Schokolade, Vertrautheit statt Luxus","profile":[0.3,0.2,0.5,0.4,0.25,0.5,0.8,0.2,0.65]},{"name":"Nutella","detail":"Brotaufstrich, Ferrero","reason":"Frühstücksritual der Familie, Gewohnheit und Nähe","profile":[0.25,0.15,0.5,0.35,0.2,0.55,0.75,0.2,0.85]},{"name":"Ben & Jerry's Cookie Dough","detail":"Eis, Vermont (USA)","reason":"Werte, Haltung und Gemeinschaft statt Status","profile":[0.2,0.15,0.2,0.4,0.3,0.25,0.85,0.75,0.35]},{"name":"Oatly Hafer-Eis","detail":"Pflanzliches Eis, Oatly","reason":"Bewusster Konsum, Verantwortung und Vernunft","profile":[0.15,0.2,0.15,0.3,0.55,0.25,0.5,0.9,0.3]},{"name":"Fruchtzwerge","detail":"Kinder-Quark, Danone","reason":"Familienalltag und Fürsorge für Kinder","profile":[0.1,0.1,0.3,0.2,0.35,0.4,0.75,0.6,0.85]},{"name":"Landliebe Naturjoghurt","detail":"Naturjoghurt, Molkereiprodukt","reason":"Natürlichkeit, Routine und Vertrautheit im Alltag","profile":[0.1,0.15,0.3,0.15,0.4,0.45,0.6,0.7,0.9]},{"name":"Alpro Sojajoghurt","detail":"Pflanzlicher Joghurt, Danone","reason":"Vernunft, Verantwortung und tägliche Routine","profile":[0.05,0.15,0.2,0.15,0.55,0.4,0.45,0.9,0.8]}]},{"id":"artikel","name":"Online-Artikel","noun":"Artikel","description":"Erfundene Schlagzeilen redaktioneller Online-Artikel aus Luxus, Lifestyle, Mobilität und Ratgeber.","items":[{"name":"Die zehn teuersten Desserts der Welt und wo es sie gibt","detail":"Food, Lifestyle-Magazin","reason":"Premium-Genuss als Statussymbol","profile":[0.9,0.3,0.2,0.85,0.3,0.2,0.35,0.1,0.15]},{"name":"Der neue Mercedes SL: Premiere unter Palmen in Monaco","detail":"Auto, Lifestyle-Magazin","reason":"Glamouröse Premiere, Status und Erlebnis","profile":[0.95,0.3,0.15,0.8,0.3,0.15,0.3,0.1,0.1]},{"name":"Topmodel in Gold: Der Auftritt des Abends auf dem roten Teppich","detail":"Society, Promi-Portal","reason":"Glamour, Inszenierung und Bewunderung","profile":[0.95,0.2,0.15,0.75,0.2,0.15,0.4,0.1,0.1]},{"name":"Suite mit Butler: Die neuen Luxushotels der Amalfiküste","detail":"Reise, Travel-Magazin","reason":"Luxus-Erlebnis, Verwöhnung und Prestige","profile":[0.9,0.3,0.2,0.7,0.3,0.2,0.45,0.1,0.15]},{"name":"Rolex Daytona: Warum die Warteliste zum Statussymbol wird","detail":"Uhren, Luxus-Magazin","reason":"Luxusuhr als Zeichen von Erfolg und Überlegenheit","profile":[0.9,0.4,0.2,0.8,0.35,0.2,0.3,0.1,0.15]},{"name":"Privatjet statt Business Class: So reist die neue Elite","detail":"Reise, Wirtschaftsmagazin","reason":"Exklusivität, Überlegenheit und Distinktion","profile":[0.95,0.35,0.15,0.75,0.3,0.15,0.25,0.1,0.1]},{"name":"Salted Caramel: Der Dessert-Trend aus der Sterneküche","detail":"Food, Genuss-Magazin","reason":"Genuss auf Spitzenniveau, Belohnung und Exzellenz","profile":[0.8,0.3,0.25,0.8,0.35,0.25,0.45,0.1,0.2]},{"name":"Champagner-Ranking: Diese Cuvées trinkt man 2026","detail":"Genuss, Lifestyle-Magazin","reason":"Genuss, Stil und Status beim Feiern","profile":[0.85,0.35,0.25,0.7,0.3,0.25,0.45,0.1,0.2]},{"name":"Porsche 911 im Test: Die Ikone bleibt das Maß der Dinge","detail":"Auto, Fachmagazin","reason":"Leistung und Prestige, sachlich geprüft","profile":[0.7,0.55,0.2,0.8,0.55,0.2,0.25,0.1,0.15]},{"name":"Karrieresprung mit 35: So verhandelt man den Chefposten","detail":"Karriere, Wirtschaftsmagazin","reason":"Aufstieg und Erfolg, eher rational als glamourös","profile":[0.5,0.6,0.2,0.7,0.8,0.25,0.25,0.15,0.15]},{"name":"Fitness-Tracker im Vergleich: Welcher misst am genauesten?","detail":"Technik, Verbraucherportal","reason":"Selbstoptimierung mit Fakten, ohne Glamour","profile":[0.2,0.3,0.2,0.55,0.85,0.35,0.25,0.2,0.25]},{"name":"Wochenplan für Familien: So gelingt der Alltag mit drei Kindern","detail":"Familie, Ratgeber-Portal","reason":"Familienalltag, Fürsorge und Routine","profile":[0.1,0.1,0.25,0.2,0.4,0.5,0.75,0.6,0.85]},{"name":"Ehrenamt im Verein: Warum sich Engagement lohnt","detail":"Gesellschaft, Regionalzeitung","reason":"Gemeinschaft und Verantwortung statt Status","profile":[0.1,0.1,0.15,0.2,0.3,0.3,0.85,0.8,0.6]},{"name":"Stromkosten senken: Zehn Tipps für den Haushalt","detail":"Finanzen, Verbraucherportal","reason":"Sparen und Vernunft statt Luxus","profile":[0.05,0.2,0.2,0.15,0.7,0.4,0.3,0.85,0.6]},{"name":"Haushaltsbuch führen: So behalten Sie Ihre Ausgaben im Griff","detail":"Finanzen, Ratgeber-Portal","reason":"Sparsamkeit, Kontrolle und Alltagsroutine","profile":[0.05,0.15,0.2,0.15,0.7,0.5,0.3,0.8,0.75]},{"name":"Richtig recyceln: Was gehört in den Gelben Sack?","detail":"Umwelt, Ratgeber-Portal","reason":"Verantwortung und Vernunft, kein Statusbezug","profile":[0.05,0.1,0.15,0.1,0.5,0.4,0.45,0.95,0.65]}]},{"id":"autos","name":"Automodelle","noun":"Modell","description":"Konkrete Automodelle vom Luxus-Roadster bis zum vernünftigen Familien- und Nutzfahrzeug.","items":[{"name":"Maserati GranTurismo","detail":"Grand Tourer, Maserati","reason":"Italienische Eleganz, Emotion und Prestige","profile":[0.9,0.3,0.2,0.8,0.3,0.2,0.35,0.1,0.15]},{"name":"Mercedes-AMG SL 63","detail":"Roadster, Mercedes-AMG","reason":"Luxus-Roadster, Glamour und Prestige","profile":[0.95,0.35,0.2,0.85,0.35,0.2,0.3,0.1,0.15]},{"name":"Aston Martin DB12","detail":"Grand Tourer, Aston Martin","reason":"Glamour, Exklusivität und Fahrerlebnis","profile":[0.95,0.3,0.15,0.8,0.3,0.15,0.3,0.1,0.1]},{"name":"Porsche 911 Carrera","detail":"Sportwagen, Porsche","reason":"Sportliche Exzellenz, Ikone und Status","profile":[0.9,0.4,0.25,0.9,0.4,0.25,0.3,0.1,0.15]},{"name":"Bentley Continental GT","detail":"Grand Tourer, Bentley","reason":"Handwerkskunst, Luxus und Überlegenheit","profile":[0.95,0.4,0.2,0.7,0.3,0.2,0.3,0.1,0.15]},{"name":"Range Rover Autobiography","detail":"Luxus-SUV, Land Rover","reason":"Souveränität, Komfort und Statusanspruch","profile":[0.9,0.45,0.25,0.7,0.4,0.25,0.4,0.15,0.2]},{"name":"Mercedes-Maybach S 680","detail":"Luxuslimousine, Mercedes-Benz","reason":"Repräsentation, Luxus und Dominanz","profile":[0.95,0.5,0.25,0.6,0.35,0.25,0.35,0.1,0.15]},{"name":"Audi RS e-tron GT","detail":"Elektro-Sportwagen, Audi","reason":"Leistung und Technik mit Prestige","profile":[0.8,0.5,0.2,0.85,0.55,0.2,0.3,0.15,0.15]},{"name":"BMW X5","detail":"SUV, BMW","reason":"Status und Alltagstauglichkeit zugleich","profile":[0.8,0.5,0.35,0.6,0.55,0.35,0.45,0.2,0.3]},{"name":"Tesla Model 3","detail":"Elektro-Limousine, Tesla","reason":"Technik und Effizienz, rationale Leistung","profile":[0.4,0.5,0.2,0.55,0.85,0.25,0.3,0.4,0.2]},{"name":"VW Golf","detail":"Kompaktwagen, Volkswagen","reason":"Vertrauter Klassiker, Vernunft und Gewohnheit","profile":[0.3,0.35,0.55,0.35,0.55,0.6,0.45,0.35,0.8]},{"name":"Skoda Octavia Combi","detail":"Kombi, Skoda","reason":"Platz, Nutzen und Vernunft für die Familie","profile":[0.15,0.3,0.3,0.25,0.8,0.45,0.5,0.45,0.7]},{"name":"VW Caddy","detail":"Hochdachkombi, Volkswagen","reason":"Familienalltag, Routine und Zweckmäßigkeit","profile":[0.1,0.15,0.3,0.2,0.6,0.55,0.65,0.5,0.85]},{"name":"Toyota Prius","detail":"Hybrid-Limousine, Toyota","reason":"Effizienz und Verantwortung statt Prestige","profile":[0.1,0.25,0.2,0.25,0.8,0.35,0.35,0.85,0.4]},{"name":"Ford Transit Custom","detail":"Transporter, Ford","reason":"Arbeitsgerät für den Betrieb, Nutzen und Routine","profile":[0.1,0.2,0.3,0.2,0.75,0.8,0.35,0.4,0.75]},{"name":"Dacia Sandero","detail":"Kleinwagen, Dacia","reason":"Preisbewusste Vernunft, Alltag ohne Statusanspruch","profile":[0.05,0.15,0.25,0.15,0.85,0.5,0.4,0.55,0.75]}]},{"id":"mode","name":"Bekleidungsmarken","noun":"Marke","description":"Bekleidungsmarken von Luxus-Mode über Sport und Outdoor bis zu Basics und Arbeitskleidung.","items":[{"name":"Moncler","detail":"Luxus-Daunenjacken, Italien","reason":"Winterluxus, Exklusivität und Sichtbarkeit","profile":[0.9,0.3,0.2,0.75,0.35,0.2,0.35,0.1,0.15]},{"name":"Louis Vuitton","detail":"Luxusmode, LVMH (Frankreich)","reason":"Ikonisches Monogramm, Luxus und Prestige","profile":[0.95,0.35,0.2,0.75,0.3,0.2,0.35,0.1,0.15]},{"name":"Gucci","detail":"Luxusmode, Kering (Italien)","reason":"Glamour, Extravaganz und Statussymbolik","profile":[0.95,0.25,0.15,0.75,0.25,0.15,0.4,0.1,0.1]},{"name":"Prada","detail":"Luxusmode, Mailand","reason":"Intellektueller Luxus, Status und Exklusivität","profile":[0.9,0.4,0.2,0.7,0.35,0.2,0.3,0.1,0.15]},{"name":"Balenciaga","detail":"Luxusmode, Kering (Paris)","reason":"Avantgarde-Luxus, Dominanz und Inszenierung","profile":[0.95,0.25,0.1,0.7,0.2,0.1,0.35,0.1,0.1]},{"name":"Ralph Lauren","detail":"Premium-Mode, USA","reason":"Lebensstil der Oberschicht, Eleganz und Erfolg","profile":[0.85,0.35,0.3,0.75,0.35,0.3,0.45,0.1,0.25]},{"name":"Hugo Boss","detail":"Premium-Mode, Metzingen","reason":"Erfolg, Business-Eleganz und Leistung","profile":[0.8,0.4,0.25,0.85,0.45,0.25,0.3,0.1,0.2]},{"name":"Burberry","detail":"Luxusmode, Großbritannien","reason":"Britischer Luxus, Tradition und Status","profile":[0.85,0.4,0.3,0.65,0.35,0.3,0.4,0.15,0.25]},{"name":"Tommy Hilfiger","detail":"Premium-Casual, PVH","reason":"Premium-Casual mit Statusanspruch, breiter Alltag","profile":[0.8,0.3,0.35,0.6,0.3,0.35,0.55,0.15,0.35]},{"name":"Nike","detail":"Sportbekleidung, USA","reason":"Leistung, Siegeswille und Selbstoptimierung","profile":[0.5,0.3,0.25,0.95,0.5,0.3,0.45,0.15,0.25]},{"name":"Levi's","detail":"Denim, USA","reason":"Vertrauter Klassiker, Gewohnheit und Authentizität","profile":[0.35,0.25,0.55,0.4,0.3,0.55,0.6,0.2,0.8]},{"name":"Jack Wolfskin","detail":"Outdoor-Bekleidung, Idstein","reason":"Funktion, Natur und Familienausflug","profile":[0.15,0.25,0.3,0.3,0.7,0.45,0.6,0.5,0.8]},{"name":"Engelbert Strauss","detail":"Arbeitskleidung, Biebergemünd","reason":"Arbeitsalltag, Funktion und Zusammenhalt im Betrieb","profile":[0.15,0.2,0.3,0.3,0.7,0.75,0.6,0.4,0.85]},{"name":"Patagonia","detail":"Outdoor-Bekleidung, USA","reason":"Verantwortung und Gemeinschaft statt Status","profile":[0.15,0.15,0.15,0.3,0.45,0.25,0.75,0.95,0.35]},{"name":"Armedangels","detail":"Fair Fashion, Köln","reason":"Fairness und Verantwortung als Kaufmotiv","profile":[0.15,0.15,0.15,0.25,0.4,0.2,0.6,0.95,0.35]},{"name":"C&A","detail":"Modekette, Familienmode","reason":"Preisbewusste Familienmode, Alltag und Routine","profile":[0.1,0.15,0.3,0.15,0.55,0.5,0.6,0.45,0.9]}]},{"id":"arbeitgeber","name":"Arbeitgebermarken","noun":"Arbeitgeber","description":"Reale Unternehmen und Organisationen als Arbeitgebermarken, von Elite-Karriere bis Gemeinwohl.","items":[{"name":"LVMH","detail":"Luxuskonzern, Paris","reason":"Luxuswelt, Glamour und Markenprestige","profile":[0.95,0.35,0.2,0.75,0.3,0.2,0.35,0.1,0.15]},{"name":"Red Bull","detail":"Getränkekonzern, Österreich","reason":"Energie, Erlebnis und Siegermentalität","profile":[0.8,0.25,0.2,0.9,0.35,0.2,0.45,0.1,0.15]},{"name":"Porsche AG","detail":"Sportwagenhersteller","reason":"Leistung, Begehrlichkeit und Markenstolz","profile":[0.9,0.4,0.25,0.85,0.4,0.25,0.4,0.15,0.2]},{"name":"Rolex","detail":"Uhrenmanufaktur, Genf","reason":"Perfektion, Prestige und Exklusivität","profile":[0.9,0.45,0.25,0.8,0.4,0.25,0.3,0.1,0.2]},{"name":"Goldman Sachs","detail":"Investmentbank, New York","reason":"Elite, Bonus und Leistung, Status durch Erfolg","profile":[0.95,0.5,0.2,0.9,0.5,0.2,0.2,0.1,0.1]},{"name":"Lufthansa","detail":"Fluggesellschaft","reason":"Premium-Marke, Weltläufigkeit und Prestige","profile":[0.8,0.4,0.3,0.7,0.4,0.35,0.45,0.2,0.3]},{"name":"Google","detail":"Technologiekonzern, USA","reason":"Leistungselite, Innovation und Begehrlichkeit","profile":[0.75,0.45,0.2,0.9,0.55,0.2,0.45,0.2,0.15]},{"name":"McKinsey & Company","detail":"Strategieberatung","reason":"Exzellenz, Aufstieg und Prestige","profile":[0.85,0.55,0.2,0.95,0.55,0.2,0.25,0.1,0.1]},{"name":"Siemens","detail":"Technologiekonzern, München","reason":"Solide Leistung, Ingenieursstolz und Verlässlichkeit","profile":[0.45,0.5,0.35,0.6,0.8,0.4,0.4,0.35,0.4]},{"name":"Bosch","detail":"Technologiekonzern, Stuttgart","reason":"Verantwortung und Verlässlichkeit vor Status","profile":[0.3,0.35,0.35,0.45,0.65,0.45,0.5,0.8,0.5]},{"name":"Deutsche Telekom","detail":"Telekommunikation, Bonn","reason":"Großer Arbeitgeber, Sicherheit und Routine","profile":[0.3,0.35,0.45,0.4,0.55,0.55,0.45,0.4,0.8]},{"name":"Regionaler Handwerksbetrieb","detail":"Handwerk, Mittelstand","reason":"Zusammenhalt im Team, Alltag und Verlässlichkeit","profile":[0.15,0.2,0.35,0.3,0.5,0.65,0.75,0.4,0.85]},{"name":"Deutsche Bahn","detail":"Verkehrsunternehmen","reason":"Daseinsvorsorge, Sicherheit und Gemeinschaft","profile":[0.15,0.2,0.3,0.2,0.45,0.55,0.55,0.75,0.85]},{"name":"Alnatura","detail":"Bio-Supermarkt, Darmstadt","reason":"Sinn, Nachhaltigkeit und Verantwortung","profile":[0.1,0.1,0.15,0.2,0.35,0.3,0.75,0.95,0.5]},{"name":"Stadtverwaltung München","detail":"Öffentlicher Dienst","reason":"Gemeinwohl, Sicherheit und geregelte Routine","profile":[0.1,0.2,0.25,0.15,0.45,0.5,0.45,0.8,0.9]},{"name":"Caritas","detail":"Wohlfahrtsverband","reason":"Fürsorge und Gemeinschaft statt Status","profile":[0.05,0.1,0.15,0.15,0.3,0.3,0.95,0.85,0.55]}]},{"id":"benefits","name":"Arbeitgeber-Benefits","noun":"Benefit","description":"Leistungen, die Arbeitgeber anbieten, von Statussymbolen bis zur Entlastung im Alltag.","items":[{"name":"Business-Class-Dienstreisen","detail":"Reisen, Komfort","reason":"Premium-Komfort als Zeichen der Wertschätzung","profile":[0.9,0.3,0.2,0.75,0.3,0.2,0.35,0.1,0.15]},{"name":"Firmenwagen der Oberklasse","detail":"Mobilität, Statussymbol","reason":"Sichtbarer Status, Belohnung für Erfolg","profile":[0.95,0.35,0.2,0.8,0.3,0.2,0.25,0.1,0.15]},{"name":"Mitgliedschaft im Premium-Fitnessclub","detail":"Gesundheit, Lifestyle","reason":"Körperliche Exzellenz in exklusivem Umfeld","profile":[0.8,0.3,0.25,0.85,0.4,0.3,0.35,0.1,0.2]},{"name":"Einladungen zu VIP-Events","detail":"Netzwerk, Erlebnis","reason":"Glamour, Zugang und Bewunderung","profile":[0.95,0.25,0.15,0.7,0.25,0.15,0.45,0.1,0.1]},{"name":"Eckbüro mit Assistenz","detail":"Arbeitsplatz, Hierarchie","reason":"Sichtbare Hierarchie, Dominanz und Prestige","profile":[0.95,0.4,0.3,0.7,0.35,0.3,0.25,0.1,0.2]},{"name":"Executive Coaching","detail":"Entwicklung, Führung","reason":"Selbstoptimierung auf dem Weg nach oben","profile":[0.75,0.45,0.15,0.9,0.55,0.2,0.3,0.1,0.1]},{"name":"Bonus und Aktienbeteiligung","detail":"Vergütung, variabel","reason":"Belohnung für Leistung, Teilhabe am Erfolg","profile":[0.8,0.5,0.15,0.95,0.55,0.2,0.25,0.1,0.1]},{"name":"MBA-Förderung an einer Top-Business-School","detail":"Weiterbildung, Karriere","reason":"Exzellenz, Netzwerk und Karrieresprung","profile":[0.7,0.5,0.15,0.9,0.6,0.2,0.3,0.15,0.1]},{"name":"Workation im Ausland","detail":"Arbeitsmodell, Erlebnis","reason":"Erlebnis und Freiheit, lockerer Statusbezug","profile":[0.45,0.25,0.2,0.8,0.35,0.25,0.6,0.2,0.25]},{"name":"Weiterbildungsbudget","detail":"Entwicklung, fachlich","reason":"Fachliche Entwicklung, rational und nüchtern","profile":[0.3,0.4,0.25,0.6,0.85,0.3,0.35,0.3,0.25]},{"name":"Homeoffice-Ausstattung","detail":"Arbeitsplatz, praktisch","reason":"Nutzen und Routine im Arbeitsalltag","profile":[0.15,0.3,0.35,0.35,0.7,0.6,0.35,0.35,0.8]},{"name":"Gleitzeit","detail":"Arbeitszeit, Flexibilität","reason":"Vereinbarkeit und Routine, vernünftig statt glamourös","profile":[0.1,0.2,0.3,0.3,0.6,0.6,0.5,0.55,0.85]},{"name":"Fahrradleasing","detail":"Mobilität, Dienstrad","reason":"Vernunft, Gesundheit und Verantwortung","profile":[0.1,0.15,0.2,0.3,0.6,0.4,0.45,0.85,0.5]},{"name":"Betriebsrente","detail":"Vorsorge, Sicherheit","reason":"Sicherheit und Vorsorge, rationale Bindung","profile":[0.1,0.2,0.25,0.15,0.55,0.45,0.4,0.9,0.75]},{"name":"Jobticket","detail":"Mobilität, ÖPNV","reason":"Alltagsnutzen und Gewohnheit, kein Prestige","profile":[0.05,0.15,0.25,0.15,0.65,0.55,0.3,0.6,0.85]},{"name":"Kita-Zuschuss","detail":"Familie, Betreuung","reason":"Fürsorge für die Familie, Verantwortung","profile":[0.05,0.1,0.2,0.15,0.4,0.4,0.8,0.85,0.7]}]},{"id":"shows","name":"Fernsehshows","noun":"Show","description":"Fernsehshows und Serien, von Glamour- und Wettbewerbsformaten bis zu vertrauten Alltagsformaten.","items":[{"name":"Germany's Next Topmodel","detail":"Castingshow, ProSieben","reason":"Glamour, Wettbewerb und Inszenierung","profile":[0.95,0.2,0.2,0.8,0.25,0.2,0.4,0.1,0.15]},{"name":"Selling Sunset","detail":"Reality-Serie, Netflix","reason":"Luxusimmobilien, Status und Glamour","profile":[0.95,0.3,0.15,0.75,0.3,0.15,0.35,0.1,0.1]},{"name":"Formula 1: Drive to Survive","detail":"Doku-Serie, Netflix","reason":"Siegeswille, Luxus und Tempo","profile":[0.85,0.3,0.2,0.9,0.4,0.2,0.35,0.1,0.15]},{"name":"Emily in Paris","detail":"Dramedy-Serie, Netflix","reason":"Luxusmode, Lifestyle und Erlebnis","profile":[0.85,0.2,0.2,0.7,0.2,0.2,0.55,0.1,0.15]},{"name":"The Crown","detail":"Historiendrama, Netflix","reason":"Monarchie, Prestige und Inszenierung","profile":[0.9,0.4,0.3,0.6,0.35,0.3,0.4,0.15,0.2]},{"name":"Kitchen Impossible","detail":"Kochshow, VOX","reason":"Exzellenz, Wettbewerb und Spitzenküche","profile":[0.7,0.35,0.2,0.95,0.45,0.2,0.4,0.1,0.15]},{"name":"Succession","detail":"Drama-Serie, HBO","reason":"Macht, Dynastie und Dominanz","profile":[0.95,0.5,0.2,0.7,0.4,0.2,0.25,0.1,0.1]},{"name":"Die Höhle der Löwen","detail":"Gründershow, VOX","reason":"Erfolg, Investment und Siegermentalität","profile":[0.75,0.5,0.2,0.9,0.55,0.2,0.3,0.15,0.15]},{"name":"The Taste","detail":"Kochshow, Sat.1","reason":"Leistung und Genuss im Wettbewerb","profile":[0.55,0.3,0.3,0.8,0.4,0.3,0.5,0.15,0.25]},{"name":"Wer wird Millionär?","detail":"Quizshow, RTL","reason":"Belohnung und Wissen, vertrautes Ritual","profile":[0.5,0.3,0.45,0.8,0.5,0.5,0.5,0.2,0.55]},{"name":"Bares für Rares","detail":"Trödelshow, ZDF","reason":"Vertrautes Nachmittagsformat, Routine","profile":[0.2,0.3,0.45,0.35,0.45,0.55,0.55,0.3,0.9]},{"name":"Tatort","detail":"Krimireihe, Das Erste","reason":"Sonntagsritual, Gewohnheit und Gemeinschaft","profile":[0.25,0.25,0.5,0.3,0.4,0.55,0.65,0.3,0.9]},{"name":"Die Schnäppchenhäuser","detail":"Heimwerker-Doku, RTLZWEI","reason":"Heimwerken mit kleinem Budget, Familie und Sparsamkeit","profile":[0.1,0.15,0.3,0.3,0.6,0.55,0.7,0.6,0.8]},{"name":"Der Bergdoktor","detail":"Arztserie, ZDF","reason":"Heimat, Fürsorge und Gemeinschaft","profile":[0.1,0.1,0.3,0.15,0.25,0.45,0.9,0.5,0.85]},{"name":"Die Sendung mit der Maus","detail":"Kindersendung, WDR","reason":"Fürsorge, Lernen und Familienritual","profile":[0.05,0.05,0.25,0.2,0.45,0.4,0.85,0.75,0.85]},{"name":"Tagesschau","detail":"Nachrichten, Das Erste","reason":"Fakten, Routine und verlässliche Information","profile":[0.1,0.25,0.3,0.15,0.7,0.5,0.3,0.8,0.9]}]}]};
+/*DATA-END*/
+</script>
+<script>
+(function(){
+'use strict';
+
+/* ---------- Einstellungen ---------- */
+var D = window.THEMENWELTEN_DATA;
+var TL = { profile:0, flight:2.2, result:8.6, end:9.4 };
+var PIERCE_T0 = 3.0, PIERCE_STEP = 0.8;   /* Durchstoßzeit der ersten Welt und Abstand zwischen den Welten */
+var FILLER = 32;                           /* zusätzliche unbenannte Punkte je Welt */
+var CAPTIONS = [
+  'Die Marke bekommt ein psychologisches Profil: Welche Motive spricht sie an, mit welcher Haltung?',
+  'Ihr Bedeutungsvektor durchstößt jede Themenwelt. Wo er auftrifft, liegen die Inhalte mit demselben Profil.',
+  'Sieben Welten, ein Profil: Desserts, Artikel, Autos, Mode, Arbeitgeber, Benefits und Shows teilen dieselbe Bedeutung. Ein Klick auf eine Scheibe öffnet die Welt.'
+];
+var PHASE_START = [TL.profile, TL.flight, TL.result];
+var COLORS = ['245,97,159','78,194,223','214,208,41','157,207,87'];
+var WORLD_COLORS = [0,1,2,3,0,1,2];
+var MOTIVES = ['Macht','Leistung','Bindung'], ATTITUDES = ['emotional','rational','habituell'];
+/* Scheibenform (Toastscheibe): Breite in z, Höhe in y, oben gerundet */
+var GAP = 2.3, HW = 1.8, BOTTOM = -1.6, SIDE_TOP = 0.6, ARCH = 1.2, MARGIN = 0.14;
+var PRODUCT_POS = [-2.4, 0.1, -0.8];
+var N_SEG = 60;
+
+var INK = '0,0,0', BLACK = '47,47,47', NEUTRAL = '171,171,171';
+var FONT = '"Gabarito","Nunito Sans",system-ui,sans-serif';
+
+/* ---------- Mathe ---------- */
+function lerp(a,b,t){ return a+(b-a)*t; }
+function clamp(v,a,b){ return v<a?a:v>b?b:v; }
+function easeInOutCubic(t){ return t<.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2; }
+function easeOutCubic(t){ return 1-Math.pow(1-t,3); }
+function easeInCubic(t){ return t*t*t; }
+function easeOutBack(t){ var c=1.70158; return 1+(c+1)*Math.pow(t-1,3)+c*Math.pow(t-1,2); }
+function lerpV(a,b,t){ return [lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2],t)]; }
+function mulberry32(seed){ return function(){ seed|=0; seed=seed+0x6D2B79F5|0; var t=Math.imul(seed^seed>>>15,1|seed); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function fmtSim(s){ return s.toFixed(2).replace('.',','); }
+function shortTitle(s,n){ return s.length>n ? s.slice(0,n-1).replace(/\s+\S*$/,'')+'…' : s; }
+function cosine(a,b){ var d=0,na=0,nb=0; for(var i=0;i<9;i++){ d+=a[i]*b[i]; na+=a[i]*a[i]; nb+=b[i]*b[i]; } return d/Math.sqrt((na*nb)||1); }
+function catmull(p0,p1,p2,p3,t){
+  var t2=t*t, t3=t2*t, out=[];
+  for(var i=0;i<3;i++){ out.push(0.5*((2*p1[i])+(-p0[i]+p2[i])*t+(2*p0[i]-5*p1[i]+4*p2[i]-p3[i])*t2+(-p0[i]+3*p1[i]-3*p2[i]+p3[i])*t3)); }
+  return out;
+}
+/* Liegt der Punkt (u = z, v = y) in der Scheibe? Mit Rand */
+function insidePane(u,v){
+  if(Math.abs(u)>HW-MARGIN||v<BOTTOM+MARGIN) return false;
+  if(v<=SIDE_TOP) return true;
+  var a=u/(HW-MARGIN), b=(v-SIDE_TOP)/(ARCH-MARGIN);
+  return a*a+b*b<=1;
+}
+
+/* ---------- Welten aufbauen ---------- */
+var WORLDS=(function(){
+  var rnd=mulberry32(11), ws=[], k, i, cs=[];
+  D.worlds.forEach(function(w){ w.items.forEach(function(it){ cs.push(cosine(D.product.profile,it.profile)); }); });
+  /* Kosinus rein positiver Profile drängt sich oben zusammen: als Winkelmaß spreizen,
+     dann auf 0,55 bis 0,97 abbilden. Die Reihenfolge bleibt erhalten. */
+  function angular(c){ return 1-Math.acos(clamp(c,-1,1))/(Math.PI/2); }
+  var as=cs.map(angular), amin=Math.min.apply(null,as), amax=Math.max.apply(null,as);
+  function calib(c){ return amax>amin ? 0.55+0.42*(angular(c)-amin)/(amax-amin) : 0.8; }
+  var dirs=[[1,.35],[-.75,.65],[.3,-.95],[-.6,-.5],[.85,.8]];
+  for(k=0;k<D.worlds.length;k++){
+    var w=D.worlds[k], x=k*GAP;
+    var pierce=[x, 0.2+(rnd()-0.5)*0.6, (rnd()-0.5)*0.9];
+    var pts=[];
+    w.items.forEach(function(it){ pts.push({ name:it.name, detail:it.detail||'', reason:it.reason||'', profile:it.profile, sim:calib(cosine(D.product.profile,it.profile)), named:true }); });
+    for(i=0;i<FILLER;i++){ pts.push({ name:'Weiteres Element: '+w.noun, detail:w.name, reason:'', profile:null, sim:0.52+rnd()*0.27, named:false }); }
+    pts.sort(function(a,b){ return b.sim-a.sim; });
+    var n=pts.length, tk=PIERCE_T0+k*PIERCE_STEP;
+    pts.forEach(function(p,j){
+      var r=0.12+(0.96-p.sim)*2.8, u, v;
+      if(j<5){ r=Math.max(r,[0.3,0.42,0.54,0.66,0.78][j]); var dv=dirs[j], l=Math.sqrt(dv[0]*dv[0]+dv[1]*dv[1]); u=dv[0]/l*r; v=dv[1]/l*r; }
+      else { var ang=rnd()*Math.PI*2; u=Math.cos(ang)*r; v=Math.sin(ang)*r; }
+      /* in die Scheibe zwingen: Versatz so weit verkürzen, bis der Punkt innen liegt */
+      var s=1; while(s>0.05&&!insidePane(pierce[2]+u*s,pierce[1]+v*s)) s-=0.05;
+      u*=s; v*=s;
+      p.u=u; p.v=v; p.p=[x,pierce[1]+v,pierce[2]+u];
+      p.r=0.1*(0.8+0.4*rnd());
+      p.rank=j; p.world=k;
+      p.alpha=j<n*0.15?0.5:j<n*0.5?0.3:0.2;
+      p.t0=tk+0.1+1.5*Math.pow(j/n,0.8);
+      p.visA=1; p.sr=0; p.sx=0; p.sy=0; p.sdepth=0;
+    });
+    /* Umriss der Scheibe */
+    var outline=[], m;
+    outline.push([x,BOTTOM,-HW]); outline.push([x,BOTTOM,HW]); outline.push([x,SIDE_TOP,HW]);
+    for(m=1;m<24;m++){ var th=Math.PI*m/24; outline.push([x,SIDE_TOP+ARCH*Math.sin(th),HW*Math.cos(th)]); }
+    outline.push([x,SIDE_TOP,-HW]);
+    ws.push({ k:k, id:w.id, name:w.name, noun:w.noun, description:w.description||'', color:COLORS[WORLD_COLORS[k%WORLD_COLORS.length]], x:x, pierce:pierce, pts:pts, tk:tk, outline:outline, poly:null, depth:0 });
+  }
+  return ws;
+})();
+var NW=WORLDS.length;
+
+/* Der Bedeutungsvektor: Spline vom Produkt durch alle Durchstoßpunkte */
+var PATH=(function(){
+  var ctrl=[PRODUCT_POS];
+  WORLDS.forEach(function(w){ ctrl.push(w.pierce); });
+  var last=WORLDS[NW-1].pierce; ctrl.push([last[0]+1.6,last[1]+0.2,last[2]-0.3]);
+  var pts=[], segs=ctrl.length-1;
+  for(var s=0;s<segs;s++){
+    var p0=ctrl[Math.max(0,s-1)], p1=ctrl[s], p2=ctrl[s+1], p3=ctrl[Math.min(ctrl.length-1,s+2)];
+    for(var i=0;i<N_SEG;i++){ pts.push(catmull(p0,p1,p2,p3,i/N_SEG)); }
+  }
+  pts.push(ctrl[ctrl.length-1]);
+  return pts;
+})();
+var KEYS=(function(){
+  var keys=[[TL.flight,0]];
+  WORLDS.forEach(function(w,k){ keys.push([w.tk,N_SEG*(k+1)]); });
+  keys.push([TL.result,PATH.length-1]);
+  return keys;
+})();
+function headIndex(t){
+  if(t<=KEYS[0][0]) return 0;
+  for(var i=1;i<KEYS.length;i++){
+    if(t<=KEYS[i][0]){
+      var a=KEYS[i-1], b=KEYS[i], u=(t-a[0])/(b[0]-a[0]);
+      if(i===1) u=easeInCubic(u); else if(i===KEYS.length-1) u=easeOutCubic(u);
+      return Math.round(lerp(a[1],b[1],u));
+    }
+  }
+  return PATH.length-1;
+}
+
+/* ---------- DOM ---------- */
+var canvas=document.getElementById('space'), ctx=canvas.getContext('2d');
+var elCaption=document.getElementById('caption'), elTip=document.getElementById('tip'), elOverlay=document.getElementById('overlayTop');
+var elWorldLabel=document.getElementById('worldLabel'), elPrev=document.getElementById('prevWorld'), elNext=document.getElementById('nextWorld'), elAll=document.getElementById('allWorlds');
+var elOverviewBtn=document.getElementById('overviewBtn'), elTopSection=document.getElementById('topSection'), elTopLabel=document.getElementById('topLabel'), elList=document.getElementById('list');
+var elZoom=document.getElementById('zoom'), elZoomLevel=document.getElementById('zoomReset');
+var zoomButtons=[document.getElementById('zoomOut'),elZoomLevel,document.getElementById('zoomIn')];
+var dots=Array.prototype.slice.call(document.querySelectorAll('.dot'));
+
+document.getElementById('productName').textContent=D.product.name;
+document.getElementById('productKind').textContent=(D.product.kind||'')+(D.product.brand?' · '+D.product.brand:'');
+document.getElementById('productTags').textContent=(D.product.tags||[]).join(' · ');
+document.getElementById('productNote').textContent=D.product.note||'';
+
+var gridCells=(function(){
+  var g=document.getElementById('grid3'), cells=[], i;
+  for(i=0;i<9;i++){
+    if(i%3===0){ var r=document.createElement('span'); r.className='gr'; r.textContent=MOTIVES[i/3]; g.appendChild(r); }
+    var c=document.createElement('i'); c.className='cell'; c.title=MOTIVES[Math.floor(i/3)]+' · '+ATTITUDES[i%3]+': '+D.product.profile[i].toFixed(2).replace('.',','); g.appendChild(c); cells.push(c);
+  }
+  return cells;
+})();
+var worldRows=WORLDS.map(function(w){
+  var li=document.createElement('li'); li.setAttribute('data-world',String(w.k));
+  var rank=document.createElement('span'); rank.className='rank'; rank.textContent=String(w.k+1);
+  var chip=document.createElement('span'); chip.className='chip'; chip.style.setProperty('--c',w.color);
+  var name=document.createElement('span'); name.className='wname'; name.textContent=w.name;
+  var sim=document.createElement('span'); sim.className='sim'; sim.textContent=fmtSim(w.pts[0].sim);
+  var best=document.createElement('span'); best.className='best'; best.textContent=shortTitle(w.pts[0].name,44);
+  li.appendChild(rank); li.appendChild(chip); li.appendChild(name); li.appendChild(sim); li.appendChild(best);
+  li.addEventListener('click',function(){ if(focused===w.k) showOverview(); else focusWorld(w.k); });
+  document.getElementById('wlist').appendChild(li);
+  return li;
+});
+
+/* ---------- Zustand ---------- */
+var W=0,H=0,DPR=1;
+var t0=performance.now(), lastNow=t0;
+var orbitYaw=0, dragYaw=0, dragPitch=0, dragging=false, userRotated=false;
+var ZOOM_MIN=0.35, ZOOM_MAX=5, ZOOM_STEP=1.4, zoom=1, zoomTarget=1;
+var reducedMotion=window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+var manualT=null;
+if(location.hash==='#canvas') document.documentElement.classList.add('canvas-only');
+var focused=-1, focusMix=0, hover=null;
+var OVERVIEW={ f:[(NW-1)/2*GAP-1.0,0.0,0], yaw:0.95, pitch:0.18, dist:14.5 };
+function worldView(k){ return { f:[k*GAP,0.25,0], yaw:Math.PI/2, pitch:0, dist:4.8 }; }
+var view={ from:OVERVIEW, to:OVERVIEW, start:-100, cur:OVERVIEW };
+var dom={ phase:-1, ready:null, zoomLabel:'', focused:null, rows:[], cells:[] };
+
+function resize(){
+  var rect=canvas.getBoundingClientRect();
+  W=Math.max(1,rect.width); H=Math.max(1,rect.height);
+  DPR=Math.min(2,window.devicePixelRatio||1);
+  canvas.width=Math.round(W*DPR); canvas.height=Math.round(H*DPR);
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+if(window.ResizeObserver){ new ResizeObserver(resize).observe(canvas); } else { window.addEventListener('resize',resize); }
+resize();
+
+function elapsed(){ return manualT!==null ? manualT : (performance.now()-t0)/1000; }
+function ready(){ return elapsed()>=TL.result; }
+function setZoom(v,immediate){
+  if(!ready()) return;
+  zoomTarget=clamp(v,ZOOM_MIN,ZOOM_MAX);
+  if(immediate||reducedMotion) zoom=zoomTarget;
+}
+function viewAt(t){
+  var u=easeInOutCubic(clamp((t-view.start)/1.0,0,1));
+  view.cur={ f:lerpV(view.from.f,view.to.f,u), yaw:lerp(view.from.yaw,view.to.yaw,u), pitch:lerp(view.from.pitch,view.to.pitch,u), dist:lerp(view.from.dist,view.to.dist,u) };
+  return view.cur;
+}
+function setView(target,t){ viewAt(t); view.from=view.cur; view.to=target; view.start=t; }
+function focusWorld(k){
+  var t=elapsed(); if(!ready()) return;
+  k=clamp(k,0,NW-1); if(focused===k) return;
+  focused=k; setView(worldView(k),t);
+  zoomTarget=1; zoom=1; dragYaw=0; dragPitch=0; orbitYaw=0; hover=null; hideTip();
+  updateFocusDom();
+}
+function showOverview(){
+  var t=elapsed(); if(focused<0) return;
+  focused=-1; setView(OVERVIEW,t);
+  zoomTarget=1; zoom=1; dragYaw=0; dragPitch=0; orbitYaw=0; userRotated=false; hover=null; hideTip();
+  updateFocusDom();
+}
+function updateFocusDom(){
+  var w=focused>=0?WORLDS[focused]:null;
+  worldRows.forEach(function(li,k){ li.classList.toggle('active',k===focused); });
+  elWorldLabel.textContent=w?('Welt '+(w.k+1)+' von '+NW+' · '+w.name):'Übersicht · Scheibe anklicken';
+  elAll.hidden=!w; elOverviewBtn.hidden=!w;
+  elPrev.disabled=!ready()||focused<=0; elNext.disabled=!ready()||focused>=NW-1;
+  elTopSection.hidden=!w;
+  elList.textContent='';
+  if(w){
+    elTopLabel.textContent='Nächste Inhalte · '+w.name;
+    w.pts.slice(0,5).forEach(function(p,i){
+      var li=document.createElement('li');
+      var rank=document.createElement('span'); rank.className='rank'; rank.textContent=String(i+1);
+      var name=document.createElement('span'); name.textContent=p.name;
+      var sim=document.createElement('span'); sim.className='sim'; sim.textContent=fmtSim(p.sim);
+      li.appendChild(rank); li.appendChild(name); li.appendChild(sim);
+      if(p.reason){ var r=document.createElement('span'); r.className='reason'; r.textContent=p.reason; li.appendChild(r); }
+      elList.appendChild(li);
+    });
+    elCaption.textContent='Welt '+(w.k+1)+' von '+NW+' · '+w.name+': '+(w.description||'')+' Die Marke trifft die Scheibe am markierten Punkt; je näher ein Inhalt, desto ähnlicher sein Profil.';
+    elCaption.classList.remove('fade'); dom.phase=-2;
+  } else if(dom.phase===-2){ dom.phase=-1; }
+}
+function restart(fromSeconds){
+  t0=performance.now()-(fromSeconds||0)*1000;
+  orbitYaw=0; dragYaw=0; dragPitch=0; userRotated=false;
+  zoom=1; zoomTarget=1; focused=-1; focusMix=0; hover=null; hideTip();
+  view={ from:OVERVIEW, to:OVERVIEW, start:-100, cur:OVERVIEW };
+  dom.phase=-1; dom.rows=[]; dom.cells=[];
+  updateFocusDom();
+}
+
+/* ---------- Kamera ---------- */
+function camera(t){
+  var v=viewAt(t), f=v.f, yaw=v.yaw, pitch=v.pitch, dist=v.dist;
+  if(focused<0&&view.to===OVERVIEW&&t<TL.result){
+    /* Übersicht während des Flugs: die Kamera schwenkt mit */
+    var p=easeInOutCubic(clamp((t-TL.flight)/(TL.result-TL.flight),0,1));
+    f=lerpV([1.0,0.0,0],OVERVIEW.f,p); dist=lerp(16,OVERVIEW.dist,p);
+  }
+  return { f:f, yaw:yaw+orbitYaw+dragYaw, pitch:clamp(pitch+dragPitch,-1.3,1.3), dist:dist/zoom, near:0.3, F:Math.min(W,H) };
+}
+function project(pt,cam){
+  var x=pt[0]-cam.f[0], y=pt[1]-cam.f[1], z=pt[2]-cam.f[2];
+  var cy=Math.cos(cam.yaw), sy=Math.sin(cam.yaw);
+  var x1=x*cy+z*sy, z1=-x*sy+z*cy;
+  var cp=Math.cos(cam.pitch), sp=Math.sin(cam.pitch);
+  var y2=y*cp-z1*sp, z2=y*sp+z1*cp;
+  var depth=cam.dist-z2;
+  if(depth<cam.near) return null;
+  var s=cam.F/depth;
+  return { x:W/2+x1*s, y:H/2-y2*s, s:s, depth:depth };
+}
+
+/* ---------- Zeichnen ---------- */
+function disc(x,y,r,fill){ ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fillStyle=fill; ctx.fill(); }
+function onCanvas(pr){ return pr && pr.x>=-6 && pr.x<=W+6 && pr.y>=-6 && pr.y<=H+6; }
+function label(text,x,y,size,weight,align,alpha){
+  alpha=alpha===undefined?1:alpha;
+  ctx.font=(weight||700)+' '+size+'px '+FONT; ctx.textAlign=align||'left'; ctx.textBaseline='middle';
+  var w=ctx.measureText(text).width, pad=4;
+  var x0=align==='center'?x-w/2:align==='right'?x-w:x;
+  ctx.fillStyle='rgba(255,255,255,'+(0.82*alpha)+')'; ctx.fillRect(x0-pad,y-size*0.65,w+pad*2,size*1.3);
+  ctx.fillStyle='rgba('+INK+','+alpha+')'; ctx.fillText(text,x,y);
+}
+function paneAlpha(k){ return k===focused ? 1 : 1-focusMix; }
+
+function draw(t,dt){
+  var cam=camera(t), i, k, pr;
+  ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,W,H);
+  var over=1-focusMix;
+
+  /* Scheiben von hinten nach vorn */
+  var order=WORLDS.slice();
+  order.forEach(function(w){ var c=project([w.x,0.2,0],cam); w.depth=c?c.depth:1e9; w.poly=null; });
+  order.sort(function(a,b){ return b.depth-a.depth; });
+  var headIdx=headIndex(t);
+
+  order.forEach(function(w){
+    var pa=paneAlpha(w.k); if(pa<=0.01) return;
+    var poly=[], ok=true;
+    for(i=0;i<w.outline.length;i++){ pr=project(w.outline[i],cam); if(!pr){ ok=false; break; } poly.push(pr); }
+    if(ok){
+      ctx.beginPath(); ctx.moveTo(poly[0].x,poly[0].y);
+      for(i=1;i<poly.length;i++) ctx.lineTo(poly[i].x,poly[i].y);
+      ctx.closePath();
+      ctx.fillStyle='rgba('+w.color+','+(0.2*pa)+')'; ctx.fill();
+      w.poly=poly;
+    }
+    /* Name der Welt über der Scheibe (in der Übersicht) */
+    var top=project([w.x,SIDE_TOP+ARCH+0.25,0],cam);
+    if(top&&over>0.02&&onCanvas(top)) label(w.name,top.x,top.y-(w.k%3)*18,12,700,'center',over*pa);
+    /* Ring beim Durchstoß, in der Scheibenebene */
+    var age=t-w.tk;
+    if(age>=0&&age<=1.2){
+      var rr=0.15+1.4*easeOutCubic(age/1.2), ringA=0.7*(1-age/1.2)*pa;
+      ctx.strokeStyle='rgba('+INK+','+ringA+')'; ctx.lineWidth=1.5; ctx.beginPath();
+      for(i=0;i<=36;i++){ var th=Math.PI*2*i/36; var q=project([w.x,w.pierce[1]+rr*Math.sin(th),w.pierce[2]+rr*Math.cos(th)],cam); if(!q) continue; if(i===0) ctx.moveTo(q.x,q.y); else ctx.lineTo(q.x,q.y); }
+      ctx.stroke();
+    }
+    /* Punkte der Welt */
+    var vis=[];
+    for(i=0;i<w.pts.length;i++){
+      var c0=w.pts[i]; c0.sr=0;
+      if(t<c0.t0) continue;
+      pr=project(c0.p,cam); if(!pr) continue; pr.pt=c0; vis.push(pr);
+    }
+    vis.sort(function(a,b){ return b.depth-a.depth; });
+    for(i=0;i<vis.length;i++){
+      pr=vis[i]; var cp=pr.pt, sc=easeOutBack(clamp((t-cp.t0)/0.7,0,1));
+      var rad=Math.max(0,cp.r*pr.s*sc);
+      disc(pr.x,pr.y,rad,'rgba('+w.color+','+(cp.alpha*pa)+')');
+      if(pa>0.5){ cp.sx=pr.x; cp.sy=pr.y; cp.sr=rad; cp.sdepth=pr.depth; }
+    }
+    /* Durchstoßpunkt */
+    if(t>=w.tk){
+      var pp=project(w.pierce,cam);
+      if(pp){
+        ctx.strokeStyle='rgba(255,255,255,'+pa+')'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(pp.x,pp.y,5.5,0,Math.PI*2); ctx.stroke();
+        disc(pp.x,pp.y,4,'rgba('+INK+','+pa+')');
+        if(w.k===focused&&focusMix>0.5&&onCanvas(pp)) label(shortTitle(D.product.name,34),pp.x,pp.y+22,13,700,'center',focusMix);
+      }
+    }
+  });
+
+  /* Bedeutungsvektor */
+  if(headIdx>0&&over>0.02){
+    var pts=[];
+    for(i=0;i<=headIdx;i++) pts.push(project(PATH[i],cam));
+    ctx.lineCap='round'; ctx.lineJoin='round';
+    ctx.strokeStyle='rgba('+BLACK+','+((headIdx<PATH.length-1?0.8:0.55)*over)+')'; ctx.lineWidth=1.25;
+    ctx.beginPath(); var started=false;
+    for(i=0;i<=headIdx;i++){ pr=pts[i]; if(!pr){ started=false; continue; } if(!started){ ctx.moveTo(pr.x,pr.y); started=true; } else ctx.lineTo(pr.x,pr.y); }
+    ctx.stroke();
+    if(headIdx<PATH.length-1){
+      var tail=Math.min(headIdx,40);
+      for(i=headIdx-tail;i<headIdx;i++){
+        var q2=(i-(headIdx-tail))/tail, s1=pts[i], s2=pts[i+1]; if(!s1||!s2) continue;
+        ctx.strokeStyle='rgba('+INK+','+((0.35+0.65*q2)*over)+')'; ctx.lineWidth=1.25+2.4*q2;
+        ctx.beginPath(); ctx.moveTo(s1.x,s1.y); ctx.lineTo(s2.x,s2.y); ctx.stroke();
+      }
+      var hd=pts[headIdx]; if(hd) disc(hd.x,hd.y,4.5,'rgba('+INK+','+over+')');
+    }
+  }
+
+  /* Startpunkt: die Marke */
+  var o=project(PRODUCT_POS,cam);
+  if(o&&over>0.02){
+    var pulse=t<TL.flight?1.6*Math.sin(t*4):0;
+    ctx.strokeStyle='rgba('+INK+','+over+')'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.arc(o.x,o.y,7+pulse,0,Math.PI*2); ctx.stroke();
+    disc(o.x,o.y,3,'rgba('+INK+','+over+')');
+    if(onCanvas(o)) label(shortTitle(D.product.name,34),o.x+14,o.y-12,13,700,'left',over);
+  }
+
+  /* Nummern der fünf nächsten Inhalte je Welt, in der Frontalansicht mit Namen */
+  WORLDS.forEach(function(w){
+    var pa=paneAlpha(w.k); if(pa<=0.3) return;
+    var isFocus=w.k===focused&&focusMix>0.5;
+    for(i=0;i<5&&i<w.pts.length;i++){
+      var m=w.pts[i]; if(t<m.t0+0.2||!m.sr) continue;
+      disc(m.sx,m.sy,7,'rgba(255,255,255,'+(0.9*pa)+')');
+      ctx.font='700 10px '+FONT; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillStyle='rgba('+INK+','+pa+')'; ctx.fillText(String(i+1),m.sx,m.sy+0.5);
+      if(isFocus) label(shortTitle(m.name,30),m.sx+(m.u>=0?12:-12),m.sy-11,13,700,m.u>=0?'left':'right',focusMix);
+    }
+  });
+
+  if(hover&&hover.sr>0){
+    ctx.strokeStyle='rgba('+INK+',.9)'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.arc(hover.sx,hover.sy,hover.sr+2.5,0,Math.PI*2); ctx.stroke();
+  }
+}
+
+/* ---------- Auswahl und Hinweis ---------- */
+function pickPoint(x,y){
+  if(!ready()) return null;
+  var best=null, bs=1e9;
+  WORLDS.forEach(function(w){
+    if(paneAlpha(w.k)<=0.5) return;
+    for(var i=0;i<w.pts.length;i++){
+      var p=w.pts[i]; if(!p.sr) continue;
+      var rr=Math.max(p.sr,8), dx=p.sx-x, dy=p.sy-y, dd=Math.sqrt(dx*dx+dy*dy);
+      if(dd<=rr){ var score=dd/rr+p.sdepth*0.01; if(score<bs){ bs=score; best=p; } }
+    }
+  });
+  return best;
+}
+function inPoly(poly,x,y){
+  var inside=false;
+  for(var i=0,j=poly.length-1;i<poly.length;j=i++){
+    var xi=poly[i].x, yi=poly[i].y, xj=poly[j].x, yj=poly[j].y;
+    if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi)) inside=!inside;
+  }
+  return inside;
+}
+function pickPane(x,y){
+  if(!ready()||focusMix>0.5) return -1;
+  var best=-1, bd=1e9;
+  WORLDS.forEach(function(w){ if(w.poly&&inPoly(w.poly,x,y)&&w.depth<bd){ bd=w.depth; best=w.k; } });
+  return best;
+}
+function showTip(pt){
+  var w=WORLDS[pt.world];
+  elTip.textContent='';
+  var b=document.createElement('b'); b.textContent=pt.name; elTip.appendChild(b);
+  var l2=document.createElement('span'); l2.textContent=(pt.detail?pt.detail+' · ':'')+w.name+' · Ähnlichkeit '+fmtSim(pt.sim); elTip.appendChild(l2);
+  if(pt.reason){ var l3=document.createElement('span'); l3.className='tip-reason'; l3.textContent=pt.reason; elTip.appendChild(l3); }
+  if(pt.profile){
+    var g=document.createElement('span'); g.className='mini'; g.setAttribute('aria-label','Motivraster');
+    for(var i=0;i<9;i++){ var c=document.createElement('i'); c.style.setProperty('--c',w.color); c.style.setProperty('--a',String(0.2+0.3*clamp(pt.profile[i],0,1))); g.appendChild(c); }
+    elTip.appendChild(g);
+  }
+  if(focusMix<0.5){ var l4=document.createElement('span'); l4.className='tip-hint'; l4.textContent='Klicken öffnet diese Welt'; elTip.appendChild(l4); }
+  elTip.hidden=false; positionTip();
+}
+function hideTip(){ elTip.hidden=true; canvas.classList.remove('pointer'); }
+function positionTip(){
+  if(!hover||elTip.hidden) return;
+  if(!hover.sr){ hover=null; hideTip(); return; }
+  var below=hover.sy<140;
+  elTip.classList.toggle('below',below);
+  elTip.style.left=clamp(hover.sx,140,W-140)+'px';
+  elTip.style.top=(below?hover.sy+hover.sr+4:hover.sy-hover.sr-4)+'px';
+}
+
+/* ---------- DOM-Abgleich ---------- */
+var captionTimer=null;
+function syncDom(t){
+  var i;
+  if(focused<0){
+    var phase=0;
+    for(i=0;i<PHASE_START.length;i++){ if(t>=PHASE_START[i]) phase=i; }
+    if(phase!==dom.phase){
+      dom.phase=phase;
+      dots.forEach(function(d,k){ d.classList.toggle('active',k===phase); d.classList.toggle('past',k<phase); });
+      if(captionTimer) clearTimeout(captionTimer);
+      if(elCaption.textContent===''||manualT!==null){ elCaption.textContent=CAPTIONS[phase]; elCaption.classList.remove('fade'); }
+      else {
+        elCaption.classList.add('fade');
+        captionTimer=setTimeout(function(){ elCaption.textContent=CAPTIONS[phase]; elCaption.classList.remove('fade'); },220);
+      }
+    }
+  }
+  var rd=t>=TL.result;
+  if(rd!==dom.ready){
+    dom.ready=rd;
+    elZoom.classList.toggle('ready',rd); elOverlay.classList.toggle('ready',rd);
+    zoomButtons.forEach(function(b){ b.disabled=!rd; });
+    elPrev.disabled=!rd||focused<=0; elNext.disabled=!rd||focused>=NW-1;
+  }
+  var zl=zoom.toFixed(1).replace('.',',')+'×';
+  if(zl!==dom.zoomLabel){ dom.zoomLabel=zl; elZoomLevel.textContent=zl; }
+  /* Motivraster füllt sich Zelle für Zelle */
+  for(i=0;i<9;i++){
+    var u=easeOutCubic(clamp((t-(0.3+i*0.17))/0.45,0,1));
+    var a=Math.round((0.2+0.3*clamp(D.product.profile[i],0,1)*u)*100)/100;
+    if(dom.cells[i]!==a){ dom.cells[i]=a; gridCells[i].style.setProperty('--a',String(a)); }
+  }
+  /* Liste der Welten: bester Treffer erscheint mit der Wolke */
+  for(i=0;i<NW;i++){
+    var show=t>=WORLDS[i].tk+0.4;
+    if(dom.rows[i]!==show){ dom.rows[i]=show; worldRows[i].classList.toggle('show',show); }
+  }
+  positionTip();
+}
+
+/* ---------- Schleife ---------- */
+function frame(now){
+  var dt=Math.min(0.1,(now-lastNow)/1000), t; lastNow=now;
+  if(manualT!==null){
+    t=manualT;
+    if(!userRotated&&focused<0) orbitYaw=Math.max(0,t-(TL.result+1))*0.05;
+    zoom=zoomTarget; focusMix=focused>=0?1:0;
+  } else {
+    t=(now-t0)/1000;
+    if(t>=TL.result+1&&!userRotated&&!reducedMotion&&focused<0) orbitYaw+=dt*0.05;
+    zoom+=(zoomTarget-zoom)*Math.min(1,dt*10);
+    focusMix+=((focused>=0?1:0)-focusMix)*Math.min(1,dt*5);
+  }
+  draw(t,dt); syncDom(t);
+  requestAnimationFrame(frame);
+}
+
+/* ---------- Interaktion ---------- */
+var lastX=0,lastY=0, pointers={}, pinchDist=0, pinchZoom=1, press=null;
+function pointerIds(){ return Object.keys(pointers); }
+function pinchDistance(ids){ var a=pointers[ids[0]], b=pointers[ids[1]]; return Math.sqrt((a.x-b.x)*(a.x-b.x)+(a.y-b.y)*(a.y-b.y)); }
+function canvasXY(e){ var r=canvas.getBoundingClientRect(); return [e.clientX-r.left, e.clientY-r.top]; }
+canvas.addEventListener('pointerdown',function(e){
+  pointers[e.pointerId]={x:e.clientX,y:e.clientY};
+  var ids=pointerIds();
+  if(ids.length===1){ dragging=true; lastX=e.clientX; lastY=e.clientY; press={x:e.clientX,y:e.clientY,moved:false,multi:false}; canvas.classList.add('dragging'); }
+  else if(ids.length===2){ dragging=false; if(press) press.multi=true; pinchDist=pinchDistance(ids); pinchZoom=zoomTarget; }
+  try{ canvas.setPointerCapture(e.pointerId); }catch(err){}
+});
+canvas.addEventListener('pointermove',function(e){
+  if(!pointers[e.pointerId]){
+    if(e.pointerType==='mouse'){
+      var xy=canvasXY(e), h=pickPoint(xy[0],xy[1]);
+      if(h!==hover){ hover=h; if(h){ showTip(h); canvas.classList.add('pointer'); } else hideTip(); }
+      if(!h){ canvas.classList.toggle('pointer',pickPane(xy[0],xy[1])>=0); }
+    }
+    return;
+  }
+  pointers[e.pointerId]={x:e.clientX,y:e.clientY};
+  var ids=pointerIds();
+  if(ids.length>=2){ if(pinchDist>0) setZoom(pinchZoom*pinchDistance(ids)/pinchDist,true); return; }
+  if(!dragging) return;
+  var dx=e.clientX-lastX, dy=e.clientY-lastY; lastX=e.clientX; lastY=e.clientY;
+  if(press&&!press.moved&&Math.abs(e.clientX-press.x)+Math.abs(e.clientY-press.y)>4) press.moved=true;
+  if((dx||dy)&&press&&press.moved){ userRotated=true; dragYaw+=dx*0.006; dragPitch+=dy*0.006; }
+});
+function endPointer(e){
+  var wasClick=e.type==='pointerup'&&press&&!press.moved&&!press.multi&&pointerIds().length===1;
+  delete pointers[e.pointerId];
+  var ids=pointerIds();
+  if(ids.length===0){ dragging=false; canvas.classList.remove('dragging'); pinchDist=0; press=null; }
+  else if(ids.length===1){ dragging=true; lastX=pointers[ids[0]].x; lastY=pointers[ids[0]].y; pinchDist=0; }
+  if(wasClick){
+    var xy=canvasXY(e), hit=pickPoint(xy[0],xy[1]);
+    if(hit){ if(focused<0) focusWorld(hit.world); }
+    else { var k=pickPane(xy[0],xy[1]); if(k>=0) focusWorld(k); }
+  }
+}
+canvas.addEventListener('pointerup',endPointer); canvas.addEventListener('pointercancel',endPointer);
+canvas.addEventListener('pointerleave',function(){ if(!dragging){ hover=null; hideTip(); } });
+canvas.addEventListener('wheel',function(e){
+  if(!ready()) return;
+  e.preventDefault();
+  var step=e.deltaMode===1?0.05:e.deltaMode===2?0.5:0.0015;
+  setZoom(zoomTarget*Math.exp(-e.deltaY*step));
+},{passive:false});
+document.getElementById('zoomIn').addEventListener('click',function(){ setZoom(zoomTarget*ZOOM_STEP); });
+document.getElementById('zoomOut').addEventListener('click',function(){ setZoom(zoomTarget/ZOOM_STEP); });
+elZoomLevel.addEventListener('click',function(){ setZoom(1); });
+elPrev.addEventListener('click',function(){ focusWorld(focused<0?0:focused-1); });
+elNext.addEventListener('click',function(){ focusWorld(focused<0?0:focused+1); });
+elAll.addEventListener('click',showOverview);
+elOverviewBtn.addEventListener('click',showOverview);
+document.addEventListener('keydown',function(e){
+  if(e.ctrlKey||e.metaKey||e.altKey) return;
+  if(e.key==='+'||e.key==='='){ setZoom(zoomTarget*ZOOM_STEP); }
+  else if(e.key==='-'){ setZoom(zoomTarget/ZOOM_STEP); }
+  else if(e.key==='Escape'||e.key==='0'){ showOverview(); }
+  else if(e.key==='ArrowRight'){ focusWorld(focused<0?0:focused+1); }
+  else if(e.key==='ArrowLeft'){ focusWorld(focused<0?NW-1:focused-1); }
+  else if(/^[1-9]$/.test(e.key)&&Number(e.key)<=NW){ focusWorld(Number(e.key)-1); }
+});
+document.getElementById('replay').addEventListener('click',function(){ restart(0); });
+dots.forEach(function(d){ d.addEventListener('click',function(){ restart(PHASE_START[Number(d.getAttribute('data-step'))]+0.001); }); });
+
+/* Render-API (tools/render-video.js --page themenwelten.html):
+   siebenWelten.seek(sekunden, {zoom}) zeichnet genau diesen Zeitpunkt, play() kehrt zur Animation zurück,
+   focus(k) öffnet Welt k (0-basiert), overview() zeigt alle Welten, worlds() liefert die Daten der Welten. */
+window.siebenWelten={
+  seek:function(sec,opts){
+    manualT=Math.max(0,Number(sec)||0);
+    document.documentElement.classList.add('render');
+    if(opts&&typeof opts.zoom==='number'){ zoomTarget=clamp(opts.zoom,ZOOM_MIN,ZOOM_MAX); zoom=zoomTarget; }
+    if(opts&&typeof opts.yaw==='number'){ dragYaw=opts.yaw; }
+    return new Promise(function(res){ requestAnimationFrame(function(){ requestAnimationFrame(function(){ res(manualT); }); }); });
+  },
+  play:function(){ manualT=null; document.documentElement.classList.remove('render'); restart(0); },
+  focus:function(k){ focusWorld(Number(k)||0); return focused; },
+  overview:function(){ showOverview(); return focused; },
+  worlds:function(){ return WORLDS.map(function(w){ return { k:w.k, name:w.name, top:w.pts.slice(0,5).map(function(p){ return { name:p.name, sim:p.sim }; }), visible:w.pts.filter(function(p){ return p.sr>0; }).length }; }); },
+  points:function(){ var out=[]; WORLDS.forEach(function(w){ w.pts.forEach(function(p){ if(p.sr>0) out.push({ world:w.k, rank:p.rank, x:p.sx, y:p.sy, r:p.sr, name:p.name, sim:p.sim }); }); }); return out; }
+};
+
+if(document.fonts&&document.fonts.load){ document.fonts.load('700 13px Gabarito'); document.fonts.load('400 13px Gabarito'); }
+restart(reducedMotion?TL.end:0);
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

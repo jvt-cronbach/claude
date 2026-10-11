@@ -4,8 +4,12 @@
  * Keynote und Google Slides direkt abspielen.
  *
  * Aufruf:
- *   node tools/render-video.js [--mode full|canvas] [--out export/datei.mp4]
- *                              [--seconds 26] [--fps 30] [--width 1920] [--height 1080] [--no-zoom]
+ *   node tools/render-video.js [--page index.html] [--api embeddingFlight] [--mode full|canvas]
+ *                              [--out export/datei.mp4] [--seconds 26] [--fps 30]
+ *                              [--width 1920] [--height 1080] [--no-zoom]
+ *
+ *   --page         zu rendernde Seite (Standard index.html; themenwelten.html mit --api siebenWelten)
+ *   --api          Name der Render-Schnittstelle der Seite (window.<name>.seek)
  *
  *   --mode full    ganze Seite mit Textspalte (Standard)
  *   --mode canvas  nur die Animation, ohne Textspalte und Logo (index.html#canvas)
@@ -21,11 +25,13 @@ const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 
-const opts = { mode: 'full', out: '', seconds: 26, fps: 30, width: 1920, height: 1080, zoom: true };
+const opts = { page: 'index.html', api: 'embeddingFlight', mode: 'full', out: '', seconds: 26, fps: 30, width: 1920, height: 1080, zoom: true };
 const argv = process.argv.slice(2);
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i], v = argv[i + 1];
-  if (a === '--mode') { opts.mode = v; i++; }
+  if (a === '--page') { opts.page = v; i++; }
+  else if (a === '--api') { opts.api = v; i++; }
+  else if (a === '--mode') { opts.mode = v; i++; }
   else if (a === '--out') { opts.out = v; i++; }
   else if (a === '--seconds') { opts.seconds = Number(v); i++; }
   else if (a === '--fps') { opts.fps = Number(v); i++; }
@@ -34,12 +40,13 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === '--no-zoom') { opts.zoom = false; }
   else { console.error('Unbekannte Option: ' + a); process.exit(1); }
 }
-if (!opts.out) opts.out = path.join('export', `embedding-flight-${opts.mode}-${opts.width}x${opts.height}.mp4`);
+const pageBase = path.basename(opts.page, path.extname(opts.page)).replace(/^index$/, 'embedding-flight');
+if (!opts.out) opts.out = path.join('export', `${pageBase}-${opts.mode}-${opts.width}x${opts.height}.mp4`);
 
 const playwright = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const ffmpegBin = process.env.FFMPEG || 'ffmpeg';
-const indexFile = path.resolve(__dirname, '..', 'index.html');
-const url = 'file://' + indexFile + (opts.mode === 'canvas' ? '#canvas' : '');
+const pageFile = path.isAbsolute(opts.page) ? opts.page : path.resolve(__dirname, '..', opts.page);
+const url = 'file://' + pageFile + (opts.mode === 'canvas' ? '#canvas' : '');
 
 /* Zoomfahrt am Zielpunkt: hinein, halten, weit heraus, zurück auf 1,0 */
 const ease = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
@@ -94,7 +101,7 @@ function writeFrame(stream, buf) {
   const started = Date.now();
   for (let i = 0; i < total; i++) {
     const t = i / opts.fps;
-    await page.evaluate(([sec, z]) => window.embeddingFlight.seek(sec, { zoom: z }), [t, zoomAt(t)]);
+    await page.evaluate(([sec, z, api]) => window[api].seek(sec, { zoom: z }), [t, zoomAt(t), opts.api]);
     const png = await page.screenshot({ type: 'png' });
     await writeFrame(ff.stdin, png);
     if (i % 60 === 0) console.log(`Bild ${i}/${total} (t = ${t.toFixed(1)} s, ${((Date.now() - started) / 1000).toFixed(0)} s vergangen)`);

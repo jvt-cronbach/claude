@@ -10,6 +10,24 @@ Die Seite zeigt in fünf Schritten, wie ein Briefing- oder Produkttext zu passen
 4. Um den Zielpunkt erscheinen nach und nach die Embeddings der digitalen Inhalte als Wolke. Je näher, desto ähnlicher.
 5. Die nächsten Inhalte sind das Ergebnis.
 
+## Zweite Seite: Sieben Welten (`themenwelten.html`)
+
+Dieselbe Gestaltung, ein anderes Bild: Sieben Themenwelten stehen als Scheiben nebeneinander, wie die
+parallelen Dimensionen aus Darstellungen der Stringtheorie. Startpunkt ist eine Marke (Beispiel: Magnum
+Gold Billionaire Caramel). Ihr Bedeutungsvektor durchstößt jede Scheibe, und am Durchstoßpunkt erscheinen
+die Inhalte dieser Welt mit ähnlichem psychologischem Profil: Desserts, Online-Artikel, Automodelle,
+Bekleidungsmarken, Arbeitgebermarken, Arbeitgeber-Benefits und Fernsehshows.
+
+- Das Profil ist ein 3×3-Motivraster (Macht, Leistung, Bindung × emotional, rational, habituell).
+  Die Ähnlichkeit ist die Kosinus-Ähnlichkeit der Profile, als Winkelmaß gespreizt und auf 0,55 bis 0,97 abgebildet.
+- Klick auf eine Scheibe (oder einen Punkt, eine Zeile der Weltenliste, die Tasten 1 bis 7 oder die Pfeile)
+  stellt die Welt frontal dar; „Alle Welten“, Escape oder 0 führen zur Übersicht zurück.
+- Hover zeigt Name, Ähnlichkeit, Begründung und das Mini-Raster des Inhalts.
+- Die Daten liegen in `data/themenwelten.json` (Beispieldaten mit echten Marken- und Titelnamen).
+  Nach einer Änderung bettet `python3 tools/inline-data.py` sie wieder in die Seite ein.
+- `themenwelten.html#canvas` zeigt nur die Animation. Für ein Video:
+  `node tools/render-video.js --page themenwelten.html --api siebenWelten --seconds 16 --no-zoom`.
+
 ## Öffnen
 
 `index.html` ist eine einzelne Datei ohne Build-Schritt. Im Browser öffnen, fertig.
