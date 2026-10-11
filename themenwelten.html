@@ -770,6 +770,17 @@ function draw(t,dt){
   WORLDS.forEach(function(w){
     var pa=paneAlpha(w.k); if(pa<=0.3) return;
     var isFocus=w.k===focused&&focusMix>0.5;
+    /* Nahansicht: dünne Linien vom Magnum-Punkt zu allen benannten Inhalten */
+    if(isFocus){
+      var pp=project(w.pierce,cam);
+      if(pp){
+        ctx.strokeStyle='rgba('+INK+','+(0.35*focusMix*pa)+')'; ctx.lineWidth=1;
+        for(i=0;i<w.pts.length;i++){
+          var np=w.pts[i]; if(!np.named||!np.sr||t<np.t0+0.2) continue;
+          ctx.beginPath(); ctx.moveTo(pp.x,pp.y); ctx.lineTo(np.sx,np.sy); ctx.stroke();
+        }
+      }
+    }
     for(i=0;i<5&&i<w.pts.length;i++){
       var m=w.pts[i]; if(t<m.t0+0.2||!m.sr) continue;
       disc(m.sx,m.sy,7,'rgba(255,255,255,'+(0.9*pa)+')');
