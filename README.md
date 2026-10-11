@@ -27,6 +27,9 @@ lassen sich in der JSON anhängen; Titel, Zählungen und Ablauf passen sich an.
 - Hover zeigt Name, Ähnlichkeit, Begründung und das Mini-Raster des Inhalts.
 - Jede Dimension ist ein Quader mit Tiefe; die Inhalte verteilen sich im Volumen. Der runde Schalter rechts in der
   Weltenliste blendet eine Dimension aus, „Alle einschalten“ holt sie zurück.
+- In der Nahansicht erscheinen 1.200 weitere Inhalte vom Durchstoßpunkt nach außen, innerhalb und außerhalb des
+  Quaders (`N_EXTRA`). So wird sichtbar, dass der Quader nur ein Ausschnitt der Dimension ist; ein Zähler in der
+  Spalte läuft mit.
 - Die Daten liegen in `data/themenwelten.json` (Beispieldaten mit echten Marken- und Titelnamen).
   Nach einer Änderung bettet `python3 tools/inline-data.py` sie wieder in die Seite ein.
 - `themenwelten.html#canvas` zeigt nur die Animation. Für ein Video:

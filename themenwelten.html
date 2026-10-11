@@ -259,6 +259,7 @@
       <section class="matches" id="topSection" aria-label="Nächste Inhalte" hidden>
         <p class="label" id="topLabel">Nächste Inhalte</p>
         <ol class="list" id="list"></ol>
+        <p class="label light" id="focusCount"></p>
       </section>
 
       <div class="controls">
@@ -303,7 +304,8 @@ var THEMENWELTEN_DATA = {"product":{"name":"Magnum Gold Billionaire Caramel","br
 var D = window.THEMENWELTEN_DATA;
 var TL = { profile:0, flight:2.2, result:8.6, end:9.4 };   /* result und end werden aus der Zahl der Welten berechnet */
 var PIERCE_T0 = 3.0, PIERCE_STEP = 0.8;   /* Durchstoßzeit der ersten Welt und Abstand zwischen den Welten */
-var FILLER = 32;                           /* zusätzliche unbenannte Punkte je Welt */
+var FILLER = 32;                           /* zusätzliche unbenannte Punkte je Welt im Quader */
+var N_EXTRA = 1200;                        /* weitere Inhalte, die in der Nahansicht um den Quader herum erscheinen */
 var CAPTIONS = [
   'Die Marke bekommt ein psychologisches Profil: Welche Motive spricht sie an, mit welcher Haltung?',
   'Ihr Bedeutungsvektor durchstößt jede Themenwelt. Wo er auftrifft, liegen die Inhalte mit demselben Profil.',
@@ -334,6 +336,7 @@ function lerpV(a,b,t){ return [lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2
 function mulberry32(seed){ return function(){ seed|=0; seed=seed+0x6D2B79F5|0; var t=Math.imul(seed^seed>>>15,1|seed); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
 function gaussWith(rnd){ var u=0,v=0; while(!u) u=rnd(); while(!v) v=rnd(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
 function fmtSim(s){ return s.toFixed(2).replace('.',','); }
+function fmtDe(n){ return String(n).replace(/\B(?=(\d{3})+(?!\d))/g,'.'); }
 function shortTitle(s,n){ return s.length>n ? s.slice(0,n-1).replace(/\s+\S*$/,'')+'…' : s; }
 function cosine(a,b){ var d=0,na=0,nb=0; for(var i=0;i<9;i++){ d+=a[i]*b[i]; na+=a[i]*a[i]; nb+=b[i]*b[i]; } return d/Math.sqrt((na*nb)||1); }
 function catmull(p0,p1,p2,p3,t){
@@ -379,7 +382,7 @@ var WORLDS=(function(){
     /* Ecken des Quaders: Index = bx*4 + by*2 + bz */
     var corners=[];
     for(i=0;i<8;i++){ corners.push([x+((i>>2)&1?HX:-HX), (i>>1)&1?HY:-HY, i&1?HW:-HW]); }
-    ws.push({ k:k, id:w.id, name:w.name, noun:w.noun, description:w.description||'', color:COLORS[WORLD_COLORS[k%WORLD_COLORS.length]], x:x, pierce:pierce, pts:pts, tk:tk, corners:corners, polys:null, depth:0, on:true, onA:1, appA:1, switch:null });
+    ws.push({ k:k, id:w.id, name:w.name, noun:w.noun, description:w.description||'', color:COLORS[WORLD_COLORS[k%WORLD_COLORS.length]], x:x, pierce:pierce, pts:pts, tk:tk, corners:corners, polys:null, depth:0, on:true, onA:1, appA:1, switch:null, extras:null, extraA:0 });
   }
   return ws;
 })();
@@ -392,6 +395,26 @@ var PHASE_START = [TL.profile, TL.flight, TL.result];
   document.getElementById('worldsTitle').textContent=cap+' Themenwelten';
   CAPTIONS[2]=cap+' Welten, ein Profil: Jede Dimension zeigt die Inhalte, die zur Bedeutung der Marke passen. Ein Klick auf eine Dimension öffnet die Welt.';
 })();
+
+/* Das Umfeld einer Dimension: weitere Inhalte im und um den Quader, nach außen hin unähnlicher.
+   Wird beim ersten Fokussieren erzeugt und erscheint dann vom Durchstoßpunkt nach außen. */
+function ensureExtras(w){
+  if(w.extras) return;
+  var rnd=mulberry32(1000+w.k*7919), out=[], i;
+  for(i=0;i<N_EXTRA;i++){
+    var u=gaussWith(rnd)*2.4, v=gaussWith(rnd)*2.0, dx=gaussWith(rnd)*0.55;
+    var d=Math.sqrt(u*u+v*v+dx*dx*2), inside=insideBox(w.pierce[2]+u,w.pierce[1]+v,dx);
+    out.push({ name:'Weiterer Inhalt: '+w.noun, detail:w.name, reason:'', profile:null, named:false, extra:true,
+      sim:clamp(0.86-0.13*d,0.3,0.8), u:u, v:v, p:[w.x+dx,w.pierce[1]+v,w.pierce[2]+u], r:0.03+0.025*rnd(),
+      alpha:inside?0.22:0.16, d:d, rank:-1, world:w.k, t0:0, sr:0, sx:0, sy:0, sdepth:0, visA:1 });
+  }
+  out.sort(function(a,b){ return a.d-b.d; });
+  w.extras=out;
+}
+function startExtras(w,t){
+  ensureExtras(w);
+  w.extras.forEach(function(p,j){ p.t0=t+0.6+2.2*Math.pow(j/N_EXTRA,0.7); });
+}
 
 /* Der Bedeutungsvektor: Spline vom Produkt durch alle Durchstoßpunkte */
 var PATH=(function(){
@@ -429,6 +452,7 @@ var canvas=document.getElementById('space'), ctx=canvas.getContext('2d');
 var elCaption=document.getElementById('caption'), elTip=document.getElementById('tip'), elOverlay=document.getElementById('overlayTop');
 var elWorldLabel=document.getElementById('worldLabel'), elPrev=document.getElementById('prevWorld'), elNext=document.getElementById('nextWorld'), elAll=document.getElementById('allWorlds');
 var elAllOn=document.getElementById('allOn');
+var elFocusCount=document.getElementById('focusCount');
 var elOverviewBtn=document.getElementById('overviewBtn'), elTopSection=document.getElementById('topSection'), elTopLabel=document.getElementById('topLabel'), elList=document.getElementById('list');
 var elZoom=document.getElementById('zoom'), elZoomLevel=document.getElementById('zoomReset');
 var zoomButtons=[document.getElementById('zoomOut'),elZoomLevel,document.getElementById('zoomIn')];
@@ -483,7 +507,7 @@ var focused=-1, focusMix=0, hover=null;
 var OVERVIEW={ f:[(NW-1)/2*GAP-0.4*NW,0.0,0], yaw:0.95, pitch:0.22, dist:13.5+0.5*NW };
 function worldView(k){ return { f:[k*GAP,0,0], yaw:Math.PI/2, pitch:0, dist:5.2 }; }
 var view={ from:OVERVIEW, to:OVERVIEW, start:-100, cur:OVERVIEW };
-var dom={ phase:-1, ready:null, zoomLabel:'', focused:null, rows:[], cells:[] };
+var dom={ phase:-1, ready:null, zoomLabel:'', focused:null, rows:[], cells:[], focusCount:'' };
 
 function resize(){
   var rect=canvas.getBoundingClientRect();
@@ -527,7 +551,7 @@ function focusWorld(k){
   var t=elapsed(); if(!ready()) return;
   if(k<0||k>=NW||!WORLDS[k].on) return;
   if(focused===k) return;
-  focused=k; setView(worldView(k),t);
+  focused=k; setView(worldView(k),t); startExtras(WORLDS[k],t);
   zoomTarget=1; zoom=1; dragYaw=0; dragPitch=0; orbitYaw=0; hover=null; hideTip();
   updateFocusDom();
 }
@@ -556,7 +580,7 @@ function updateFocusDom(){
       if(p.reason){ var r=document.createElement('span'); r.className='reason'; r.textContent=p.reason; li.appendChild(r); }
       elList.appendChild(li);
     });
-    elCaption.textContent='Welt '+(w.k+1)+' von '+NW+' · '+w.name+': '+(w.description||'')+' Die Marke trifft die Scheibe am markierten Punkt; je näher ein Inhalt, desto ähnlicher sein Profil.';
+    elCaption.textContent='Welt '+(w.k+1)+' von '+NW+' · '+w.name+': '+(w.description||'')+' Der Quader zeigt nur einen Ausschnitt. Die Dimension reicht weit darüber hinaus; je weiter ein Inhalt vom Durchstoßpunkt entfernt liegt, desto geringer seine Ähnlichkeit.';
     elCaption.classList.remove('fade'); dom.phase=-2;
   } else if(dom.phase===-2){ dom.phase=-1; }
 }
@@ -564,6 +588,7 @@ function restart(fromSeconds){
   t0=performance.now()-(fromSeconds||0)*1000;
   orbitYaw=0; dragYaw=0; dragPitch=0; userRotated=false;
   zoom=1; zoomTarget=1; focused=-1; focusMix=0; hover=null; hideTip();
+  WORLDS.forEach(function(w){ w.extraA=0; });
   view={ from:OVERVIEW, to:OVERVIEW, start:-100, cur:OVERVIEW };
   dom.phase=-1; dom.rows=[]; dom.cells=[];
   updateFocusDom();
@@ -661,12 +686,20 @@ function draw(t,dt){
       if(t<c0.t0) continue;
       pr=project(c0.p,cam); if(!pr) continue; pr.pt=c0; vis.push(pr);
     }
+    if(w.extras&&w.extraA>0.01){
+      for(i=0;i<w.extras.length;i++){
+        var ex=w.extras[i]; ex.sr=0;
+        if(t<ex.t0) continue;
+        pr=project(ex.p,cam); if(!pr) continue; pr.pt=ex; vis.push(pr);
+      }
+    }
     vis.sort(function(a,b){ return b.depth-a.depth; });
     for(i=0;i<vis.length;i++){
       pr=vis[i]; var cp=pr.pt, sc=easeOutBack(clamp((t-cp.t0)/0.7,0,1));
-      var rad=Math.max(0,cp.r*pr.s*sc);
-      disc(pr.x,pr.y,rad,'rgba('+w.color+','+(cp.alpha*pa)+')');
-      if(pa>0.5){ cp.sx=pr.x; cp.sy=pr.y; cp.sr=rad; cp.sdepth=pr.depth; }
+      var rad=Math.max(0,cp.r*pr.s*sc), al=cp.alpha*pa*(cp.extra?w.extraA:1);
+      if(al<=0.004) continue;
+      disc(pr.x,pr.y,rad,'rgba('+w.color+','+al+')');
+      if(pa>0.5&&(!cp.extra||w.extraA>0.5)){ cp.sx=pr.x; cp.sy=pr.y; cp.sr=rad; cp.sdepth=pr.depth; }
     }
     /* Durchstoßpunkt */
     if(t>=w.tk){
@@ -735,11 +768,14 @@ function pickPoint(x,y){
   var best=null, bs=1e9;
   WORLDS.forEach(function(w){
     if(!w.on||paneAlpha(w.k)<=0.5) return;
-    for(var i=0;i<w.pts.length;i++){
-      var p=w.pts[i]; if(!p.sr) continue;
-      var rr=Math.max(p.sr,8), dx=p.sx-x, dy=p.sy-y, dd=Math.sqrt(dx*dx+dy*dy);
-      if(dd<=rr){ var score=dd/rr+p.sdepth*0.01; if(score<bs){ bs=score; best=p; } }
-    }
+    var lists=[w.pts]; if(w.extras&&w.extraA>0.5) lists.push(w.extras);
+    lists.forEach(function(arr){
+      for(var i=0;i<arr.length;i++){
+        var p=arr[i]; if(!p.sr) continue;
+        var rr=Math.max(p.sr,8), dx=p.sx-x, dy=p.sy-y, dd=Math.sqrt(dx*dx+dy*dy);
+        if(dd<=rr){ var score=dd/rr+p.sdepth*0.01; if(score<bs){ bs=score; best=p; } }
+      }
+    });
   });
   return best;
 }
@@ -822,6 +858,14 @@ function syncDom(t){
     var show=t>=WORLDS[i].tk+0.4;
     if(dom.rows[i]!==show){ dom.rows[i]=show; worldRows[i].classList.toggle('show',show); }
   }
+  var fc='';
+  if(focused>=0){
+    var fw=WORLDS[focused], n=0;
+    for(i=0;i<fw.pts.length;i++){ if(t>=fw.pts[i].t0) n++; }
+    if(fw.extras){ for(i=0;i<fw.extras.length;i++){ if(t>=fw.extras[i].t0) n++; } }
+    fc=fmtDe(n)+' Inhalte im Blick · '+fmtDe(fw.pts.length)+' davon im Quader';
+  }
+  if(fc!==dom.focusCount){ dom.focusCount=fc; elFocusCount.textContent=fc; }
   positionTip();
 }
 
@@ -832,13 +876,13 @@ function frame(now){
     t=manualT;
     if(!userRotated&&focused<0) orbitYaw=Math.max(0,t-(TL.result+1))*0.05;
     zoom=zoomTarget; focusMix=focused>=0?1:0;
-    WORLDS.forEach(function(w){ w.onA=w.on?1:0; });
+    WORLDS.forEach(function(w){ w.onA=w.on?1:0; w.extraA=w.k===focused?1:0; });
   } else {
     t=(now-t0)/1000;
     if(t>=TL.result+1&&!userRotated&&!reducedMotion&&focused<0) orbitYaw+=dt*0.05;
     zoom+=(zoomTarget-zoom)*Math.min(1,dt*10);
     focusMix+=((focused>=0?1:0)-focusMix)*Math.min(1,dt*5);
-    WORLDS.forEach(function(w){ w.onA+=((w.on?1:0)-w.onA)*Math.min(1,dt*6); });
+    WORLDS.forEach(function(w){ w.onA+=((w.on?1:0)-w.onA)*Math.min(1,dt*6); w.extraA+=((w.k===focused?1:0)-w.extraA)*Math.min(1,dt*4); });
   }
   draw(t,dt); syncDom(t);
   requestAnimationFrame(frame);
