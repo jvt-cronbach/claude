@@ -18,7 +18,7 @@ Spalten Macht, Leistung, Anschluss; Zeilen Emotional, Rational, Handlung), die a
 Danach folgen die Themenwelten als transparente Quader mit Tiefe, in drei Gruppen mit Abständen und
 Schriftzügen im Raum:
 
-1. **In-Category**: In-Category Produkte.
+1. In-Category Produkte (ohne Gruppennamen).
 2. **Paid Media** (Abstand 1,5 Dimensionen): Websites, Streaming / CTV, YouTube Creator Videos (einzelne Videos,
    keine Kanäle), Podcast, Kinofilme, DOOH (Orte, Nähe über die Bedeutung des Ortes), Influencer,
    Markenkooperation Automobil, Markenkooperation Fashion, Markenkooperation Sport, Markenkooperation Veranstaltungen.
@@ -37,6 +37,11 @@ Schriftzügen im Raum:
 - In der Nahansicht sind alle 21 benannten Inhalte beschriftet; dünne Linien führen vom Markenpunkt zu den nahen
   davon (Ähnlichkeit ab 0,85, `LINE_MIN_SIM`). Dazu erscheinen 400 weitere Inhalte vom Durchstoßpunkt nach außen,
   innerhalb und außerhalb des Quaders (`N_EXTRA`), und ein Zähler läuft mit.
+- **Navigation entlang des Vektors** (oben links auf der Canvas): die Chips „Übersicht“, „Psychografie“, „Paid Media“
+  und „Owned Media & 1st Party“ rahmen den jeweiligen Abschnitt, der Regler fährt die Kamera die Kette entlang,
+  ebenso Shift + Scrollen (oder waagerechtes Scrollen) und Bild-auf/Bild-ab beziehungsweise Shift + Pfeiltasten
+  von Dimension zu Dimension. Drehen und Zoomen bleiben wie gehabt.
+- Die Gruppennamen „Paid Media“ und „Owned Media & 1st Party“ schweben als Schriftzüge vor und unter ihren Dimensionen.
 - Der runde Schalter rechts in der Weltenliste blendet eine Dimension aus, „Alle einschalten“ holt sie zurück.
   Hover zeigt Name, Ähnlichkeit, Begründung und das Mini-Raster des Inhalts.
 - Nach einer Änderung der Daten bettet `python3 tools/inline-data.py` sie wieder in die Seite ein.
