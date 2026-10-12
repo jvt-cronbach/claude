@@ -10,33 +10,38 @@ Die Seite zeigt in fünf Schritten, wie ein Briefing- oder Produkttext zu passen
 4. Um den Zielpunkt erscheinen nach und nach die Embeddings der digitalen Inhalte als Wolke. Je näher, desto ähnlicher.
 5. Die nächsten Inhalte sind das Ergebnis.
 
-## Zweite Seite: Zehn Welten (`themenwelten.html`)
+## Zweite Seite: Marken-Universen (`themenwelten.html`)
 
-Dieselbe Gestaltung, ein anderes Bild: Zehn Themenwelten stehen als transparente Quader nebeneinander, wie
-die parallelen Dimensionen aus Darstellungen der Stringtheorie. Startpunkt ist eine Marke (Beispiel: Magnum
-Gold Billionaire Caramel). Ihr Bedeutungsvektor durchstößt jeden Quader, und um den Durchstoßpunkt erscheinen
-die Inhalte dieser Welt mit ähnlichem psychologischem Profil, in dieser Reihenfolge: Desserts, Online-Artikel,
-Fernsehshows, Influencer, Loyalty-App-Features, Automodelle, Bekleidungsmarken, Sportarten, Arbeitgebermarken
-und Arbeitgeber-Benefits. Die Reihenfolge ist die der JSON. Weitere Welten
-lassen sich in der JSON anhängen; Titel, Zählungen und Ablauf passen sich an.
+Dieselbe Gestaltung, ein anderes Bild. Startpunkt ist eine Marke (Beispiel: Magnum Gold Billionaire Caramel).
+Ihr Bedeutungsvektor durchsticht zuerst die **Psychografie**: einen Stapel transparenter Heatmaps (3×3-Raster,
+Spalten Macht, Leistung, Anschluss; Zeilen Emotional, Rational, Handlung), die aufrecht hintereinander stehen.
+Danach folgen die Themenwelten als transparente Quader mit Tiefe, in drei Gruppen mit Abständen und
+Schriftzügen im Raum:
 
-- Das Profil ist ein 3×3-Motivraster: Spalten Macht, Leistung, Anschluss; Zeilen Emotional, Rational, Handlung.
-  Die neun Werte in `profile` sind in der Reihenfolge Motiv × Haltung abgelegt (Macht-Emotional, Macht-Rational, …).
-  Die Ähnlichkeit ist die Kosinus-Ähnlichkeit der Profile, als Winkelmaß gespreizt und auf 0,55 bis 0,97 abgebildet.
-- Klick auf eine Dimension (oder einen Punkt, eine Zeile der Weltenliste, die Ziffern 1 bis 9 für die ersten neun Welten oder die Pfeile)
-  stellt die Welt frontal dar; „Alle Welten“, Escape oder 0 führen zur Übersicht zurück. Die Listenzeilen sind
-  auch per Tastatur erreichbar (Tab, Enter).
-- Hover zeigt Name, Ähnlichkeit, Begründung und das Mini-Raster des Inhalts. Jede Welt hat 21 benannte Inhalte;
-  in der Nahansicht führen dünne Linien vom Markenpunkt zu den nahen davon (Ähnlichkeit ab 0,85, `LINE_MIN_SIM`).
-- Jede Dimension ist ein Quader mit Tiefe; die Inhalte verteilen sich im Volumen. Der runde Schalter rechts in der
-  Weltenliste blendet eine Dimension aus, „Alle einschalten“ holt sie zurück.
-- In der Nahansicht erscheinen 800 weitere Inhalte vom Durchstoßpunkt nach außen, innerhalb und außerhalb des
-  Quaders (`N_EXTRA`). So wird sichtbar, dass der Quader nur ein Ausschnitt der Dimension ist; ein Zähler in der
-  Spalte läuft mit.
-- Die Daten liegen in `data/themenwelten.json` (Beispieldaten mit echten Marken- und Titelnamen).
-  Nach einer Änderung bettet `python3 tools/inline-data.py` sie wieder in die Seite ein.
+1. **In-Category**: In-Category Produkte.
+2. **Paid Media** (Abstand 1,5 Dimensionen): Websites, Streaming / CTV, YouTube Creator Videos (einzelne Videos,
+   keine Kanäle), Podcast, Kinofilme, DOOH (Orte, Nähe über die Bedeutung des Ortes), Influencer,
+   Markenkooperation Automobil, Markenkooperation Fashion, Markenkooperation Sport, Markenkooperation Veranstaltungen.
+3. **Owned Media & 1st Party** (Abstand zwei Dimensionen): Brand-App-Features, Next Best Offer,
+   Retail-Features online, Retail-Features offline.
+
+- Jede Welt hat 21 benannte Inhalte (Beispieldaten mit echten Namen) und 16 unbenannte Füllpunkte im Quader.
+  Position und Ähnlichkeit kommen aus der Kosinus-Ähnlichkeit der 3×3-Profile (als Winkelmaß gespreizt auf 0,55 bis 0,97).
+- Die Reihenfolge, die Gruppen (`groups` mit `gapBefore` als Vielfaches des Quaderabstands) und die Heatmaps des
+  Psychografie-Stapels (`psychografie.layers`, je ein Profil aus neun Werten) stehen in `data/themenwelten.json`.
+  Eine Heatmap kann statt des Profils auch ein Bild zeigen: `"image"` mit einer Data-URL, oder `"imageFile"` mit einem
+  Pfad unter `assets/`, den `tools/inline-data.py` beim Einbetten in eine Data-URL umwandelt.
+- Klick auf eine Dimension (oder einen Punkt, eine Listenzeile, die Ziffern 1 bis 9 für die ersten neun Welten oder
+  die Pfeile) stellt die Welt frontal dar; „Alle Welten“, Escape oder 0 führen zur Übersicht zurück. Die Listenzeilen
+  sind auch per Tastatur erreichbar (Tab, Enter).
+- In der Nahansicht sind alle 21 benannten Inhalte beschriftet; dünne Linien führen vom Markenpunkt zu den nahen
+  davon (Ähnlichkeit ab 0,85, `LINE_MIN_SIM`). Dazu erscheinen 400 weitere Inhalte vom Durchstoßpunkt nach außen,
+  innerhalb und außerhalb des Quaders (`N_EXTRA`), und ein Zähler läuft mit.
+- Der runde Schalter rechts in der Weltenliste blendet eine Dimension aus, „Alle einschalten“ holt sie zurück.
+  Hover zeigt Name, Ähnlichkeit, Begründung und das Mini-Raster des Inhalts.
+- Nach einer Änderung der Daten bettet `python3 tools/inline-data.py` sie wieder in die Seite ein.
 - `themenwelten.html#canvas` zeigt nur die Animation. Für ein Video:
-  `node tools/render-video.js --page themenwelten.html --api siebenWelten --seconds 16 --no-zoom`.
+  `node tools/render-video.js --page themenwelten.html --api siebenWelten --seconds 20 --no-zoom`.
 
 ## Öffnen
 

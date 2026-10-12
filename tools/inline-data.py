@@ -47,6 +47,18 @@ for k, w in enumerate(worlds):
             fail(f'{where}.items[{j}].name fehlt')
         check_profile(it.get('profile'), f'{where}.items[{j}] ({it.get("name")})')
 
+# Heatmaps des Psychografie-Stapels: "imageFile" (Pfad unter assets/) wird als Data-URL eingebettet
+import base64, mimetypes
+for layer in (data.get('psychografie') or {}).get('layers', []):
+    f = layer.get('imageFile')
+    if not f:
+        continue
+    fp = (root / f).resolve()
+    if not str(fp).startswith(str((root / 'assets').resolve())) or not fp.is_file():
+        fail(f'imageFile {f}: Datei muss unter assets/ liegen und existieren')
+    mime = mimetypes.guess_type(fp.name)[0] or 'image/png'
+    layer['image'] = 'data:' + mime + ';base64,' + base64.b64encode(fp.read_bytes()).decode('ascii')
+
 html = page.read_text(encoding='utf-8')
 # "<" wird als \u003c geschrieben: gültiges JSON und JavaScript, und kein "</script" oder "<!--" im Skriptblock
 payload = json.dumps(data, ensure_ascii=False, separators=(',', ':')).replace('<', '\\u003c')

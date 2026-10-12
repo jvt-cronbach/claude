@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Zehn Welten</title>
+<title>Marken-Universen</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gabarito:wght@400;700&display=swap">
 <style>
   /* True Relevance Tokens (Brand Guidelines v1.1) */
@@ -115,6 +115,8 @@
     display:grid;grid-template-columns:1.4em 12px 1fr auto 18px;grid-template-rows:auto auto;gap:0 8px;align-items:baseline;
     padding:3px 6px;margin:0 -6px;border-radius:0;cursor:pointer;font-size:14px;line-height:1.2;
   }
+  .wlist li.group{display:block;padding:10px 6px 2px;cursor:default;font-size:12px;font-weight:700;color:var(--full-black)}
+  .wlist li.group:hover{background:none}
   .wlist li:hover{background:var(--neutral-20)}
   .wlist li:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
   .wlist li.active{background:var(--neutral-20)}
@@ -228,7 +230,7 @@
   <div class="stage">
     <aside class="column">
       <p class="eyebrow">Psychologische Bedeutung</p>
-      <h1 class="title"><span class="bold">Eine Marke.</span><span id="titleCount">Zehn Welten.</span></h1>
+      <h1 class="title"><span class="bold">Eine Marke.</span><span id="titleCount">Sechzehn Welten.</span></h1>
 
       <div class="steps">
         <div class="dots" role="group" aria-label="Schritte der Animation">
@@ -250,7 +252,7 @@
 
       <section class="worlds" aria-label="Themenwelten">
         <div class="matches-head">
-          <p class="label" id="worldsTitle">Zehn Themenwelten</p>
+          <p class="label" id="worldsTitle">Sechzehn Themenwelten</p>
           <p class="label light" id="worldsHint">Nächster Inhalt je Welt · Schalter rechts</p>
           <button class="pill small" type="button" id="allOn" hidden>Alle einschalten</button>
         </div>
@@ -294,7 +296,7 @@
 
 <script>
 /*DATA-START*/
-var THEMENWELTEN_DATA = {"product":{"name":"Magnum Gold Billionaire Caramel","brand":"Magnum (Unilever)","kind":"Premium-Eis","summary":"Premium-Genuss als goldene Belohnung: Status, Glamour und Inszenierung für den besonderen Moment.","tags":["Premium","Genuss","Belohnung","Status"],"note":"Nachhaltigkeit und Verantwortung (Anschluss, rational) sind für dieses Produkt kein Treiber.","profile":[0.95,0.25,0.2,0.85,0.3,0.25,0.35,0.1,0.15]},"worlds":[{"id":"desserts","name":"Desserts","noun":"Dessert","description":"Weitere Desserts und Eismarken, vom Luxus-Genuss bis zum Alltagsprodukt für die Familie.","items":[{"name":"Häagen-Dazs Dulce de Leche","detail":"Premium-Eis, General Mills","reason":"Karamell-Genuss als Belohnung, Premium-Inszenierung","profile":[0.9,0.3,0.2,0.85,0.3,0.2,0.35,0.1,0.15]},{"name":"Godiva Pralinen","detail":"Luxus-Schokolade, Belgien","reason":"Luxus-Schokolade als Statusgeschenk, Glamour und Genuss","profile":[0.95,0.3,0.2,0.75,0.25,0.2,0.4,0.1,0.15]},{"name":"Venchi Gelato","detail":"Gelato, Venchi (Italien)","reason":"Italienisches Luxus-Gelato, Genuss und Prestige","profile":[0.85,0.3,0.2,0.75,0.3,0.2,0.45,0.15,0.15]},{"name":"Lindt Lindor","detail":"Pralinen, Lindt & Sprüngli","reason":"Goldene Verpackung, zartschmelzende Belohnung","profile":[0.85,0.3,0.3,0.8,0.3,0.3,0.45,0.1,0.2]},{"name":"Pierre Marcolini","detail":"Haute Chocolaterie, Brüssel","reason":"Haute Chocolaterie, Exklusivität und Prestige","profile":[0.95,0.35,0.15,0.7,0.3,0.15,0.3,0.1,0.1]},{"name":"Mövenpick Caramelita","detail":"Premium-Eis, Froneri","reason":"Schweizer Premium-Eis, Karamell-Genuss mit Stil","profile":[0.8,0.35,0.25,0.8,0.35,0.25,0.4,0.15,0.2]},{"name":"Sprüngli Luxemburgerli","detail":"Macarons, Confiserie Sprüngli","reason":"Confiserie-Luxus aus Zürich, exklusive Belohnung","profile":[0.85,0.3,0.3,0.7,0.3,0.3,0.5,0.15,0.25]},{"name":"Ferrero Rocher","detail":"Pralinen, Ferrero","reason":"Goldene Inszenierung, festlicher Genuss","profile":[0.85,0.25,0.35,0.65,0.25,0.35,0.55,0.1,0.3]},{"name":"Cremissimo Salted Caramel","detail":"Haushaltseis, Langnese","reason":"Genuss für die ganze Familie, mehr Alltag als Glamour","profile":[0.45,0.3,0.45,0.5,0.35,0.5,0.8,0.2,0.55]},{"name":"Milka Alpenmilch","detail":"Schokolade, Mondelez","reason":"Zarte Alltags-Schokolade, Vertrautheit statt Luxus","profile":[0.3,0.2,0.5,0.4,0.25,0.5,0.8,0.2,0.65]},{"name":"Nutella","detail":"Brotaufstrich, Ferrero","reason":"Frühstücksritual der Familie, Gewohnheit und Nähe","profile":[0.25,0.15,0.5,0.35,0.2,0.55,0.75,0.2,0.85]},{"name":"Ben & Jerry's Cookie Dough","detail":"Eis, Vermont (USA)","reason":"Werte, Haltung und Gemeinschaft statt Status","profile":[0.2,0.15,0.2,0.4,0.3,0.25,0.85,0.75,0.35]},{"name":"Oatly Hafer-Eis","detail":"Pflanzliches Eis, Oatly","reason":"Bewusster Konsum, Verantwortung und Vernunft","profile":[0.15,0.2,0.15,0.3,0.55,0.25,0.5,0.9,0.3]},{"name":"Fruchtzwerge","detail":"Kinder-Quark, Danone","reason":"Familienalltag und Fürsorge für Kinder","profile":[0.1,0.1,0.3,0.2,0.35,0.4,0.75,0.6,0.85]},{"name":"Landliebe Naturjoghurt","detail":"Naturjoghurt, Molkereiprodukt","reason":"Natürlichkeit, Routine und Vertrautheit im Alltag","profile":[0.1,0.15,0.3,0.15,0.4,0.45,0.6,0.7,0.9]},{"name":"Alpro Sojajoghurt","detail":"Pflanzlicher Joghurt, Danone","reason":"Vernunft, Verantwortung und tägliche Routine","profile":[0.05,0.15,0.2,0.15,0.55,0.4,0.45,0.9,0.8]},{"name":"Läderach Frischschoggi","detail":"Confiserie, Schweiz","reason":"Frische Schokolade als Luxusgeschenk","profile":[0.95,0.3,0.2,0.85,0.3,0.25,0.5,0.2,0.2]},{"name":"Häagen-Dazs Macadamia Nut Brittle","detail":"Premium-Eis, General Mills","reason":"Premium-Eis, Belohnung mit Biss","profile":[0.95,0.25,0.2,0.9,0.3,0.35,0.35,0.2,0.2]},{"name":"Amorino Gelato","detail":"Gelateria, Paris","reason":"Gelato als Blume: Inszenierung des Genusses","profile":[0.95,0.25,0.3,0.85,0.3,0.25,0.45,0.2,0.2]},{"name":"Neuhaus Pralinen","detail":"Belgische Pralinen","reason":"Belgische Pralinenkunst, Status als Geschenk","profile":[0.95,0.4,0.2,0.85,0.3,0.25,0.35,0.25,0.2]},{"name":"Ladurée Macarons","detail":"Pâtisserie, Paris","reason":"Pastellfarbener Luxus, Pariser Glamour","profile":[0.95,0.25,0.2,0.85,0.3,0.25,0.55,0.2,0.2]}]},{"id":"artikel","name":"Online-Artikel","noun":"Artikel","description":"Erfundene Schlagzeilen redaktioneller Online-Artikel aus Luxus, Lifestyle, Mobilität und Ratgeber.","items":[{"name":"Die zehn teuersten Desserts der Welt und wo es sie gibt","detail":"Food, Lifestyle-Magazin","reason":"Premium-Genuss als Statussymbol","profile":[0.9,0.3,0.2,0.85,0.3,0.2,0.35,0.1,0.15]},{"name":"Der neue Mercedes SL: Premiere unter Palmen in Monaco","detail":"Auto, Lifestyle-Magazin","reason":"Glamouröse Premiere, Status und Erlebnis","profile":[0.95,0.3,0.15,0.8,0.3,0.15,0.3,0.1,0.1]},{"name":"Topmodel in Gold: Der Auftritt des Abends auf dem roten Teppich","detail":"Society, Promi-Portal","reason":"Glamour, Inszenierung und Bewunderung","profile":[0.95,0.2,0.15,0.75,0.2,0.15,0.4,0.1,0.1]},{"name":"Suite mit Butler: Die neuen Luxushotels der Amalfiküste","detail":"Reise, Travel-Magazin","reason":"Luxus-Erlebnis, Verwöhnung und Prestige","profile":[0.9,0.3,0.2,0.7,0.3,0.2,0.45,0.1,0.15]},{"name":"Rolex Daytona: Warum die Warteliste zum Statussymbol wird","detail":"Uhren, Luxus-Magazin","reason":"Luxusuhr als Zeichen von Erfolg und Überlegenheit","profile":[0.9,0.4,0.2,0.8,0.35,0.2,0.3,0.1,0.15]},{"name":"Privatjet statt Business Class: So reist die neue Elite","detail":"Reise, Wirtschaftsmagazin","reason":"Exklusivität, Überlegenheit und Distinktion","profile":[0.95,0.35,0.15,0.75,0.3,0.15,0.25,0.1,0.1]},{"name":"Salted Caramel: Der Dessert-Trend aus der Sterneküche","detail":"Food, Genuss-Magazin","reason":"Genuss auf Spitzenniveau, Belohnung und Exzellenz","profile":[0.8,0.3,0.25,0.8,0.35,0.25,0.45,0.1,0.2]},{"name":"Champagner-Ranking: Diese Cuvées trinkt man 2026","detail":"Genuss, Lifestyle-Magazin","reason":"Genuss, Stil und Status beim Feiern","profile":[0.85,0.35,0.25,0.7,0.3,0.25,0.45,0.1,0.2]},{"name":"Porsche 911 im Test: Die Ikone bleibt das Maß der Dinge","detail":"Auto, Fachmagazin","reason":"Leistung und Prestige, sachlich geprüft","profile":[0.7,0.55,0.2,0.8,0.55,0.2,0.25,0.1,0.15]},{"name":"Karrieresprung mit 35: So verhandelt man den Chefposten","detail":"Karriere, Wirtschaftsmagazin","reason":"Aufstieg und Erfolg, eher rational als glamourös","profile":[0.5,0.6,0.2,0.7,0.8,0.25,0.25,0.15,0.15]},{"name":"Fitness-Tracker im Vergleich: Welcher misst am genauesten?","detail":"Technik, Verbraucherportal","reason":"Selbstoptimierung mit Fakten, ohne Glamour","profile":[0.2,0.3,0.2,0.55,0.85,0.35,0.25,0.2,0.25]},{"name":"Wochenplan für Familien: So gelingt der Alltag mit drei Kindern","detail":"Familie, Ratgeber-Portal","reason":"Familienalltag, Fürsorge und Routine","profile":[0.1,0.1,0.25,0.2,0.4,0.5,0.75,0.6,0.85]},{"name":"Ehrenamt im Verein: Warum sich Engagement lohnt","detail":"Gesellschaft, Regionalzeitung","reason":"Gemeinschaft und Verantwortung statt Status","profile":[0.1,0.1,0.15,0.2,0.3,0.3,0.85,0.8,0.6]},{"name":"Stromkosten senken: Zehn Tipps für den Haushalt","detail":"Finanzen, Verbraucherportal","reason":"Sparen und Vernunft statt Luxus","profile":[0.05,0.2,0.2,0.15,0.7,0.4,0.3,0.85,0.6]},{"name":"Haushaltsbuch führen: So behalten Sie Ihre Ausgaben im Griff","detail":"Finanzen, Ratgeber-Portal","reason":"Sparsamkeit, Kontrolle und Alltagsroutine","profile":[0.05,0.15,0.2,0.15,0.7,0.5,0.3,0.8,0.75]},{"name":"Richtig recyceln: Was gehört in den Gelben Sack?","detail":"Umwelt, Ratgeber-Portal","reason":"Verantwortung und Vernunft, kein Statusbezug","profile":[0.05,0.1,0.15,0.1,0.5,0.4,0.45,0.95,0.65]},{"name":"Gold auf dem Teller: Blattgold-Desserts in der Sterneküche","detail":"Food, Genuss-Magazin","reason":"Inszenierter Genuss als Statussymbol","profile":[0.95,0.25,0.3,0.85,0.35,0.25,0.35,0.2,0.2]},{"name":"Cannes 2026: Die spektakulärsten Roben der Filmfestspiele","detail":"Society, Promi-Portal","reason":"Glamour und Bewunderung auf dem roten Teppich","profile":[0.95,0.25,0.2,0.85,0.3,0.25,0.5,0.2,0.2]},{"name":"Die neue Riva-Yacht: Dolce Vita auf dem Wasser","detail":"Luxus, Lifestyle-Magazin","reason":"Luxus-Erlebnis und Exklusivität","profile":[0.95,0.35,0.2,0.85,0.3,0.25,0.4,0.2,0.2]},{"name":"Omakase in Tokio: Das teuerste Sushi-Menü der Welt","detail":"Reise, Genuss-Magazin","reason":"Exklusiver Genuss, Zugang für wenige","profile":[0.95,0.25,0.2,0.85,0.45,0.25,0.35,0.2,0.2]},{"name":"Hermès Birkin: Warum die Tasche zur Wertanlage wurde","detail":"Mode, Luxus-Magazin","reason":"Status, Begehrlichkeit und Distinktion","profile":[0.95,0.45,0.2,0.85,0.3,0.25,0.35,0.2,0.2]}]},{"id":"shows","name":"Fernsehshows","noun":"Show","description":"Fernsehshows und Serien, von Glamour- und Wettbewerbsformaten bis zu vertrauten Alltagsformaten.","items":[{"name":"Germany's Next Topmodel","detail":"Castingshow, ProSieben","reason":"Glamour, Wettbewerb und Inszenierung","profile":[0.95,0.2,0.2,0.8,0.25,0.2,0.4,0.1,0.15]},{"name":"Selling Sunset","detail":"Reality-Serie, Netflix","reason":"Luxusimmobilien, Status und Glamour","profile":[0.95,0.3,0.15,0.75,0.3,0.15,0.35,0.1,0.1]},{"name":"Formula 1: Drive to Survive","detail":"Doku-Serie, Netflix","reason":"Siegeswille, Luxus und Tempo","profile":[0.85,0.3,0.2,0.9,0.4,0.2,0.35,0.1,0.15]},{"name":"Emily in Paris","detail":"Dramedy-Serie, Netflix","reason":"Luxusmode, Lifestyle und Erlebnis","profile":[0.85,0.2,0.2,0.7,0.2,0.2,0.55,0.1,0.15]},{"name":"The Crown","detail":"Historiendrama, Netflix","reason":"Monarchie, Prestige und Inszenierung","profile":[0.9,0.4,0.3,0.6,0.35,0.3,0.4,0.15,0.2]},{"name":"Kitchen Impossible","detail":"Kochshow, VOX","reason":"Exzellenz, Wettbewerb und Spitzenküche","profile":[0.7,0.35,0.2,0.95,0.45,0.2,0.4,0.1,0.15]},{"name":"Succession","detail":"Drama-Serie, HBO","reason":"Macht, Dynastie und Dominanz","profile":[0.95,0.5,0.2,0.7,0.4,0.2,0.25,0.1,0.1]},{"name":"Die Höhle der Löwen","detail":"Gründershow, VOX","reason":"Erfolg, Investment und Siegermentalität","profile":[0.75,0.5,0.2,0.9,0.55,0.2,0.3,0.15,0.15]},{"name":"The Taste","detail":"Kochshow, Sat.1","reason":"Leistung und Genuss im Wettbewerb","profile":[0.55,0.3,0.3,0.8,0.4,0.3,0.5,0.15,0.25]},{"name":"Wer wird Millionär?","detail":"Quizshow, RTL","reason":"Belohnung und Wissen, vertrautes Ritual","profile":[0.5,0.3,0.45,0.8,0.5,0.5,0.5,0.2,0.55]},{"name":"Bares für Rares","detail":"Trödelshow, ZDF","reason":"Vertrautes Nachmittagsformat, Routine","profile":[0.2,0.3,0.45,0.35,0.45,0.55,0.55,0.3,0.9]},{"name":"Tatort","detail":"Krimireihe, Das Erste","reason":"Sonntagsritual, Gewohnheit und Gemeinschaft","profile":[0.25,0.25,0.5,0.3,0.4,0.55,0.65,0.3,0.9]},{"name":"Die Schnäppchenhäuser","detail":"Heimwerker-Doku, RTLZWEI","reason":"Heimwerken mit kleinem Budget, Familie und Sparsamkeit","profile":[0.1,0.15,0.3,0.3,0.6,0.55,0.7,0.6,0.8]},{"name":"Der Bergdoktor","detail":"Arztserie, ZDF","reason":"Heimat, Fürsorge und Gemeinschaft","profile":[0.1,0.1,0.3,0.15,0.25,0.45,0.9,0.5,0.85]},{"name":"Die Sendung mit der Maus","detail":"Kindersendung, WDR","reason":"Fürsorge, Lernen und Familienritual","profile":[0.05,0.05,0.25,0.2,0.45,0.4,0.85,0.75,0.85]},{"name":"Tagesschau","detail":"Nachrichten, Das Erste","reason":"Fakten, Routine und verlässliche Information","profile":[0.1,0.25,0.3,0.15,0.7,0.5,0.3,0.8,0.9]},{"name":"The White Lotus","detail":"Serie, HBO","reason":"Luxusresort, Status und Abgründe","profile":[0.95,0.35,0.2,0.85,0.3,0.25,0.4,0.2,0.2]},{"name":"Below Deck","detail":"Reality-Serie, Bravo","reason":"Superyachten, Luxus und Drama","profile":[0.95,0.25,0.2,0.85,0.3,0.25,0.5,0.2,0.2]},{"name":"The Real Housewives of Beverly Hills","detail":"Reality-Serie, Bravo","reason":"Glamour, Status und Inszenierung","profile":[0.95,0.25,0.3,0.85,0.3,0.25,0.45,0.2,0.2]},{"name":"Das Traumschiff","detail":"Reihe, ZDF","reason":"Luxusreise als Sehnsuchtsort","profile":[0.95,0.25,0.4,0.85,0.3,0.25,0.35,0.2,0.3]},{"name":"Top Gear","detail":"Auto-Show, BBC","reason":"Supersportwagen, Tempo und Spaß","profile":[0.95,0.25,0.2,0.85,0.45,0.3,0.35,0.2,0.2]}]},{"id":"influencer","name":"Influencer","noun":"Influencer","description":"Bekannte Persönlichkeiten in sozialen Medien, von Luxus- und Mode-Inszenierung bis zu Familienalltag, Wissen und Verantwortung.","items":[{"name":"Chiara Ferragni","detail":"Mode-Unternehmerin, Italien","reason":"Luxusmode und Glamour als Lebensstil","profile":[0.95,0.3,0.2,0.85,0.3,0.25,0.4,0.1,0.15]},{"name":"Leonie Hanne","detail":"Fashion-Influencerin, Hamburg","reason":"Haute Couture, Front Row und Luxusreisen","profile":[0.93,0.25,0.2,0.8,0.3,0.25,0.4,0.1,0.2]},{"name":"Kim Kardashian","detail":"Unternehmerin, Los Angeles","reason":"Status, Beauty-Imperium und Inszenierung","profile":[0.97,0.35,0.25,0.85,0.35,0.25,0.35,0.1,0.15]},{"name":"Nusret Gökçe (Salt Bae)","detail":"Gastronom, Istanbul","reason":"Inszenierter Luxus-Genuss, goldene Steaks","profile":[0.95,0.25,0.2,0.8,0.25,0.3,0.4,0.1,0.2]},{"name":"Kylie Jenner","detail":"Beauty-Unternehmerin, USA","reason":"Luxus, Beauty und Begehrlichkeit","profile":[0.95,0.3,0.2,0.8,0.3,0.25,0.4,0.1,0.15]},{"name":"Cristiano Ronaldo","detail":"Fußballer, Portugal","reason":"Erfolg, Luxus und Siegermentalität","profile":[0.9,0.3,0.2,0.95,0.4,0.3,0.35,0.1,0.15]},{"name":"Caro Daur","detail":"Fashion-Influencerin, Hamburg","reason":"Designer-Mode, Reisen und Lifestyle","profile":[0.88,0.25,0.2,0.8,0.3,0.25,0.45,0.1,0.2]},{"name":"Riccardo Simonetti","detail":"Entertainer, Berlin","reason":"Glamour, Mode und große Auftritte","profile":[0.9,0.25,0.2,0.75,0.25,0.25,0.5,0.15,0.2]},{"name":"Stefanie Giesinger","detail":"Model, Deutschland","reason":"Mode, Beauty und Laufsteg","profile":[0.95,0.25,0.2,0.85,0.3,0.25,0.45,0.2,0.2]},{"name":"Xenia Adonts","detail":"Fashion-Influencerin, Berlin","reason":"Luxusmode zwischen Paris und Mailand","profile":[0.95,0.35,0.2,0.85,0.3,0.25,0.4,0.2,0.2]},{"name":"Farina Opoku (Novalanalove)","detail":"Beauty und Fashion, Düsseldorf","reason":"Beauty, Mode und Luxusreisen","profile":[0.95,0.25,0.2,0.85,0.3,0.25,0.5,0.2,0.2]},{"name":"Pamela Reif","detail":"Fitness, Karlsruhe","reason":"Leistung, Körper und Ästhetik","profile":[0.95,0.25,0.2,0.85,0.5,0.35,0.35,0.2,0.2]},{"name":"Lisa und Lena","detail":"Zwillinge, Stuttgart","reason":"Mode und Pop für ein junges Publikum","profile":[0.95,0.25,0.25,0.85,0.3,0.25,0.55,0.2,0.2]},{"name":"MrBeast","detail":"YouTuber, USA","reason":"Große Challenges, Erfolg und Spektakel","profile":[0.6,0.3,0.3,0.9,0.5,0.4,0.6,0.3,0.3]},{"name":"Fynn Kliemann","detail":"DIY und Musik, Niedersachsen","reason":"Selbermachen, Gemeinschaft und Projekte","profile":[0.3,0.3,0.3,0.6,0.5,0.5,0.8,0.4,0.5]},{"name":"Sally (Sallys Welt)","detail":"Backen, Baden-Württemberg","reason":"Backen für die Familie, Nähe und Routine","profile":[0.2,0.2,0.4,0.4,0.4,0.6,0.85,0.4,0.7]},{"name":"Sarah Harrison","detail":"Familien-Influencerin, Dubai","reason":"Familienalltag, Nähe und Routine","profile":[0.3,0.2,0.3,0.4,0.3,0.5,0.9,0.4,0.7]},{"name":"Mai Thi Nguyen-Kim","detail":"Wissenschaftsjournalistin","reason":"Fakten und Aufklärung, rational","profile":[0.1,0.3,0.2,0.3,0.85,0.4,0.3,0.7,0.4]},{"name":"Rezo","detail":"YouTuber, Aachen","reason":"Politik und Argumente, rational","profile":[0.3,0.4,0.2,0.5,0.8,0.3,0.4,0.6,0.3]},{"name":"Louisa Dellert","detail":"Nachhaltigkeit, Berlin","reason":"Verantwortung und bewusster Konsum","profile":[0.1,0.2,0.2,0.3,0.5,0.4,0.6,0.9,0.5]},{"name":"Checker Tobi","detail":"Wissen für Kinder, München","reason":"Erklären für Kinder, Fürsorge und Lernen","profile":[0.1,0.2,0.3,0.3,0.5,0.5,0.8,0.6,0.7]}]},{"id":"loyalty","name":"Loyalty-App-Features","noun":"Feature","description":"Funktionen einer Bonus-App im Supermarkt, von exklusiven Status-Vorteilen bis zu Alltagshelfern und verantwortungsvollem Einkauf.","items":[{"name":"Gold-Status mit exklusiven Vorteilen","detail":"Statusstufe","reason":"Sichtbarer Status, Belohnung für Treue","profile":[0.92,0.3,0.25,0.85,0.3,0.3,0.35,0.1,0.2]},{"name":"Premium-Prämien aus dem Gourmet-Regal","detail":"Prämienshop","reason":"Belohnung als Genuss, exklusive Auswahl","profile":[0.85,0.25,0.2,0.9,0.3,0.25,0.35,0.1,0.15]},{"name":"Vorab-Zugang zu limitierten Editionen","detail":"Exklusive Angebote","reason":"Zuerst haben, was andere noch nicht bekommen","profile":[0.9,0.3,0.2,0.8,0.3,0.2,0.3,0.1,0.15]},{"name":"Einladungen zu Verkostungen und Events","detail":"Mitglieder-Events","reason":"Erlebnis, Exklusivität und Zugehörigkeit zum Kreis","profile":[0.8,0.25,0.2,0.7,0.25,0.2,0.55,0.15,0.2]},{"name":"Persönliche Geburtstagsüberraschung","detail":"Geschenk","reason":"Wertschätzung als Belohnung, emotionaler Moment","profile":[0.7,0.2,0.2,0.75,0.25,0.25,0.6,0.15,0.2]},{"name":"Punkte-Boost bei Premium-Marken","detail":"Punkte sammeln","reason":"Belohnung fürs Besondere, Anreiz zum Aufstieg","profile":[0.75,0.35,0.25,0.85,0.4,0.3,0.3,0.15,0.2]},{"name":"Persönliche Empfehlungen für Genießer","detail":"Personalisierung","reason":"Genuss und Individualität, Gefühl des Erkanntwerdens","profile":[0.65,0.3,0.25,0.75,0.35,0.3,0.45,0.2,0.25]},{"name":"Sofort-Rabatt an der Kasse","detail":"Bezahlen","reason":"Komfort und Belohnung im Moment, ohne Aufwand","profile":[0.55,0.35,0.3,0.75,0.45,0.4,0.35,0.2,0.3]},{"name":"Jahresrückblick: gesammelte Punkte","detail":"Statistik","reason":"Erfolg sichtbar machen, Stolz auf das Erreichte","profile":[0.5,0.4,0.3,0.8,0.55,0.4,0.3,0.25,0.3]},{"name":"Rabatt auf Eigenmarken","detail":"Sparen","reason":"Vernünftig sparen im Alltag, wenig Glamour","profile":[0.2,0.35,0.35,0.4,0.65,0.55,0.35,0.4,0.5]},{"name":"Digitaler Kassenbon","detail":"Belege","reason":"Ordnung und Nutzen, reine Routine","profile":[0.1,0.3,0.35,0.3,0.65,0.7,0.25,0.45,0.6]},{"name":"Einkaufsliste mit Familienfreigabe","detail":"Planung","reason":"Gemeinsam planen, Alltag der Familie","profile":[0.15,0.2,0.3,0.3,0.5,0.6,0.8,0.45,0.65]},{"name":"Pfandbon in der App einlösen","detail":"Pfand","reason":"Praktische Gewohnheit ohne Statusbezug","profile":[0.1,0.2,0.35,0.25,0.5,0.75,0.3,0.45,0.7]},{"name":"Wochenplaner mit Familienrezepten","detail":"Rezepte","reason":"Fürsorge und Routine im Familienalltag","profile":[0.15,0.2,0.3,0.3,0.45,0.6,0.85,0.5,0.7]},{"name":"Punkte an soziale Projekte spenden","detail":"Spenden","reason":"Verantwortung und Gemeinschaft statt Belohnung","profile":[0.1,0.15,0.2,0.2,0.3,0.3,0.85,0.8,0.5]},{"name":"CO₂-Bilanz des Einkaufs","detail":"Nachhaltigkeit","reason":"Verantwortung und Vernunft, kein Statusbezug","profile":[0.1,0.2,0.2,0.25,0.5,0.3,0.6,0.9,0.5]},{"name":"Platin-Stufe mit Concierge-Service","detail":"Statusstufe","reason":"Höchster Status, persönliche Betreuung","profile":[0.95,0.3,0.3,0.85,0.3,0.25,0.35,0.2,0.2]},{"name":"Persönlicher Einkaufsberater per Chat","detail":"Service","reason":"Service wie im Luxushandel","profile":[0.95,0.25,0.2,0.85,0.35,0.25,0.5,0.2,0.2]},{"name":"Exklusive Vorab-Verkostung neuer Premium-Produkte","detail":"Mitglieder-Events","reason":"Zuerst probieren, Zugang für wenige","profile":[0.95,0.25,0.25,0.85,0.3,0.25,0.45,0.2,0.2]},{"name":"Prämien-Upgrade: Champagner statt Punkte","detail":"Prämienshop","reason":"Belohnung mit Glamour","profile":[0.95,0.25,0.2,0.9,0.3,0.25,0.45,0.2,0.2]},{"name":"VIP-Kasse ohne Wartezeit","detail":"Bezahlen, Privileg","reason":"Privileg, Zeit und Status","profile":[0.95,0.4,0.2,0.85,0.3,0.3,0.35,0.2,0.2]}]},{"id":"autos","name":"Automodelle","noun":"Modell","description":"Konkrete Automodelle vom Luxus-Roadster bis zum vernünftigen Familien- und Nutzfahrzeug.","items":[{"name":"Maserati GranTurismo","detail":"Grand Tourer, Maserati","reason":"Italienische Eleganz, Emotion und Prestige","profile":[0.9,0.3,0.2,0.8,0.3,0.2,0.35,0.1,0.15]},{"name":"Mercedes-AMG SL 63","detail":"Roadster, Mercedes-AMG","reason":"Luxus-Roadster, Glamour und Prestige","profile":[0.95,0.35,0.2,0.85,0.35,0.2,0.3,0.1,0.15]},{"name":"Aston Martin DB12","detail":"Grand Tourer, Aston Martin","reason":"Glamour, Exklusivität und Fahrerlebnis","profile":[0.95,0.3,0.15,0.8,0.3,0.15,0.3,0.1,0.1]},{"name":"Porsche 911 Carrera","detail":"Sportwagen, Porsche","reason":"Sportliche Exzellenz, Ikone und Status","profile":[0.9,0.4,0.25,0.9,0.4,0.25,0.3,0.1,0.15]},{"name":"Bentley Continental GT","detail":"Grand Tourer, Bentley","reason":"Handwerkskunst, Luxus und Überlegenheit","profile":[0.95,0.4,0.2,0.7,0.3,0.2,0.3,0.1,0.15]},{"name":"Range Rover Autobiography","detail":"Luxus-SUV, Land Rover","reason":"Souveränität, Komfort und Statusanspruch","profile":[0.9,0.45,0.25,0.7,0.4,0.25,0.4,0.15,0.2]},{"name":"Mercedes-Maybach S 680","detail":"Luxuslimousine, Mercedes-Benz","reason":"Repräsentation, Luxus und Dominanz","profile":[0.95,0.5,0.25,0.6,0.35,0.25,0.35,0.1,0.15]},{"name":"Audi RS e-tron GT","detail":"Elektro-Sportwagen, Audi","reason":"Leistung und Technik mit Prestige","profile":[0.8,0.5,0.2,0.85,0.55,0.2,0.3,0.15,0.15]},{"name":"BMW X5","detail":"SUV, BMW","reason":"Status und Alltagstauglichkeit zugleich","profile":[0.8,0.5,0.35,0.6,0.55,0.35,0.45,0.2,0.3]},{"name":"Tesla Model 3","detail":"Elektro-Limousine, Tesla","reason":"Technik und Effizienz, rationale Leistung","profile":[0.4,0.5,0.2,0.55,0.85,0.25,0.3,0.4,0.2]},{"name":"VW Golf","detail":"Kompaktwagen, Volkswagen","reason":"Vertrauter Klassiker, Vernunft und Gewohnheit","profile":[0.3,0.35,0.55,0.35,0.55,0.6,0.45,0.35,0.8]},{"name":"Skoda Octavia Combi","detail":"Kombi, Skoda","reason":"Platz, Nutzen und Vernunft für die Familie","profile":[0.15,0.3,0.3,0.25,0.8,0.45,0.5,0.45,0.7]},{"name":"VW Caddy","detail":"Hochdachkombi, Volkswagen","reason":"Familienalltag, Routine und Zweckmäßigkeit","profile":[0.1,0.15,0.3,0.2,0.6,0.55,0.65,0.5,0.85]},{"name":"Toyota Prius","detail":"Hybrid-Limousine, Toyota","reason":"Effizienz und Verantwortung statt Prestige","profile":[0.1,0.25,0.2,0.25,0.8,0.35,0.35,0.85,0.4]},{"name":"Ford Transit Custom","detail":"Transporter, Ford","reason":"Arbeitsgerät für den Betrieb, Nutzen und Routine","profile":[0.1,0.2,0.3,0.2,0.75,0.8,0.35,0.4,0.75]},{"name":"Dacia Sandero","detail":"Kleinwagen, Dacia","reason":"Preisbewusste Vernunft, Alltag ohne Statusanspruch","profile":[0.05,0.15,0.25,0.15,0.85,0.5,0.4,0.55,0.75]},{"name":"Ferrari Roma","detail":"Grand Tourer, Ferrari","reason":"Italienische Eleganz, Dolce Vita und Prestige","profile":[0.95,0.25,0.25,0.85,0.3,0.25,0.45,0.2,0.2]},{"name":"Lamborghini Urus","detail":"Super-SUV, Lamborghini","reason":"Dominanz und großer Auftritt","profile":[0.95,0.4,0.2,0.85,0.35,0.25,0.35,0.2,0.2]},{"name":"Rolls-Royce Ghost","detail":"Luxuslimousine, Rolls-Royce","reason":"Höchster Luxus, Souveränität","profile":[0.95,0.35,0.35,0.85,0.3,0.25,0.35,0.2,0.2]},{"name":"Porsche Taycan Turbo S","detail":"Elektro-Sportwagen, Porsche","reason":"Leistung und Prestige, elektrisch","profile":[0.95,0.25,0.2,0.85,0.5,0.25,0.35,0.2,0.2]},{"name":"BMW M8 Competition","detail":"Coupé, BMW M","reason":"Sportliche Dominanz und Status","profile":[0.95,0.3,0.2,0.85,0.3,0.4,0.35,0.2,0.2]}]},{"id":"mode","name":"Bekleidungsmarken","noun":"Marke","description":"Bekleidungsmarken von Luxus-Mode über Sport und Outdoor bis zu Basics und Arbeitskleidung.","items":[{"name":"Moncler","detail":"Luxus-Daunenjacken, Italien","reason":"Winterluxus, Exklusivität und Sichtbarkeit","profile":[0.9,0.3,0.2,0.75,0.35,0.2,0.35,0.1,0.15]},{"name":"Louis Vuitton","detail":"Luxusmode, LVMH (Frankreich)","reason":"Ikonisches Monogramm, Luxus und Prestige","profile":[0.95,0.35,0.2,0.75,0.3,0.2,0.35,0.1,0.15]},{"name":"Gucci","detail":"Luxusmode, Kering (Italien)","reason":"Glamour, Extravaganz und Statussymbolik","profile":[0.95,0.25,0.15,0.75,0.25,0.15,0.4,0.1,0.1]},{"name":"Prada","detail":"Luxusmode, Mailand","reason":"Intellektueller Luxus, Status und Exklusivität","profile":[0.9,0.4,0.2,0.7,0.35,0.2,0.3,0.1,0.15]},{"name":"Balenciaga","detail":"Luxusmode, Kering (Paris)","reason":"Avantgarde-Luxus, Dominanz und Inszenierung","profile":[0.95,0.25,0.1,0.7,0.2,0.1,0.35,0.1,0.1]},{"name":"Ralph Lauren","detail":"Premium-Mode, USA","reason":"Lebensstil der Oberschicht, Eleganz und Erfolg","profile":[0.85,0.35,0.3,0.75,0.35,0.3,0.45,0.1,0.25]},{"name":"Hugo Boss","detail":"Premium-Mode, Metzingen","reason":"Erfolg, Business-Eleganz und Leistung","profile":[0.8,0.4,0.25,0.85,0.45,0.25,0.3,0.1,0.2]},{"name":"Burberry","detail":"Luxusmode, Großbritannien","reason":"Britischer Luxus, Tradition und Status","profile":[0.85,0.4,0.3,0.65,0.35,0.3,0.4,0.15,0.25]},{"name":"Tommy Hilfiger","detail":"Premium-Casual, PVH","reason":"Premium-Casual mit Statusanspruch, breiter Alltag","profile":[0.8,0.3,0.35,0.6,0.3,0.35,0.55,0.15,0.35]},{"name":"Nike","detail":"Sportbekleidung, USA","reason":"Leistung, Siegeswille und Selbstoptimierung","profile":[0.5,0.3,0.25,0.95,0.5,0.3,0.45,0.15,0.25]},{"name":"Levi's","detail":"Denim, USA","reason":"Vertrauter Klassiker, Gewohnheit und Authentizität","profile":[0.35,0.25,0.55,0.4,0.3,0.55,0.6,0.2,0.8]},{"name":"Jack Wolfskin","detail":"Outdoor-Bekleidung, Idstein","reason":"Funktion, Natur und Familienausflug","profile":[0.15,0.25,0.3,0.3,0.7,0.45,0.6,0.5,0.8]},{"name":"Engelbert Strauss","detail":"Arbeitskleidung, Biebergemünd","reason":"Arbeitsalltag, Funktion und Zusammenhalt im Betrieb","profile":[0.15,0.2,0.3,0.3,0.7,0.75,0.6,0.4,0.85]},{"name":"Patagonia","detail":"Outdoor-Bekleidung, USA","reason":"Verantwortung und Gemeinschaft statt Status","profile":[0.15,0.15,0.15,0.3,0.45,0.25,0.75,0.95,0.35]},{"name":"Armedangels","detail":"Fair Fashion, Köln","reason":"Fairness und Verantwortung als Kaufmotiv","profile":[0.15,0.15,0.15,0.25,0.4,0.2,0.6,0.95,0.35]},{"name":"C&A","detail":"Modekette, Familienmode","reason":"Preisbewusste Familienmode, Alltag und Routine","profile":[0.1,0.15,0.3,0.15,0.55,0.5,0.6,0.45,0.9]},{"name":"Dior","detail":"Haute Couture, Paris","reason":"Haute Couture, Glamour und Eleganz","profile":[0.95,0.25,0.2,0.85,0.3,0.25,0.5,0.2,0.2]},{"name":"Chanel","detail":"Luxusmode, Paris","reason":"Zeitloser Luxus, Status und Begehrlichkeit","profile":[0.95,0.25,0.35,0.85,0.3,0.25,0.35,0.2,0.2]},{"name":"Hermès","detail":"Luxusmode, Paris","reason":"Handwerk, Exklusivität und Prestige","profile":[0.95,0.4,0.2,0.85,0.35,0.25,0.35,0.2,0.2]},{"name":"Versace","detail":"Luxusmode, Mailand","reason":"Glamour, Gold und Inszenierung","profile":[0.95,0.25,0.2,0.9,0.3,0.25,0.45,0.2,0.2]},{"name":"Brunello Cucinelli","detail":"Luxusmode, Solomeo","reason":"Leiser Luxus, Erfolg ohne Lautstärke","profile":[0.95,0.25,0.2,0.85,0.45,0.25,0.35,0.3,0.2]}]},{"id":"sport","name":"Sportarten","noun":"Sportart","description":"Sportarten und Sportereignisse, vom exklusiven Polo bis zum Vereinssport und zur Alltagsbewegung.","items":[{"name":"Polo","detail":"Pferdesport, Clubs","reason":"Exklusivität, Eleganz und Status auf dem Rasen","profile":[0.95,0.3,0.2,0.75,0.25,0.2,0.4,0.1,0.15]},{"name":"Formel 1","detail":"Motorsport, Grand Prix","reason":"Glamour, Tempo und Siegeswille","profile":[0.9,0.3,0.2,0.9,0.35,0.2,0.35,0.1,0.15]},{"name":"Segelregatta","detail":"Segeln, America's Cup","reason":"Yachten, Hochsee und Exklusivität","profile":[0.9,0.3,0.2,0.8,0.35,0.2,0.35,0.1,0.15]},{"name":"Pferderennen in Ascot","detail":"Galopprennen, Royal Ascot","reason":"Glamour, Hüte und Gesellschaft","profile":[0.92,0.25,0.25,0.65,0.2,0.2,0.45,0.1,0.2]},{"name":"Golf","detail":"Rasensport, Clubs","reason":"Prestige, Etikette und exklusive Clubs","profile":[0.85,0.35,0.3,0.8,0.4,0.3,0.4,0.15,0.2]},{"name":"Skifahren in St. Moritz","detail":"Wintersport, Engadin","reason":"Winterglamour, Genuss und Sehen und Gesehenwerden","profile":[0.88,0.25,0.2,0.7,0.25,0.2,0.45,0.1,0.15]},{"name":"Tennis in Wimbledon","detail":"Grand Slam, Rasen","reason":"Tradition, Eleganz und Leistung auf höchstem Niveau","profile":[0.8,0.3,0.25,0.9,0.4,0.25,0.4,0.15,0.2]},{"name":"Dressurreiten","detail":"Reitsport, Grand Prix","reason":"Perfektion, Eleganz und Exklusivität","profile":[0.8,0.3,0.25,0.85,0.4,0.3,0.35,0.15,0.2]},{"name":"New-York-Marathon","detail":"Laufen, 42,195 km","reason":"Leistung, Selbstüberwindung und Stolz","profile":[0.5,0.3,0.25,0.9,0.55,0.4,0.4,0.2,0.3]},{"name":"CrossFit","detail":"Functional Fitness","reason":"Selbstoptimierung, Wettbewerb und Gemeinschaft","profile":[0.45,0.3,0.3,0.85,0.6,0.5,0.55,0.25,0.35]},{"name":"Yoga","detail":"Körper und Geist","reason":"Achtsamkeit, Balance und Routine","profile":[0.2,0.25,0.3,0.4,0.55,0.6,0.6,0.5,0.6]},{"name":"Fußball im Verein","detail":"Breitensport, Amateurliga","reason":"Zusammenhalt, Gemeinschaft und wöchentliches Ritual","profile":[0.3,0.2,0.3,0.5,0.3,0.5,0.9,0.4,0.7]},{"name":"Schwimmen im Hallenbad","detail":"Breitensport, Gesundheit","reason":"Gesundheit, Routine und Vernunft","profile":[0.15,0.2,0.3,0.4,0.6,0.7,0.4,0.5,0.7]},{"name":"Wandern","detail":"Natur, Familie","reason":"Natur, Familie und Gemeinschaft","profile":[0.15,0.15,0.3,0.3,0.4,0.5,0.85,0.5,0.6]},{"name":"Radfahren zur Arbeit","detail":"Alltagsmobilität","reason":"Alltagsnutzen, Gesundheit und Verantwortung","profile":[0.1,0.2,0.3,0.3,0.6,0.7,0.4,0.7,0.7]},{"name":"Boule im Park","detail":"Freizeit, Park","reason":"Gemeinschaft, Gewohnheit und Gelassenheit","profile":[0.1,0.1,0.3,0.2,0.2,0.5,0.8,0.4,0.9]},{"name":"Masters in Augusta","detail":"Golf, Major","reason":"Golfs exklusivste Bühne, Prestige","profile":[0.95,0.25,0.25,0.85,0.45,0.25,0.35,0.2,0.2]},{"name":"Heli-Skiing in Kanada","detail":"Wintersport, Abenteuer","reason":"Exklusives Abenteuer, Status durch Zugang","profile":[0.95,0.25,0.2,0.9,0.3,0.25,0.45,0.2,0.2]},{"name":"CHIO Aachen","detail":"Reitsport, Weltfest","reason":"Eleganz und Prestige im Reitsport","profile":[0.95,0.35,0.2,0.85,0.3,0.35,0.35,0.2,0.2]},{"name":"Beach Polo auf Sylt","detail":"Pferdesport, Event","reason":"Glamour und Gesellschaft am Strand","profile":[0.95,0.25,0.2,0.85,0.3,0.25,0.55,0.2,0.2]},{"name":"Padel im Privatclub","detail":"Trendsport, Club","reason":"Trendsport im exklusiven Kreis","profile":[0.95,0.25,0.2,0.85,0.35,0.25,0.5,0.2,0.2]}]},{"id":"arbeitgeber","name":"Arbeitgebermarken","noun":"Arbeitgeber","description":"Reale Unternehmen und Organisationen als Arbeitgebermarken, von Elite-Karriere bis Gemeinwohl.","items":[{"name":"LVMH","detail":"Luxuskonzern, Paris","reason":"Luxuswelt, Glamour und Markenprestige","profile":[0.95,0.35,0.2,0.75,0.3,0.2,0.35,0.1,0.15]},{"name":"Red Bull","detail":"Getränkekonzern, Österreich","reason":"Energie, Erlebnis und Siegermentalität","profile":[0.8,0.25,0.2,0.9,0.35,0.2,0.45,0.1,0.15]},{"name":"Porsche AG","detail":"Sportwagenhersteller","reason":"Leistung, Begehrlichkeit und Markenstolz","profile":[0.9,0.4,0.25,0.85,0.4,0.25,0.4,0.15,0.2]},{"name":"Rolex","detail":"Uhrenmanufaktur, Genf","reason":"Perfektion, Prestige und Exklusivität","profile":[0.9,0.45,0.25,0.8,0.4,0.25,0.3,0.1,0.2]},{"name":"Goldman Sachs","detail":"Investmentbank, New York","reason":"Elite, Bonus und Leistung, Status durch Erfolg","profile":[0.95,0.5,0.2,0.9,0.5,0.2,0.2,0.1,0.1]},{"name":"Lufthansa","detail":"Fluggesellschaft","reason":"Premium-Marke, Weltläufigkeit und Prestige","profile":[0.8,0.4,0.3,0.7,0.4,0.35,0.45,0.2,0.3]},{"name":"Google","detail":"Technologiekonzern, USA","reason":"Leistungselite, Innovation und Begehrlichkeit","profile":[0.75,0.45,0.2,0.9,0.55,0.2,0.45,0.2,0.15]},{"name":"McKinsey & Company","detail":"Strategieberatung","reason":"Exzellenz, Aufstieg und Prestige","profile":[0.85,0.55,0.2,0.95,0.55,0.2,0.25,0.1,0.1]},{"name":"Siemens","detail":"Technologiekonzern, München","reason":"Solide Leistung, Ingenieursstolz und Verlässlichkeit","profile":[0.45,0.5,0.35,0.6,0.8,0.4,0.4,0.35,0.4]},{"name":"Bosch","detail":"Technologiekonzern, Stuttgart","reason":"Verantwortung und Verlässlichkeit vor Status","profile":[0.3,0.35,0.35,0.45,0.65,0.45,0.5,0.8,0.5]},{"name":"Deutsche Telekom","detail":"Telekommunikation, Bonn","reason":"Großer Arbeitgeber, Sicherheit und Routine","profile":[0.3,0.35,0.45,0.4,0.55,0.55,0.45,0.4,0.8]},{"name":"Regionaler Handwerksbetrieb","detail":"Handwerk, Mittelstand","reason":"Zusammenhalt im Team, Alltag und Verlässlichkeit","profile":[0.15,0.2,0.35,0.3,0.5,0.65,0.75,0.4,0.85]},{"name":"Deutsche Bahn","detail":"Verkehrsunternehmen","reason":"Daseinsvorsorge, Sicherheit und Gemeinschaft","profile":[0.15,0.2,0.3,0.2,0.45,0.55,0.55,0.75,0.85]},{"name":"Alnatura","detail":"Bio-Supermarkt, Darmstadt","reason":"Sinn, Nachhaltigkeit und Verantwortung","profile":[0.1,0.1,0.15,0.2,0.35,0.3,0.75,0.95,0.5]},{"name":"Stadtverwaltung München","detail":"Öffentlicher Dienst","reason":"Gemeinwohl, Sicherheit und geregelte Routine","profile":[0.1,0.2,0.25,0.15,0.45,0.5,0.45,0.8,0.9]},{"name":"Caritas","detail":"Wohlfahrtsverband","reason":"Fürsorge und Gemeinschaft statt Status","profile":[0.05,0.1,0.15,0.15,0.3,0.3,0.95,0.85,0.55]},{"name":"Ferrari","detail":"Sportwagen, Maranello","reason":"Markenmythos, Leistung und Stolz","profile":[0.95,0.25,0.2,0.85,0.3,0.35,0.45,0.2,0.2]},{"name":"Bain & Company","detail":"Strategieberatung","reason":"Exzellenz, Aufstieg und Prestige","profile":[0.95,0.25,0.2,0.85,0.5,0.25,0.35,0.2,0.2]},{"name":"Richemont","detail":"Luxuskonzern, Genf","reason":"Luxusuhren und Schmuck, Prestige","profile":[0.95,0.4,0.2,0.85,0.3,0.25,0.35,0.2,0.2]},{"name":"J.P. Morgan","detail":"Investmentbank, New York","reason":"Elite, Bonus und Status durch Erfolg","profile":[0.95,0.35,0.2,0.85,0.45,0.25,0.35,0.2,0.2]},{"name":"Emirates","detail":"Fluggesellschaft, Dubai","reason":"Premium-Service, Weltläufigkeit und Glanz","profile":[0.95,0.25,0.25,0.85,0.3,0.25,0.5,0.2,0.2]}]},{"id":"benefits","name":"Arbeitgeber-Benefits","noun":"Benefit","description":"Leistungen, die Arbeitgeber anbieten, von Statussymbolen bis zur Entlastung im Alltag.","items":[{"name":"Business-Class-Dienstreisen","detail":"Reisen, Komfort","reason":"Premium-Komfort als Zeichen der Wertschätzung","profile":[0.9,0.3,0.2,0.75,0.3,0.2,0.35,0.1,0.15]},{"name":"Firmenwagen der Oberklasse","detail":"Mobilität, Statussymbol","reason":"Sichtbarer Status, Belohnung für Erfolg","profile":[0.95,0.35,0.2,0.8,0.3,0.2,0.25,0.1,0.15]},{"name":"Mitgliedschaft im Premium-Fitnessclub","detail":"Gesundheit, Lifestyle","reason":"Körperliche Exzellenz in exklusivem Umfeld","profile":[0.8,0.3,0.25,0.85,0.4,0.3,0.35,0.1,0.2]},{"name":"Einladungen zu VIP-Events","detail":"Netzwerk, Erlebnis","reason":"Glamour, Zugang und Bewunderung","profile":[0.95,0.25,0.15,0.7,0.25,0.15,0.45,0.1,0.1]},{"name":"Eckbüro mit Assistenz","detail":"Arbeitsplatz, Hierarchie","reason":"Sichtbare Hierarchie, Dominanz und Prestige","profile":[0.95,0.4,0.3,0.7,0.35,0.3,0.25,0.1,0.2]},{"name":"Executive Coaching","detail":"Entwicklung, Führung","reason":"Selbstoptimierung auf dem Weg nach oben","profile":[0.75,0.45,0.15,0.9,0.55,0.2,0.3,0.1,0.1]},{"name":"Bonus und Aktienbeteiligung","detail":"Vergütung, variabel","reason":"Belohnung für Leistung, Teilhabe am Erfolg","profile":[0.8,0.5,0.15,0.95,0.55,0.2,0.25,0.1,0.1]},{"name":"MBA-Förderung an einer Top-Business-School","detail":"Weiterbildung, Karriere","reason":"Exzellenz, Netzwerk und Karrieresprung","profile":[0.7,0.5,0.15,0.9,0.6,0.2,0.3,0.15,0.1]},{"name":"Workation im Ausland","detail":"Arbeitsmodell, Erlebnis","reason":"Erlebnis und Freiheit, lockerer Statusbezug","profile":[0.45,0.25,0.2,0.8,0.35,0.25,0.6,0.2,0.25]},{"name":"Weiterbildungsbudget","detail":"Entwicklung, fachlich","reason":"Fachliche Entwicklung, rational und nüchtern","profile":[0.3,0.4,0.25,0.6,0.85,0.3,0.35,0.3,0.25]},{"name":"Homeoffice-Ausstattung","detail":"Arbeitsplatz, praktisch","reason":"Nutzen und Routine im Arbeitsalltag","profile":[0.15,0.3,0.35,0.35,0.7,0.6,0.35,0.35,0.8]},{"name":"Gleitzeit","detail":"Arbeitszeit, Flexibilität","reason":"Vereinbarkeit und Routine, vernünftig statt glamourös","profile":[0.1,0.2,0.3,0.3,0.6,0.6,0.5,0.55,0.85]},{"name":"Fahrradleasing","detail":"Mobilität, Dienstrad","reason":"Vernunft, Gesundheit und Verantwortung","profile":[0.1,0.15,0.2,0.3,0.6,0.4,0.45,0.85,0.5]},{"name":"Betriebsrente","detail":"Vorsorge, Sicherheit","reason":"Sicherheit und Vorsorge, rationaler Anschluss","profile":[0.1,0.2,0.25,0.15,0.55,0.45,0.4,0.9,0.75]},{"name":"Jobticket","detail":"Mobilität, ÖPNV","reason":"Alltagsnutzen und Gewohnheit, kein Prestige","profile":[0.05,0.15,0.25,0.15,0.65,0.55,0.3,0.6,0.85]},{"name":"Kita-Zuschuss","detail":"Familie, Betreuung","reason":"Fürsorge für die Familie, Verantwortung","profile":[0.05,0.1,0.2,0.15,0.4,0.4,0.8,0.85,0.7]},{"name":"Chauffeur-Service für Führungskräfte","detail":"Mobilität, Status","reason":"Sichtbarer Status und Komfort","profile":[0.95,0.25,0.35,0.85,0.3,0.25,0.35,0.2,0.2]},{"name":"Jahresbonus mit Luxusreise","detail":"Vergütung, Erlebnis","reason":"Belohnung als Erlebnis","profile":[0.95,0.25,0.2,0.9,0.3,0.25,0.45,0.2,0.2]},{"name":"Mitgliedschaft im Private Members Club","detail":"Netzwerk, Exklusivität","reason":"Exklusiver Zugang und Netzwerk","profile":[0.95,0.4,0.2,0.85,0.3,0.25,0.4,0.2,0.2]},{"name":"Premium-Krankenversicherung mit Chefarzt","detail":"Gesundheit, Privileg","reason":"Privilegierter Zugang, Sicherheit auf hohem Niveau","profile":[0.95,0.25,0.2,0.85,0.45,0.25,0.35,0.3,0.2]},{"name":"Firmenloge im Stadion","detail":"Erlebnis, Repräsentation","reason":"Prestige-Erlebnis für Gäste und Team","profile":[0.95,0.25,0.2,0.85,0.3,0.25,0.55,0.2,0.2]}]}]};
+var THEMENWELTEN_DATA = {"product":{"name":"Magnum Gold Billionaire Caramel","brand":"Magnum (Unilever)","kind":"Premium-Eis","summary":"Premium-Genuss als goldene Belohnung: Status, Glamour und Inszenierung für den besonderen Moment.","tags":["Premium","Genuss","Belohnung","Status"],"note":"Nachhaltigkeit und Verantwortung (Anschluss, rational) sind für dieses Produkt kein Treiber.","profile":[0.95,0.25,0.2,0.85,0.3,0.25,0.35,0.1,0.15]},"worlds":[{"id":"in-category","name":"In-Category Produkte","noun":"Produkt","description":"Produkte der eigenen Kategorie: weitere Desserts und Eismarken, vom Luxus-Genuss bis zum Alltagsprodukt.","items":[{"name":"Häagen-Dazs Dulce de Leche","detail":"Premium-Eis, General Mills","reason":"Karamell-Genuss als Belohnung, Premium-Inszenierung","profile":[0.9,0.3,0.2,0.85,0.3,0.2,0.35,0.1,0.15]},{"name":"Godiva Pralinen","detail":"Luxus-Schokolade, Belgien","reason":"Luxus-Schokolade als Statusgeschenk, Glamour und Genuss","profile":[0.95,0.3,0.2,0.75,0.25,0.2,0.4,0.1,0.15]},{"name":"Venchi Gelato","detail":"Gelato, Venchi (Italien)","reason":"Italienisches Luxus-Gelato, Genuss und Prestige","profile":[0.85,0.3,0.2,0.75,0.3,0.2,0.45,0.15,0.15]},{"name":"Lindt Lindor","detail":"Pralinen, Lindt & Sprüngli","reason":"Goldene Verpackung, zartschmelzende Belohnung","profile":[0.85,0.3,0.3,0.8,0.3,0.3,0.45,0.1,0.2]},{"name":"Pierre Marcolini","detail":"Haute Chocolaterie, Brüssel","reason":"Haute Chocolaterie, Exklusivität und Prestige","profile":[0.95,0.35,0.15,0.7,0.3,0.15,0.3,0.1,0.1]},{"name":"Mövenpick Caramelita","detail":"Premium-Eis, Froneri","reason":"Schweizer Premium-Eis, Karamell-Genuss mit Stil","profile":[0.8,0.35,0.25,0.8,0.35,0.25,0.4,0.15,0.2]},{"name":"Sprüngli Luxemburgerli","detail":"Macarons, Confiserie Sprüngli","reason":"Confiserie-Luxus aus Zürich, exklusive Belohnung","profile":[0.85,0.3,0.3,0.7,0.3,0.3,0.5,0.15,0.25]},{"name":"Ferrero Rocher","detail":"Pralinen, Ferrero","reason":"Goldene Inszenierung, festlicher Genuss","profile":[0.85,0.25,0.35,0.65,0.25,0.35,0.55,0.1,0.3]},{"name":"Cremissimo Salted Caramel","detail":"Haushaltseis, Langnese","reason":"Genuss für die ganze Familie, mehr Alltag als Glamour","profile":[0.45,0.3,0.45,0.5,0.35,0.5,0.8,0.2,0.55]},{"name":"Milka Alpenmilch","detail":"Schokolade, Mondelez","reason":"Zarte Alltags-Schokolade, Vertrautheit statt Luxus","profile":[0.3,0.2,0.5,0.4,0.25,0.5,0.8,0.2,0.65]},{"name":"Nutella","detail":"Brotaufstrich, Ferrero","reason":"Frühstücksritual der Familie, Gewohnheit und Nähe","profile":[0.25,0.15,0.5,0.35,0.2,0.55,0.75,0.2,0.85]},{"name":"Ben & Jerry's Cookie Dough","detail":"Eis, Vermont (USA)","reason":"Werte, Haltung und Gemeinschaft statt Status","profile":[0.2,0.15,0.2,0.4,0.3,0.25,0.85,0.75,0.35]},{"name":"Oatly Hafer-Eis","detail":"Pflanzliches Eis, Oatly","reason":"Bewusster Konsum, Verantwortung und Vernunft","profile":[0.15,0.2,0.15,0.3,0.55,0.25,0.5,0.9,0.3]},{"name":"Fruchtzwerge","detail":"Kinder-Quark, Danone","reason":"Familienalltag und Fürsorge für Kinder","profile":[0.1,0.1,0.3,0.2,0.35,0.4,0.75,0.6,0.85]},{"name":"Landliebe Naturjoghurt","detail":"Naturjoghurt, Molkereiprodukt","reason":"Natürlichkeit, Routine und Vertrautheit im Alltag","profile":[0.1,0.15,0.3,0.15,0.4,0.45,0.6,0.7,0.9]},{"name":"Alpro Sojajoghurt","detail":"Pflanzlicher Joghurt, Danone","reason":"Vernunft, Verantwortung und tägliche Routine","profile":[0.05,0.15,0.2,0.15,0.55,0.4,0.45,0.9,0.8]},{"name":"Läderach Frischschoggi","detail":"Confiserie, Schweiz","reason":"Frische Schokolade als Luxusgeschenk","profile":[0.95,0.3,0.2,0.85,0.3,0.25,0.5,0.2,0.2]},{"name":"Häagen-Dazs Macadamia Nut Brittle","detail":"Premium-Eis, General Mills","reason":"Premium-Eis, Belohnung mit Biss","profile":[0.95,0.25,0.2,0.9,0.3,0.35,0.35,0.2,0.2]},{"name":"Amorino Gelato","detail":"Gelateria, Paris","reason":"Gelato als Blume: Inszenierung des Genusses","profile":[0.95,0.25,0.3,0.85,0.3,0.25,0.45,0.2,0.2]},{"name":"Neuhaus Pralinen","detail":"Belgische Pralinen","reason":"Belgische Pralinenkunst, Status als Geschenk","profile":[0.95,0.4,0.2,0.85,0.3,0.25,0.35,0.25,0.2]},{"name":"Ladurée Macarons","detail":"Pâtisserie, Paris","reason":"Pastellfarbener Luxus, Pariser Glamour","profile":[0.95,0.25,0.2,0.85,0.3,0.25,0.55,0.2,0.2]}],"group":"in-category"},{"id":"websites","name":"Websites","noun":"Website","description":"Redaktionelle Websites und Artikelseiten aus Luxus, Lifestyle, Mobilität und Ratgeber.","items":[{"name":"Die zehn teuersten Desserts der Welt und wo es sie gibt","detail":"Food, Lifestyle-Magazin","reason":"Premium-Genuss als Statussymbol","profile":[0.9,0.3,0.2,0.85,0.3,0.2,0.35,0.1,0.15]},{"name":"Der neue Mercedes SL: Premiere unter Palmen in Monaco","detail":"Auto, Lifestyle-Magazin","reason":"Glamouröse Premiere, Status und Erlebnis","profile":[0.95,0.3,0.15,0.8,0.3,0.15,0.3,0.1,0.1]},{"name":"Topmodel in Gold: Der Auftritt des Abends auf dem roten Teppich","detail":"Society, Promi-Portal","reason":"Glamour, Inszenierung und Bewunderung","profile":[0.95,0.2,0.15,0.75,0.2,0.15,0.4,0.1,0.1]},{"name":"Suite mit Butler: Die neuen Luxushotels der Amalfiküste","detail":"Reise, Travel-Magazin","reason":"Luxus-Erlebnis, Verwöhnung und Prestige","profile":[0.9,0.3,0.2,0.7,0.3,0.2,0.45,0.1,0.15]},{"name":"Rolex Daytona: Warum die Warteliste zum Statussymbol wird","detail":"Uhren, Luxus-Magazin","reason":"Luxusuhr als Zeichen von Erfolg und Überlegenheit","profile":[0.9,0.4,0.2,0.8,0.35,0.2,0.3,0.1,0.15]},{"name":"Privatjet statt Business Class: So reist die neue Elite","detail":"Reise, Wirtschaftsmagazin","reason":"Exklusivität, Überlegenheit und Distinktion","profile":[0.95,0.35,0.15,0.75,0.3,0.15,0.25,0.1,0.1]},{"name":"Salted Caramel: Der Dessert-Trend aus der Sterneküche","detail":"Food, Genuss-Magazin","reason":"Genuss auf Spitzenniveau, Belohnung und Exzellenz","profile":[0.8,0.3,0.25,0.8,0.35,0.25,0.45,0.1,0.2]},{"name":"Champagner-Ranking: Diese Cuvées trinkt man 2026","detail":"Genuss, Lifestyle-Magazin","reason":"Genuss, Stil und Status beim Feiern","profile":[0.85,0.35,0.25,0.7,0.3,0.25,0.45,0.1,0.2]},{"name":"Porsche 911 im Test: Die Ikone bleibt das Maß der Dinge","detail":"Auto, Fachmagazin","reason":"Leistung und Prestige, sachlich geprüft","profile":[0.7,0.55,0.2,0.8,0.55,0.2,0.25,0.1,0.15]},{"name":"Karrieresprung mit 35: So verhandelt man den Chefposten","detail":"Karriere, Wirtschaftsmagazin","reason":"Aufstieg und Erfolg, eher rational als glamourös","profile":[0.5,0.6,0.2,0.7,0.8,0.25,0.25,0.15,0.15]},{"name":"Fitness-Tracker im Vergleich: Welcher misst am genauesten?","detail":"Technik, Verbraucherportal","reason":"Selbstoptimierung mit Fakten, ohne Glamour","profile":[0.2,0.3,0.2,0.55,0.85,0.35,0.25,0.2,0.25]},{"name":"Wochenplan für Familien: So gelingt der Alltag mit drei Kindern","detail":"Familie, Ratgeber-Portal","reason":"Familienalltag, Fürsorge und Routine","profile":[0.1,0.1,0.25,0.2,0.4,0.5,0.75,0.6,0.85]},{"name":"Ehrenamt im Verein: Warum sich Engagement lohnt","detail":"Gesellschaft, Regionalzeitung","reason":"Gemeinschaft und Verantwortung statt Status","profile":[0.1,0.1,0.15,0.2,0.3,0.3,0.85,0.8,0.6]},{"name":"Stromkosten senken: Zehn Tipps für den Haushalt","detail":"Finanzen, Verbraucherportal","reason":"Sparen und Vernunft statt Luxus","profile":[0.05,0.2,0.2,0.15,0.7,0.4,0.3,0.85,0.6]},{"name":"Haushaltsbuch führen: So behalten Sie Ihre Ausgaben im Griff","detail":"Finanzen, Ratgeber-Portal","reason":"Sparsamkeit, Kontrolle und Alltagsroutine","profile":[0.05,0.15,0.2,0.15,0.7,0.5,0.3,0.8,0.75]},{"name":"Richtig recyceln: Was gehört in den Gelben Sack?","detail":"Umwelt, Ratgeber-Portal","reason":"Verantwortung und Vernunft, kein Statusbezug","profile":[0.05,0.1,0.15,0.1,0.5,0.4,0.45,0.95,0.65]},{"name":"Gold auf dem Teller: Blattgold-Desserts in der Sterneküche","detail":"Food, Genuss-Magazin","reason":"Inszenierter Genuss als Statussymbol","profile":[0.95,0.25,0.3,0.85,0.35,0.25,0.35,0.2,0.2]},{"name":"Cannes 2026: Die spektakulärsten Roben der Filmfestspiele","detail":"Society, Promi-Portal","reason":"Glamour und Bewunderung auf dem roten Teppich","profile":[0.95,0.25,0.2,0.85,0.3,0.25,0.5,0.2,0.2]},{"name":"Die neue Riva-Yacht: Dolce Vita auf dem Wasser","detail":"Luxus, Lifestyle-Magazin","reason":"Luxus-Erlebnis und Exklusivität","profile":[0.95,0.35,0.2,0.85,0.3,0.25,0.4,0.2,0.2]},{"name":"Omakase in Tokio: Das teuerste Sushi-Menü der Welt","detail":"Reise, Genuss-Magazin","reason":"Exklusiver Genuss, Zugang für wenige","profile":[0.95,0.25,0.2,0.85,0.45,0.25,0.35,0.2,0.2]},{"name":"Hermès Birkin: Warum die Tasche zur Wertanlage wurde","detail":"Mode, Luxus-Magazin","reason":"Status, Begehrlichkeit und Distinktion","profile":[0.95,0.45,0.2,0.85,0.3,0.25,0.35,0.2,0.2]}],"group":"paid"},{"id":"streaming","name":"Streaming / CTV","noun":"Show","description":"Shows und Serien auf Streaming-Diensten und Connected TV, von Glamour- und Wettbewerbsformaten bis zu vertrauten Alltagsformaten.","items":[{"name":"Germany's Next Topmodel","detail":"Castingshow, ProSieben","reason":"Glamour, Wettbewerb und Inszenierung","profile":[0.95,0.2,0.2,0.8,0.25,0.2,0.4,0.1,0.15]},{"name":"Selling Sunset","detail":"Reality-Serie, Netflix","reason":"Luxusimmobilien, Status und Glamour","profile":[0.95,0.3,0.15,0.75,0.3,0.15,0.35,0.1,0.1]},{"name":"Formula 1: Drive to Survive","detail":"Doku-Serie, Netflix","reason":"Siegeswille, Luxus und Tempo","profile":[0.85,0.3,0.2,0.9,0.4,0.2,0.35,0.1,0.15]},{"name":"Emily in Paris","detail":"Dramedy-Serie, Netflix","reason":"Luxusmode, Lifestyle und Erlebnis","profile":[0.85,0.2,0.2,0.7,0.2,0.2,0.55,0.1,0.15]},{"name":"The Crown","detail":"Historiendrama, Netflix","reason":"Monarchie, Prestige und Inszenierung","profile":[0.9,0.4,0.3,0.6,0.35,0.3,0.4,0.15,0.2]},{"name":"Kitchen Impossible","detail":"Kochshow, VOX","reason":"Exzellenz, Wettbewerb und Spitzenküche","profile":[0.7,0.35,0.2,0.95,0.45,0.2,0.4,0.1,0.15]},{"name":"Succession","detail":"Drama-Serie, HBO","reason":"Macht, Dynastie und Dominanz","profile":[0.95,0.5,0.2,0.7,0.4,0.2,0.25,0.1,0.1]},{"name":"Die Höhle der Löwen","detail":"Gründershow, VOX","reason":"Erfolg, Investment und Siegermentalität","profile":[0.75,0.5,0.2,0.9,0.55,0.2,0.3,0.15,0.15]},{"name":"The Taste","detail":"Kochshow, Sat.1","reason":"Leistung und Genuss im Wettbewerb","profile":[0.55,0.3,0.3,0.8,0.4,0.3,0.5,0.15,0.25]},{"name":"Wer wird Millionär?","detail":"Quizshow, RTL","reason":"Belohnung und Wissen, vertrautes Ritual","profile":[0.5,0.3,0.45,0.8,0.5,0.5,0.5,0.2,0.55]},{"name":"Bares für Rares","detail":"Trödelshow, ZDF","reason":"Vertrautes Nachmittagsformat, Routine","profile":[0.2,0.3,0.45,0.35,0.45,0.55,0.55,0.3,0.9]},{"name":"Tatort","detail":"Krimireihe, Das Erste","reason":"Sonntagsritual, Gewohnheit und Gemeinschaft","profile":[0.25,0.25,0.5,0.3,0.4,0.55,0.65,0.3,0.9]},{"name":"Die Schnäppchenhäuser","detail":"Heimwerker-Doku, RTLZWEI","reason":"Heimwerken mit kleinem Budget, Familie und Sparsamkeit","profile":[0.1,0.15,0.3,0.3,0.6,0.55,0.7,0.6,0.8]},{"name":"Der Bergdoktor","detail":"Arztserie, ZDF","reason":"Heimat, Fürsorge und Gemeinschaft","profile":[0.1,0.1,0.3,0.15,0.25,0.45,0.9,0.5,0.85]},{"name":"Die Sendung mit der Maus","detail":"Kindersendung, WDR","reason":"Fürsorge, Lernen und Familienritual","profile":[0.05,0.05,0.25,0.2,0.45,0.4,0.85,0.75,0.85]},{"name":"Tagesschau","detail":"Nachrichten, Das Erste","reason":"Fakten, Routine und verlässliche Information","profile":[0.1,0.25,0.3,0.15,0.7,0.5,0.3,0.8,0.9]},{"name":"The White Lotus","detail":"Serie, HBO","reason":"Luxusresort, Status und Abgründe","profile":[0.95,0.35,0.2,0.85,0.3,0.25,0.4,0.2,0.2]},{"name":"Below Deck","detail":"Reality-Serie, Bravo","reason":"Superyachten, Luxus und Drama","profile":[0.95,0.25,0.2,0.85,0.3,0.25,0.5,0.2,0.2]},{"name":"The Real Housewives of Beverly Hills","detail":"Reality-Serie, Bravo","reason":"Glamour, Status und Inszenierung","profile":[0.95,0.25,0.3,0.85,0.3,0.25,0.45,0.2,0.2]},{"name":"Das Traumschiff","detail":"Reihe, ZDF","reason":"Luxusreise als Sehnsuchtsort","profile":[0.95,0.25,0.4,0.85,0.3,0.25,0.35,0.2,0.3]},{"name":"Top Gear","detail":"Auto-Show, BBC","reason":"Supersportwagen, Tempo und Spaß","profile":[0.95,0.25,0.2,0.85,0.45,0.3,0.35,0.2,0.2]}],"group":"paid"},{"id":"influencer","name":"Influencer","noun":"Influencer","description":"Bekannte Persönlichkeiten in sozialen Medien, von Luxus- und Mode-Inszenierung bis zu Familienalltag, Wissen und Verantwortung.","items":[{"name":"Chiara Ferragni","detail":"Mode-Unternehmerin, Italien","reason":"Luxusmode und Glamour als Lebensstil","profile":[0.95,0.3,0.2,0.85,0.3,0.25,0.4,0.1,0.15]},{"name":"Leonie Hanne","detail":"Fashion-Influencerin, Hamburg","reason":"Haute Couture, Front Row und Luxusreisen","profile":[0.93,0.25,0.2,0.8,0.3,0.25,0.4,0.1,0.2]},{"name":"Kim Kardashian","detail":"Unternehmerin, Los Angeles","reason":"Status, Beauty-Imperium und Inszenierung","profile":[0.97,0.35,0.25,0.85,0.35,0.25,0.35,0.1,0.15]},{"name":"Nusret Gökçe (Salt Bae)","detail":"Gastronom, Istanbul","reason":"Inszenierter Luxus-Genuss, goldene Steaks","profile":[0.95,0.25,0.2,0.8,0.25,0.3,0.4,0.1,0.2]},{"name":"Kylie Jenner","detail":"Beauty-Unternehmerin, USA","reason":"Luxus, Beauty und Begehrlichkeit","profile":[0.95,0.3,0.2,0.8,0.3,0.25,0.4,0.1,0.15]},{"name":"Cristiano Ronaldo","detail":"Fußballer, Portugal","reason":"Erfolg, Luxus und Siegermentalität","profile":[0.9,0.3,0.2,0.95,0.4,0.3,0.35,0.1,0.15]},{"name":"Caro Daur","detail":"Fashion-Influencerin, Hamburg","reason":"Designer-Mode, Reisen und Lifestyle","profile":[0.88,0.25,0.2,0.8,0.3,0.25,0.45,0.1,0.2]},{"name":"Riccardo Simonetti","detail":"Entertainer, Berlin","reason":"Glamour, Mode und große Auftritte","profile":[0.9,0.25,0.2,0.75,0.25,0.25,0.5,0.15,0.2]},{"name":"Stefanie Giesinger","detail":"Model, Deutschland","reason":"Mode, Beauty und Laufsteg","profile":[0.95,0.25,0.2,0.85,0.3,0.25,0.45,0.2,0.2]},{"name":"Xenia Adonts","detail":"Fashion-Influencerin, Berlin","reason":"Luxusmode zwischen Paris und Mailand","profile":[0.95,0.35,0.2,0.85,0.3,0.25,0.4,0.2,0.2]},{"name":"Farina Opoku (Novalanalove)","detail":"Beauty und Fashion, Düsseldorf","reason":"Beauty, Mode und Luxusreisen","profile":[0.95,0.25,0.2,0.85,0.3,0.25,0.5,0.2,0.2]},{"name":"Pamela Reif","detail":"Fitness, Karlsruhe","reason":"Leistung, Körper und Ästhetik","profile":[0.95,0.25,0.2,0.85,0.5,0.35,0.35,0.2,0.2]},{"name":"Lisa und Lena","detail":"Zwillinge, Stuttgart","reason":"Mode und Pop für ein junges Publikum","profile":[0.95,0.25,0.25,0.85,0.3,0.25,0.55,0.2,0.2]},{"name":"MrBeast","detail":"YouTuber, USA","reason":"Große Challenges, Erfolg und Spektakel","profile":[0.6,0.3,0.3,0.9,0.5,0.4,0.6,0.3,0.3]},{"name":"Fynn Kliemann","detail":"DIY und Musik, Niedersachsen","reason":"Selbermachen, Gemeinschaft und Projekte","profile":[0.3,0.3,0.3,0.6,0.5,0.5,0.8,0.4,0.5]},{"name":"Sally (Sallys Welt)","detail":"Backen, Baden-Württemberg","reason":"Backen für die Familie, Nähe und Routine","profile":[0.2,0.2,0.4,0.4,0.4,0.6,0.85,0.4,0.7]},{"name":"Sarah Harrison","detail":"Familien-Influencerin, Dubai","reason":"Familienalltag, Nähe und Routine","profile":[0.3,0.2,0.3,0.4,0.3,0.5,0.9,0.4,0.7]},{"name":"Mai Thi Nguyen-Kim","detail":"Wissenschaftsjournalistin","reason":"Fakten und Aufklärung, rational","profile":[0.1,0.3,0.2,0.3,0.85,0.4,0.3,0.7,0.4]},{"name":"Rezo","detail":"YouTuber, Aachen","reason":"Politik und Argumente, rational","profile":[0.3,0.4,0.2,0.5,0.8,0.3,0.4,0.6,0.3]},{"name":"Louisa Dellert","detail":"Nachhaltigkeit, Berlin","reason":"Verantwortung und bewusster Konsum","profile":[0.1,0.2,0.2,0.3,0.5,0.4,0.6,0.9,0.5]},{"name":"Checker Tobi","detail":"Wissen für Kinder, München","reason":"Erklären für Kinder, Fürsorge und Lernen","profile":[0.1,0.2,0.3,0.3,0.5,0.5,0.8,0.6,0.7]}],"group":"paid"},{"id":"auto","name":"Markenkooperation Automobil","noun":"Modell","description":"Off-Category Produkte Auto: Automodelle als Kooperationspartner, vom Luxus-Roadster bis zum vernünftigen Familienfahrzeug.","items":[{"name":"Maserati GranTurismo","detail":"Grand Tourer, Maserati","reason":"Italienische Eleganz, Emotion und Prestige","profile":[0.9,0.3,0.2,0.8,0.3,0.2,0.35,0.1,0.15]},{"name":"Mercedes-AMG SL 63","detail":"Roadster, Mercedes-AMG","reason":"Luxus-Roadster, Glamour und Prestige","profile":[0.95,0.35,0.2,0.85,0.35,0.2,0.3,0.1,0.15]},{"name":"Aston Martin DB12","detail":"Grand Tourer, Aston Martin","reason":"Glamour, Exklusivität und Fahrerlebnis","profile":[0.95,0.3,0.15,0.8,0.3,0.15,0.3,0.1,0.1]},{"name":"Porsche 911 Carrera","detail":"Sportwagen, Porsche","reason":"Sportliche Exzellenz, Ikone und Status","profile":[0.9,0.4,0.25,0.9,0.4,0.25,0.3,0.1,0.15]},{"name":"Bentley Continental GT","detail":"Grand Tourer, Bentley","reason":"Handwerkskunst, Luxus und Überlegenheit","profile":[0.95,0.4,0.2,0.7,0.3,0.2,0.3,0.1,0.15]},{"name":"Range Rover Autobiography","detail":"Luxus-SUV, Land Rover","reason":"Souveränität, Komfort und Statusanspruch","profile":[0.9,0.45,0.25,0.7,0.4,0.25,0.4,0.15,0.2]},{"name":"Mercedes-Maybach S 680","detail":"Luxuslimousine, Mercedes-Benz","reason":"Repräsentation, Luxus und Dominanz","profile":[0.95,0.5,0.25,0.6,0.35,0.25,0.35,0.1,0.15]},{"name":"Audi RS e-tron GT","detail":"Elektro-Sportwagen, Audi","reason":"Leistung und Technik mit Prestige","profile":[0.8,0.5,0.2,0.85,0.55,0.2,0.3,0.15,0.15]},{"name":"BMW X5","detail":"SUV, BMW","reason":"Status und Alltagstauglichkeit zugleich","profile":[0.8,0.5,0.35,0.6,0.55,0.35,0.45,0.2,0.3]},{"name":"Tesla Model 3","detail":"Elektro-Limousine, Tesla","reason":"Technik und Effizienz, rationale Leistung","profile":[0.4,0.5,0.2,0.55,0.85,0.25,0.3,0.4,0.2]},{"name":"VW Golf","detail":"Kompaktwagen, Volkswagen","reason":"Vertrauter Klassiker, Vernunft und Gewohnheit","profile":[0.3,0.35,0.55,0.35,0.55,0.6,0.45,0.35,0.8]},{"name":"Skoda Octavia Combi","detail":"Kombi, Skoda","reason":"Platz, Nutzen und Vernunft für die Familie","profile":[0.15,0.3,0.3,0.25,0.8,0.45,0.5,0.45,0.7]},{"name":"VW Caddy","detail":"Hochdachkombi, Volkswagen","reason":"Familienalltag, Routine und Zweckmäßigkeit","profile":[0.1,0.15,0.3,0.2,0.6,0.55,0.65,0.5,0.85]},{"name":"Toyota Prius","detail":"Hybrid-Limousine, Toyota","reason":"Effizienz und Verantwortung statt Prestige","profile":[0.1,0.25,0.2,0.25,0.8,0.35,0.35,0.85,0.4]},{"name":"Ford Transit Custom","detail":"Transporter, Ford","reason":"Arbeitsgerät für den Betrieb, Nutzen und Routine","profile":[0.1,0.2,0.3,0.2,0.75,0.8,0.35,0.4,0.75]},{"name":"Dacia Sandero","detail":"Kleinwagen, Dacia","reason":"Preisbewusste Vernunft, Alltag ohne Statusanspruch","profile":[0.05,0.15,0.25,0.15,0.85,0.5,0.4,0.55,0.75]},{"name":"Ferrari Roma","detail":"Grand Tourer, Ferrari","reason":"Italienische Eleganz, Dolce Vita und Prestige","profile":[0.95,0.25,0.25,0.85,0.3,0.25,0.45,0.2,0.2]},{"name":"Lamborghini Urus","detail":"Super-SUV, Lamborghini","reason":"Dominanz und großer Auftritt","profile":[0.95,0.4,0.2,0.85,0.35,0.25,0.35,0.2,0.2]},{"name":"Rolls-Royce Ghost","detail":"Luxuslimousine, Rolls-Royce","reason":"Höchster Luxus, Souveränität","profile":[0.95,0.35,0.35,0.85,0.3,0.25,0.35,0.2,0.2]},{"name":"Porsche Taycan Turbo S","detail":"Elektro-Sportwagen, Porsche","reason":"Leistung und Prestige, elektrisch","profile":[0.95,0.25,0.2,0.85,0.5,0.25,0.35,0.2,0.2]},{"name":"BMW M8 Competition","detail":"Coupé, BMW M","reason":"Sportliche Dominanz und Status","profile":[0.95,0.3,0.2,0.85,0.3,0.4,0.35,0.2,0.2]}],"group":"paid"},{"id":"fashion","name":"Markenkooperation Fashion","noun":"Marke","description":"Off-Category Produkte Fashion: Bekleidungsmarken als Kooperationspartner, von Luxusmode bis Basics und Arbeitskleidung.","items":[{"name":"Moncler","detail":"Luxus-Daunenjacken, Italien","reason":"Winterluxus, Exklusivität und Sichtbarkeit","profile":[0.9,0.3,0.2,0.75,0.35,0.2,0.35,0.1,0.15]},{"name":"Louis Vuitton","detail":"Luxusmode, LVMH (Frankreich)","reason":"Ikonisches Monogramm, Luxus und Prestige","profile":[0.95,0.35,0.2,0.75,0.3,0.2,0.35,0.1,0.15]},{"name":"Gucci","detail":"Luxusmode, Kering (Italien)","reason":"Glamour, Extravaganz und Statussymbolik","profile":[0.95,0.25,0.15,0.75,0.25,0.15,0.4,0.1,0.1]},{"name":"Prada","detail":"Luxusmode, Mailand","reason":"Intellektueller Luxus, Status und Exklusivität","profile":[0.9,0.4,0.2,0.7,0.35,0.2,0.3,0.1,0.15]},{"name":"Balenciaga","detail":"Luxusmode, Kering (Paris)","reason":"Avantgarde-Luxus, Dominanz und Inszenierung","profile":[0.95,0.25,0.1,0.7,0.2,0.1,0.35,0.1,0.1]},{"name":"Ralph Lauren","detail":"Premium-Mode, USA","reason":"Lebensstil der Oberschicht, Eleganz und Erfolg","profile":[0.85,0.35,0.3,0.75,0.35,0.3,0.45,0.1,0.25]},{"name":"Hugo Boss","detail":"Premium-Mode, Metzingen","reason":"Erfolg, Business-Eleganz und Leistung","profile":[0.8,0.4,0.25,0.85,0.45,0.25,0.3,0.1,0.2]},{"name":"Burberry","detail":"Luxusmode, Großbritannien","reason":"Britischer Luxus, Tradition und Status","profile":[0.85,0.4,0.3,0.65,0.35,0.3,0.4,0.15,0.25]},{"name":"Tommy Hilfiger","detail":"Premium-Casual, PVH","reason":"Premium-Casual mit Statusanspruch, breiter Alltag","profile":[0.8,0.3,0.35,0.6,0.3,0.35,0.55,0.15,0.35]},{"name":"Nike","detail":"Sportbekleidung, USA","reason":"Leistung, Siegeswille und Selbstoptimierung","profile":[0.5,0.3,0.25,0.95,0.5,0.3,0.45,0.15,0.25]},{"name":"Levi's","detail":"Denim, USA","reason":"Vertrauter Klassiker, Gewohnheit und Authentizität","profile":[0.35,0.25,0.55,0.4,0.3,0.55,0.6,0.2,0.8]},{"name":"Jack Wolfskin","detail":"Outdoor-Bekleidung, Idstein","reason":"Funktion, Natur und Familienausflug","profile":[0.15,0.25,0.3,0.3,0.7,0.45,0.6,0.5,0.8]},{"name":"Engelbert Strauss","detail":"Arbeitskleidung, Biebergemünd","reason":"Arbeitsalltag, Funktion und Zusammenhalt im Betrieb","profile":[0.15,0.2,0.3,0.3,0.7,0.75,0.6,0.4,0.85]},{"name":"Patagonia","detail":"Outdoor-Bekleidung, USA","reason":"Verantwortung und Gemeinschaft statt Status","profile":[0.15,0.15,0.15,0.3,0.45,0.25,0.75,0.95,0.35]},{"name":"Armedangels","detail":"Fair Fashion, Köln","reason":"Fairness und Verantwortung als Kaufmotiv","profile":[0.15,0.15,0.15,0.25,0.4,0.2,0.6,0.95,0.35]},{"name":"C&A","detail":"Modekette, Familienmode","reason":"Preisbewusste Familienmode, Alltag und Routine","profile":[0.1,0.15,0.3,0.15,0.55,0.5,0.6,0.45,0.9]},{"name":"Dior","detail":"Haute Couture, Paris","reason":"Haute Couture, Glamour und Eleganz","profile":[0.95,0.25,0.2,0.85,0.3,0.25,0.5,0.2,0.2]},{"name":"Chanel","detail":"Luxusmode, Paris","reason":"Zeitloser Luxus, Status und Begehrlichkeit","profile":[0.95,0.25,0.35,0.85,0.3,0.25,0.35,0.2,0.2]},{"name":"Hermès","detail":"Luxusmode, Paris","reason":"Handwerk, Exklusivität und Prestige","profile":[0.95,0.4,0.2,0.85,0.35,0.25,0.35,0.2,0.2]},{"name":"Versace","detail":"Luxusmode, Mailand","reason":"Glamour, Gold und Inszenierung","profile":[0.95,0.25,0.2,0.9,0.3,0.25,0.45,0.2,0.2]},{"name":"Brunello Cucinelli","detail":"Luxusmode, Solomeo","reason":"Leiser Luxus, Erfolg ohne Lautstärke","profile":[0.95,0.25,0.2,0.85,0.45,0.25,0.35,0.3,0.2]}],"group":"paid"},{"id":"sport","name":"Markenkooperation Sport","noun":"Sportart","description":"Sportarten und Sportereignisse als Kooperationspartner, vom exklusiven Polo bis zum Vereinssport.","items":[{"name":"Polo","detail":"Pferdesport, Clubs","reason":"Exklusivität, Eleganz und Status auf dem Rasen","profile":[0.95,0.3,0.2,0.75,0.25,0.2,0.4,0.1,0.15]},{"name":"Formel 1","detail":"Motorsport, Grand Prix","reason":"Glamour, Tempo und Siegeswille","profile":[0.9,0.3,0.2,0.9,0.35,0.2,0.35,0.1,0.15]},{"name":"Segelregatta","detail":"Segeln, America's Cup","reason":"Yachten, Hochsee und Exklusivität","profile":[0.9,0.3,0.2,0.8,0.35,0.2,0.35,0.1,0.15]},{"name":"Pferderennen in Ascot","detail":"Galopprennen, Royal Ascot","reason":"Glamour, Hüte und Gesellschaft","profile":[0.92,0.25,0.25,0.65,0.2,0.2,0.45,0.1,0.2]},{"name":"Golf","detail":"Rasensport, Clubs","reason":"Prestige, Etikette und exklusive Clubs","profile":[0.85,0.35,0.3,0.8,0.4,0.3,0.4,0.15,0.2]},{"name":"Skifahren in St. Moritz","detail":"Wintersport, Engadin","reason":"Winterglamour, Genuss und Sehen und Gesehenwerden","profile":[0.88,0.25,0.2,0.7,0.25,0.2,0.45,0.1,0.15]},{"name":"Tennis in Wimbledon","detail":"Grand Slam, Rasen","reason":"Tradition, Eleganz und Leistung auf höchstem Niveau","profile":[0.8,0.3,0.25,0.9,0.4,0.25,0.4,0.15,0.2]},{"name":"Dressurreiten","detail":"Reitsport, Grand Prix","reason":"Perfektion, Eleganz und Exklusivität","profile":[0.8,0.3,0.25,0.85,0.4,0.3,0.35,0.15,0.2]},{"name":"New-York-Marathon","detail":"Laufen, 42,195 km","reason":"Leistung, Selbstüberwindung und Stolz","profile":[0.5,0.3,0.25,0.9,0.55,0.4,0.4,0.2,0.3]},{"name":"CrossFit","detail":"Functional Fitness","reason":"Selbstoptimierung, Wettbewerb und Gemeinschaft","profile":[0.45,0.3,0.3,0.85,0.6,0.5,0.55,0.25,0.35]},{"name":"Yoga","detail":"Körper und Geist","reason":"Achtsamkeit, Balance und Routine","profile":[0.2,0.25,0.3,0.4,0.55,0.6,0.6,0.5,0.6]},{"name":"Fußball im Verein","detail":"Breitensport, Amateurliga","reason":"Zusammenhalt, Gemeinschaft und wöchentliches Ritual","profile":[0.3,0.2,0.3,0.5,0.3,0.5,0.9,0.4,0.7]},{"name":"Schwimmen im Hallenbad","detail":"Breitensport, Gesundheit","reason":"Gesundheit, Routine und Vernunft","profile":[0.15,0.2,0.3,0.4,0.6,0.7,0.4,0.5,0.7]},{"name":"Wandern","detail":"Natur, Familie","reason":"Natur, Familie und Gemeinschaft","profile":[0.15,0.15,0.3,0.3,0.4,0.5,0.85,0.5,0.6]},{"name":"Radfahren zur Arbeit","detail":"Alltagsmobilität","reason":"Alltagsnutzen, Gesundheit und Verantwortung","profile":[0.1,0.2,0.3,0.3,0.6,0.7,0.4,0.7,0.7]},{"name":"Boule im Park","detail":"Freizeit, Park","reason":"Gemeinschaft, Gewohnheit und Gelassenheit","profile":[0.1,0.1,0.3,0.2,0.2,0.5,0.8,0.4,0.9]},{"name":"Masters in Augusta","detail":"Golf, Major","reason":"Golfs exklusivste Bühne, Prestige","profile":[0.95,0.25,0.25,0.85,0.45,0.25,0.35,0.2,0.2]},{"name":"Heli-Skiing in Kanada","detail":"Wintersport, Abenteuer","reason":"Exklusives Abenteuer, Status durch Zugang","profile":[0.95,0.25,0.2,0.9,0.3,0.25,0.45,0.2,0.2]},{"name":"CHIO Aachen","detail":"Reitsport, Weltfest","reason":"Eleganz und Prestige im Reitsport","profile":[0.95,0.35,0.2,0.85,0.3,0.35,0.35,0.2,0.2]},{"name":"Beach Polo auf Sylt","detail":"Pferdesport, Event","reason":"Glamour und Gesellschaft am Strand","profile":[0.95,0.25,0.2,0.85,0.3,0.25,0.55,0.2,0.2]},{"name":"Padel im Privatclub","detail":"Trendsport, Club","reason":"Trendsport im exklusiven Kreis","profile":[0.95,0.25,0.2,0.85,0.35,0.25,0.5,0.2,0.2]}],"group":"paid"},{"id":"brand-app","name":"Brand-App-Features","noun":"Feature","description":"Funktionen einer Marken- oder Händler-App, von exklusiven Status-Vorteilen bis zu Alltagshelfern.","items":[{"name":"Gold-Status mit exklusiven Vorteilen","detail":"Statusstufe","reason":"Sichtbarer Status, Belohnung für Treue","profile":[0.92,0.3,0.25,0.85,0.3,0.3,0.35,0.1,0.2]},{"name":"Premium-Prämien aus dem Gourmet-Regal","detail":"Prämienshop","reason":"Belohnung als Genuss, exklusive Auswahl","profile":[0.85,0.25,0.2,0.9,0.3,0.25,0.35,0.1,0.15]},{"name":"Vorab-Zugang zu limitierten Editionen","detail":"Exklusive Angebote","reason":"Zuerst haben, was andere noch nicht bekommen","profile":[0.9,0.3,0.2,0.8,0.3,0.2,0.3,0.1,0.15]},{"name":"Einladungen zu Verkostungen und Events","detail":"Mitglieder-Events","reason":"Erlebnis, Exklusivität und Zugehörigkeit zum Kreis","profile":[0.8,0.25,0.2,0.7,0.25,0.2,0.55,0.15,0.2]},{"name":"Persönliche Geburtstagsüberraschung","detail":"Geschenk","reason":"Wertschätzung als Belohnung, emotionaler Moment","profile":[0.7,0.2,0.2,0.75,0.25,0.25,0.6,0.15,0.2]},{"name":"Punkte-Boost bei Premium-Marken","detail":"Punkte sammeln","reason":"Belohnung fürs Besondere, Anreiz zum Aufstieg","profile":[0.75,0.35,0.25,0.85,0.4,0.3,0.3,0.15,0.2]},{"name":"Persönliche Empfehlungen für Genießer","detail":"Personalisierung","reason":"Genuss und Individualität, Gefühl des Erkanntwerdens","profile":[0.65,0.3,0.25,0.75,0.35,0.3,0.45,0.2,0.25]},{"name":"Sofort-Rabatt an der Kasse","detail":"Bezahlen","reason":"Komfort und Belohnung im Moment, ohne Aufwand","profile":[0.55,0.35,0.3,0.75,0.45,0.4,0.35,0.2,0.3]},{"name":"Jahresrückblick: gesammelte Punkte","detail":"Statistik","reason":"Erfolg sichtbar machen, Stolz auf das Erreichte","profile":[0.5,0.4,0.3,0.8,0.55,0.4,0.3,0.25,0.3]},{"name":"Rabatt auf Eigenmarken","detail":"Sparen","reason":"Vernünftig sparen im Alltag, wenig Glamour","profile":[0.2,0.35,0.35,0.4,0.65,0.55,0.35,0.4,0.5]},{"name":"Digitaler Kassenbon","detail":"Belege","reason":"Ordnung und Nutzen, reine Routine","profile":[0.1,0.3,0.35,0.3,0.65,0.7,0.25,0.45,0.6]},{"name":"Einkaufsliste mit Familienfreigabe","detail":"Planung","reason":"Gemeinsam planen, Alltag der Familie","profile":[0.15,0.2,0.3,0.3,0.5,0.6,0.8,0.45,0.65]},{"name":"Pfandbon in der App einlösen","detail":"Pfand","reason":"Praktische Gewohnheit ohne Statusbezug","profile":[0.1,0.2,0.35,0.25,0.5,0.75,0.3,0.45,0.7]},{"name":"Wochenplaner mit Familienrezepten","detail":"Rezepte","reason":"Fürsorge und Routine im Familienalltag","profile":[0.15,0.2,0.3,0.3,0.45,0.6,0.85,0.5,0.7]},{"name":"Punkte an soziale Projekte spenden","detail":"Spenden","reason":"Verantwortung und Gemeinschaft statt Belohnung","profile":[0.1,0.15,0.2,0.2,0.3,0.3,0.85,0.8,0.5]},{"name":"CO₂-Bilanz des Einkaufs","detail":"Nachhaltigkeit","reason":"Verantwortung und Vernunft, kein Statusbezug","profile":[0.1,0.2,0.2,0.25,0.5,0.3,0.6,0.9,0.5]},{"name":"Platin-Stufe mit Concierge-Service","detail":"Statusstufe","reason":"Höchster Status, persönliche Betreuung","profile":[0.95,0.3,0.3,0.85,0.3,0.25,0.35,0.2,0.2]},{"name":"Persönlicher Einkaufsberater per Chat","detail":"Service","reason":"Service wie im Luxushandel","profile":[0.95,0.25,0.2,0.85,0.35,0.25,0.5,0.2,0.2]},{"name":"Exklusive Vorab-Verkostung neuer Premium-Produkte","detail":"Mitglieder-Events","reason":"Zuerst probieren, Zugang für wenige","profile":[0.95,0.25,0.25,0.85,0.3,0.25,0.45,0.2,0.2]},{"name":"Prämien-Upgrade: Champagner statt Punkte","detail":"Prämienshop","reason":"Belohnung mit Glamour","profile":[0.95,0.25,0.2,0.9,0.3,0.25,0.45,0.2,0.2]},{"name":"VIP-Kasse ohne Wartezeit","detail":"Bezahlen, Privileg","reason":"Privileg, Zeit und Status","profile":[0.95,0.4,0.2,0.85,0.3,0.3,0.35,0.2,0.2]}],"group":"owned"}],"psychografie":{"name":"Psychografie","layers":[{"name":"Heatmap 1","profile":[1.0,0.8,0.3,0.6,0.3,0.45,0.35,0.0,0.0]},{"name":"Heatmap 2","profile":[1.0,0.8,1.0,0.6,0.4,0.6,0.15,0.0,0.55]},{"name":"Heatmap 3","profile":[1.0,0.8,0.5,0.8,0.4,0.4,0.15,0.0,0.6]},{"name":"Heatmap 4","profile":[0.6,0.2,0.75,1.0,0.75,0.5,0.2,0.0,0.8]},{"name":"Heatmap 5","profile":[0.45,0.1,0.4,0.2,0.0,1.0,0.45,0.0,0.4]},{"name":"Heatmap 6","profile":[0.4,0.4,0.2,0.45,0.25,0.0,1.0,0.7,0.0]},{"name":"Heatmap 7","profile":[0.8,0.75,1.0,0.35,0.2,0.6,0.0,0.05,0.25]},{"name":"Heatmap 8","profile":[0.8,0.75,1.0,0.35,0.2,0.8,0.0,0.05,0.25]},{"name":"Heatmap 9","profile":[0.45,1.0,0.25,0.25,0.6,0.0,0.25,0.35,0.0]}]},"groups":[{"id":"in-category","name":"In-Category","gapBefore":1},{"id":"paid","name":"Paid Media","gapBefore":1.5},{"id":"owned","name":"Owned Media & 1st Party","lines":["Owned Media","& 1st Party"],"gapBefore":2}]};
 /*DATA-END*/
 </script>
 <script>
@@ -303,26 +305,26 @@ var THEMENWELTEN_DATA = {"product":{"name":"Magnum Gold Billionaire Caramel","br
 
 /* ---------- Einstellungen ---------- */
 var D = window.THEMENWELTEN_DATA;
-var TL = { profile:0, flight:2.2, result:8.6, end:9.4 };   /* result und end werden aus der Zahl der Welten berechnet */
-var PIERCE_T0 = 3.0, PIERCE_STEP = 0.8;   /* Durchstoßzeit der ersten Welt und Abstand zwischen den Welten */
-var FILLER = 32;                           /* zusätzliche unbenannte Punkte je Welt im Quader */
-var N_EXTRA = 800;                         /* weitere Inhalte, die in der Nahansicht um den Quader herum erscheinen */
-var LINE_MIN_SIM = 0.85;                  /* Nahansicht: Linien vom Markenpunkt zu benannten Inhalten ab dieser Ähnlichkeit */
+var TL = { profile:0, flight:2.2, result:12, end:12.8 };   /* result und end werden aus der Strecke berechnet */
+var SPEED = 0.27;                 /* Sekunden je Raumeinheit beim Flug */
+var FILLER = 16;                  /* unbenannte Punkte je Welt im Quader */
+var N_EXTRA = 400;                /* weitere Inhalte, die in der Nahansicht um den Quader herum erscheinen */
+var LINE_MIN_SIM = 0.85;          /* Nahansicht: Linien vom Markenpunkt zu benannten Inhalten ab dieser Ähnlichkeit */
 var CAPTIONS = [
   'Die Marke bekommt ein psychologisches Profil: Welche Motive spricht sie an, mit welcher Haltung?',
-  'Ihr Bedeutungsvektor durchstößt jede Themenwelt. Wo er auftrifft, liegen die Inhalte mit demselben Profil.',
+  'Ihr Bedeutungsvektor durchsticht zuerst die Psychografie, dann jede Themenwelt. Wo er auftrifft, liegen die Inhalte mit demselben Profil.',
   'Alle Welten, ein Profil: Jede Dimension zeigt die Inhalte, die zur Bedeutung der Marke passen. Ein Klick auf eine Dimension öffnet die Welt.'
 ];
-var NUMWORD = ['null','eine','zwei','drei','vier','fünf','sechs','sieben','acht','neun','zehn','elf','zwölf'];
+var NUMWORD = ['null','eine','zwei','drei','vier','fünf','sechs','sieben','acht','neun','zehn','elf','zwölf','dreizehn','vierzehn','fünfzehn','sechzehn','siebzehn','achtzehn','neunzehn','zwanzig'];
 var COLORS = ['245,97,159','78,194,223','214,208,41','157,207,87'];
-var WORLD_COLORS = [0,1,2,3,0,1,2,3];
 var MOTIVES = ['Macht','Leistung','Anschluss'], ATTITUDES = ['Emotional','Rational','Handlung'];
 /* Profilindex i = motiv*3 + haltung; Anzeige: Spalten = Motive, Zeilen = Haltungen */
 /* Quader je Dimension: halbe Breite (z), halbe Höhe (y), halbe Tiefe (x); Abstand der Mittelpunkte */
-var GAP = 2.5, HW = 1.8, HY = 1.6, HX = 0.8, MARGIN = 0.14, FACE_ALPHA = 0.12;
+var GAP = 2.2, HW = 1.5, HY = 1.4, HX = 0.7, MARGIN = 0.12, FACE_ALPHA = 0.12;
 var FACES = [[0,1,3,2],[4,5,7,6],[0,1,5,4],[2,3,7,6],[0,2,6,4],[1,3,7,5]];
-var PRODUCT_POS = [-2.4, 0.1, -0.8];
-var N_SEG = 60;
+var HEAT_SIZE = 2.6, HEAT_GAP = 0.45;   /* Psychografie-Stapel: Kantenlänge einer Heatmap und Abstand im Stapel */
+var HEAT_CELL = HEAT_SIZE/3;
+var N_SEG = 40;
 
 var INK = '0,0,0', BLACK = '47,47,47', NEUTRAL = '171,171,171';
 var FONT = '"Gabarito","Nunito Sans",system-ui,sans-serif';
@@ -346,58 +348,106 @@ function catmull(p0,p1,p2,p3,t){
   for(var i=0;i<3;i++){ out.push(0.5*((2*p1[i])+(-p0[i]+p2[i])*t+(2*p0[i]-5*p1[i]+4*p2[i]-p3[i])*t2+(-p0[i]+3*p1[i]-3*p2[i]+p3[i])*t3)); }
   return out;
 }
-/* Liegt der Punkt (u = z, v = y, dx = Tiefe) im Quader? Mit Rand */
 function insideBox(u,v,dx){ return Math.abs(u)<HW-MARGIN && Math.abs(v)<HY-MARGIN && Math.abs(dx)<HX-MARGIN; }
+function capital(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
+
+/* ---------- Gruppen und Layout entlang der x-Achse ---------- */
+var GROUPS=(D.groups||[]).map(function(g){ return { id:g.id, name:g.name, lines:g.lines||[g.name], gapBefore:g.gapBefore||1, xs:0, xe:0, n:0 }; });
+function groupOf(id){ for(var i=0;i<GROUPS.length;i++){ if(GROUPS[i].id===id) return GROUPS[i]; } return null; }
+
+/* Psychografie-Stapel: Heatmaps hintereinander, der Vektor sticht durch die stärkste Zelle */
+var LAYERS=(D.psychografie&&D.psychografie.layers)||[];
+var heatX0=-1.6-Math.max(0,LAYERS.length-1)*HEAT_GAP;
+var PRODUCT_POS=[heatX0-1.8, 0.1, -0.6];
+/* Heatmap-Textur im Look der Vorlagen: Gauß-Flecken je Zelle, Regenbogenskala, Weiß bleibt leer, feines Raster */
+function heatTexture(profile){
+  var N=120, c=document.createElement('canvas'); c.width=N; c.height=N;
+  var g=c.getContext('2d'), img=g.createImageData(N,N), d=img.data, sig=0.42;
+  var stops=[[0,255,255,255],[0.18,160,60,255],[0.38,70,150,255],[0.58,90,255,90],[0.78,255,220,60],[1,255,80,60]];
+  for(var py=0;py<N;py++){
+    for(var px=0;px<N;px++){
+      var cx=(px+0.5)/N*3, cy=(py+0.5)/N*3, v=0, m, a;
+      for(m=0;m<3;m++){ for(a=0;a<3;a++){ var val=profile[m*3+a]; if(val<=0) continue; var dx=cx-(m+0.5), dy=cy-(a+0.5); v+=val*Math.exp(-(dx*dx+dy*dy)/(2*sig*sig)); } }
+      v=Math.min(1,v);
+      var col=[255,255,255];
+      for(var st=1;st<stops.length;st++){ if(v<=stops[st][0]){ var tt=(v-stops[st-1][0])/(stops[st][0]-stops[st-1][0]); col=[lerp(stops[st-1][1],stops[st][1],tt),lerp(stops[st-1][2],stops[st][2],tt),lerp(stops[st-1][3],stops[st][3],tt)]; break; } }
+      var al=clamp((v-0.04)/0.2,0,1), i=(py*N+px)*4;
+      d[i]=col[0]; d[i+1]=col[1]; d[i+2]=col[2]; d[i+3]=Math.round(255*al);
+    }
+  }
+  g.putImageData(img,0,0);
+  g.strokeStyle='rgba(0,0,0,0.07)'; g.lineWidth=1;
+  for(var l=1;l<3;l++){ var q=Math.round(l*N/3)+0.5; g.beginPath(); g.moveTo(q,0); g.lineTo(q,N); g.moveTo(0,q); g.lineTo(N,q); g.stroke(); }
+  return c;
+}
+var HEAT=LAYERS.map(function(L,i){
+  var x=heatX0+i*HEAT_GAP, best=0, j;
+  for(j=1;j<9;j++){ if(D.product.profile[j]>D.product.profile[best]) best=j; }
+  var m=Math.floor(best/3), a=best%3;
+  var h={ name:L.name||('Heatmap '+(i+1)), profile:L.profile, x:x, pierce:[x,(1-a)*HEAT_CELL,(m-1)*HEAT_CELL], appA:1, depth:0, tex:null };
+  if(L.image){ var im=new Image(); im.onload=function(){ h.tex=im; }; im.src=L.image; }
+  else { h.tex=heatTexture(L.profile); }
+  return h;
+});
+var PSYCHO_NAME=(D.psychografie&&D.psychografie.name)||'Psychografie';
 
 /* ---------- Welten aufbauen ---------- */
 var WORLDS=(function(){
-  var rnd=mulberry32(11), ws=[], k, i, cs=[];
+  var rnd=mulberry32(11), ws=[], k, i, cs=[], x=0.6, prevGroup=null;
   D.worlds.forEach(function(w){ w.items.forEach(function(it){ cs.push(cosine(D.product.profile,it.profile)); }); });
-  /* Kosinus rein positiver Profile drängt sich oben zusammen: als Winkelmaß spreizen,
-     dann auf 0,55 bis 0,97 abbilden. Die Reihenfolge bleibt erhalten. */
+  /* Kosinus rein positiver Profile drängt sich oben zusammen: als Winkelmaß spreizen, dann auf 0,55 bis 0,97 abbilden */
   function angular(c){ return 1-Math.acos(clamp(c,-1,1))/(Math.PI/2); }
   var as=cs.map(angular), amin=Math.min.apply(null,as), amax=Math.max.apply(null,as);
   function calib(c){ return amax>amin ? 0.55+0.42*(angular(c)-amin)/(amax-amin) : 0.8; }
-  var dirs=[[1,.35,.2],[-.75,.65,-.3],[.3,-.95,.25],[-.6,-.5,-.4],[.85,.8,.3]];
+  var GOLD=Math.PI*(3-Math.sqrt(5));
   for(k=0;k<D.worlds.length;k++){
-    var w=D.worlds[k], x=k*GAP;
-    var pierce=[x, (rnd()-0.5)*0.6, (rnd()-0.5)*0.9];
-    var pts=[];
-    w.items.forEach(function(it){ pts.push({ name:it.name, detail:it.detail||'', reason:it.reason||'', profile:it.profile, sim:calib(cosine(D.product.profile,it.profile)), named:true }); });
-    for(i=0;i<FILLER;i++){ pts.push({ name:'Weiteres Element: '+w.noun, detail:'', reason:'', profile:null, sim:0.52+rnd()*0.27, named:false }); }
-    pts.sort(function(a,b){ return b.sim-a.sim; });
-    var n=pts.length, tk=PIERCE_T0+k*PIERCE_STEP;
-    pts.forEach(function(p,j){
-      var r=0.12+(0.96-p.sim)*2.8, u, v, dx;
-      if(j<5){ r=Math.max(r,[0.3,0.42,0.54,0.66,0.78][j]); var dv=dirs[j], l=Math.sqrt(dv[0]*dv[0]+dv[1]*dv[1]+dv[2]*dv[2]); u=dv[0]/l*r; v=dv[1]/l*r; dx=dv[2]/l*r; }
-      else { var g=[gaussWith(rnd),gaussWith(rnd),gaussWith(rnd)*0.6], gl=Math.sqrt(g[0]*g[0]+g[1]*g[1]+g[2]*g[2])||1; u=g[0]/gl*r; v=g[1]/gl*r; dx=g[2]/gl*r; }
-      /* in den Quader zwingen: Versatz so weit verkürzen, bis der Punkt innen liegt */
+    var w=D.worlds[k], g=groupOf(w.group);
+    if(k>0){ var gb=(g&&w.group!==prevGroup)?g.gapBefore:1; x+=GAP*gb; }
+    prevGroup=w.group;
+    if(g){ if(g.n===0) g.xs=x-HX; g.xe=x+HX; g.n++; }
+    var pierce=[x,(rnd()-0.5)*0.4,(rnd()-0.5)*0.5];
+    var named=w.items.map(function(it){ return { name:it.name, detail:it.detail||'', reason:it.reason||'', profile:it.profile, sim:calib(cosine(D.product.profile,it.profile)), named:true }; });
+    named.sort(function(a,b){ return b.sim-a.sim; });
+    /* Benannte Inhalte auf einer Sonnenblumen-Spirale: nach Ähnlichkeit nach außen, gleichmäßig verteilt */
+    named.forEach(function(p,j){
+      var r=Math.max(0.12+(0.96-p.sim)*2.8, 0.27*Math.sqrt(j+0.5)), ang=j*GOLD+k*0.7;
+      var u=Math.cos(ang)*r, v=Math.sin(ang)*r*0.9, dx=(rnd()-0.5)*0.5;
       var s=1; while(s>0.05&&!insideBox(pierce[2]+u*s,pierce[1]+v*s,dx*s)) s-=0.05;
-      u*=s; v*=s; dx*=s;
-      p.u=u; p.v=v; p.p=[x+dx,pierce[1]+v,pierce[2]+u];
-      p.r=0.1*(0.8+0.4*rnd());
-      p.rank=j; p.world=k;
-      p.alpha=j<n*0.15?0.5:j<n*0.5?0.3:0.2;
-      p.t0=tk+0.1+1.5*Math.pow(j/n,0.8);
-      p.visA=1; p.sr=0; p.sx=0; p.sy=0; p.sdepth=0;
+      p.u=u*s; p.v=v*s; p.dx=dx*s; p.r=0.085*(0.85+0.3*rnd());
     });
-    /* Ecken des Quaders: Index = bx*4 + by*2 + bz */
+    var fillers=[];
+    for(i=0;i<FILLER;i++){
+      var fu=gaussWith(rnd)*0.9, fv=gaussWith(rnd)*0.8, fdx=gaussWith(rnd)*0.3;
+      var fs=1; while(fs>0.05&&!insideBox(pierce[2]+fu*fs,pierce[1]+fv*fs,fdx*fs)) fs-=0.05;
+      fillers.push({ name:'Weiteres Element: '+w.noun, detail:'', reason:'', profile:null, sim:0.52+rnd()*0.26, named:false, u:fu*fs, v:fv*fs, dx:fdx*fs, r:0.06*(0.8+0.5*rnd()) });
+    }
+    var pts=named.concat(fillers);
+    pts.sort(function(a,b){ return b.sim-a.sim; });
+    var n=pts.length, tk=0;
+    pts.forEach(function(p,j){
+      p.p=[x+p.dx,pierce[1]+p.v,pierce[2]+p.u];
+      p.rank=j; p.world=k; p.alpha=j<n*0.3?0.5:j<n*0.6?0.3:0.2;
+      p.visA=1; p.sr=0; p.sx=0; p.sy=0; p.sdepth=0; p.t0=0;
+    });
     var corners=[];
     for(i=0;i<8;i++){ corners.push([x+((i>>2)&1?HX:-HX), (i>>1)&1?HY:-HY, i&1?HW:-HW]); }
-    ws.push({ k:k, id:w.id, name:w.name, noun:w.noun, description:w.description||'', color:COLORS[WORLD_COLORS[k%WORLD_COLORS.length]], x:x, pierce:pierce, pts:pts, tk:tk, corners:corners, polys:null, depth:0, on:true, onA:1, appA:1, switch:null, extras:null, extraA:0 });
+    ws.push({ k:k, id:w.id, name:w.name, noun:w.noun, group:w.group||'', description:w.description||'', color:COLORS[k%COLORS.length], x:x, pierce:pierce, pts:pts, tk:tk, corners:corners, polys:null, depth:0, on:true, onA:1, appA:1, switch:null, extras:null, extraA:0 });
   }
   return ws;
 })();
 var NW=WORLDS.length;
-TL.result=PIERCE_T0+(NW-1)*PIERCE_STEP+0.8; TL.end=TL.result+0.8;
-var PHASE_START = [TL.profile, TL.flight, TL.result];
-(function(){
-  var word=NUMWORD[NW]||String(NW), cap=word.charAt(0).toUpperCase()+word.slice(1);
-  document.getElementById('titleCount').textContent=cap+' Welten.';
-  document.getElementById('worldsTitle').textContent=cap+' Themenwelten';
-  CAPTIONS[2]=cap+' Welten, ein Profil: Jede Dimension zeigt die Inhalte, die zur Bedeutung der Marke passen. Ein Klick auf eine Dimension öffnet die Welt.';
-  document.getElementById('hint').textContent='Ziehen dreht den Raum, Scrollen zoomt. Klick auf eine Dimension, eine Listenzeile oder die Ziffern 1 bis '+Math.min(NW,9)+' öffnet die Welt, Escape die Übersicht. Der Schalter in der Liste blendet eine Dimension aus.';
-})();
+var SPAN_MIN=PRODUCT_POS[0], SPAN_MAX=WORLDS[NW-1].x+HX, SPAN=SPAN_MAX-SPAN_MIN;
+
+/* Zeiten aus der Strecke: der Vektor fliegt mit konstanter Geschwindigkeit */
+function tAtX(x){ return TL.flight+0.4+(x-PRODUCT_POS[0])*SPEED; }
+HEAT.forEach(function(h){ h.t=tAtX(h.x); });
+WORLDS.forEach(function(w){
+  w.tk=tAtX(w.x);
+  var n=w.pts.length;
+  w.pts.forEach(function(p,j){ p.t0=w.tk+0.1+1.4*Math.pow(j/n,0.8); });
+});
+TL.result=tAtX(SPAN_MAX+1.0); TL.end=TL.result+0.8;
+var PHASE_START=[TL.profile,TL.flight,TL.result];
 
 /* Das Umfeld einer Dimension: weitere Inhalte im und um den Quader, nach außen hin unähnlicher.
    Wird beim ersten Fokussieren erzeugt und erscheint dann vom Durchstoßpunkt nach außen. */
@@ -405,11 +455,11 @@ function ensureExtras(w){
   if(w.extras) return;
   var rnd=mulberry32(1000+w.k*7919), out=[], i;
   for(i=0;i<N_EXTRA;i++){
-    var u=gaussWith(rnd)*2.4, v=gaussWith(rnd)*2.0, dx=gaussWith(rnd)*0.55;
+    var u=gaussWith(rnd)*3.0, v=gaussWith(rnd)*2.6, dx=gaussWith(rnd)*0.5;
     var d=Math.sqrt(u*u+v*v+dx*dx*2), inside=insideBox(w.pierce[2]+u,w.pierce[1]+v,dx);
     out.push({ name:'Weiterer Inhalt: '+w.noun, detail:'', reason:'', profile:null, named:false, extra:true,
-      sim:clamp(0.86-0.13*d,0.3,0.8), u:u, v:v, p:[w.x+dx,w.pierce[1]+v,w.pierce[2]+u], r:0.03+0.025*rnd(),
-      alpha:inside?0.22:0.16, d:d, rank:-1, world:w.k, t0:0, sr:0, sx:0, sy:0, sdepth:0, visA:1 });
+      sim:clamp(0.86-0.13*d,0.3,0.8), u:u, v:v, p:[w.x+dx,w.pierce[1]+v,w.pierce[2]+u], r:0.025+0.02*rnd(),
+      alpha:inside?0.18:0.13, d:d, rank:-1, world:w.k, t0:0, sr:0, sx:0, sy:0, sdepth:0, visA:1 });
   }
   out.sort(function(a,b){ return a.d-b.d; });
   w.extras=out;
@@ -419,30 +469,26 @@ function startExtras(w,t){
   w.extras.forEach(function(p,j){ p.t0=t+0.6+2.2*Math.pow(j/N_EXTRA,0.7); });
 }
 
-/* Der Bedeutungsvektor: Spline vom Produkt durch alle Durchstoßpunkte */
-var PATH=(function(){
-  var ctrl=[PRODUCT_POS];
-  WORLDS.forEach(function(w){ ctrl.push(w.pierce); });
-  var last=WORLDS[NW-1].pierce; ctrl.push([last[0]+1.6,last[1]+0.2,last[2]-0.3]);
-  var pts=[], segs=ctrl.length-1;
+/* Der Bedeutungsvektor: Spline vom Produkt durch die Psychografie und alle Durchstoßpunkte */
+var PATH=[], KEYS=[];
+(function(){
+  var ctrl=[{ p:PRODUCT_POS, t:TL.flight }];
+  HEAT.forEach(function(h){ ctrl.push({ p:h.pierce, t:h.t }); });
+  WORLDS.forEach(function(w){ ctrl.push({ p:w.pierce, t:w.tk }); });
+  var last=WORLDS[NW-1].pierce; ctrl.push({ p:[last[0]+1.6,last[1]+0.2,last[2]-0.3], t:TL.result });
+  var segs=ctrl.length-1;
   for(var s=0;s<segs;s++){
-    var p0=ctrl[Math.max(0,s-1)], p1=ctrl[s], p2=ctrl[s+1], p3=ctrl[Math.min(ctrl.length-1,s+2)];
-    for(var i=0;i<N_SEG;i++){ pts.push(catmull(p0,p1,p2,p3,i/N_SEG)); }
+    var p0=ctrl[Math.max(0,s-1)].p, p1=ctrl[s].p, p2=ctrl[s+1].p, p3=ctrl[Math.min(ctrl.length-1,s+2)].p;
+    KEYS.push([ctrl[s].t,PATH.length]);
+    for(var i=0;i<N_SEG;i++){ PATH.push(catmull(p0,p1,p2,p3,i/N_SEG)); }
   }
-  pts.push(ctrl[ctrl.length-1]);
-  return pts;
-})();
-var KEYS=(function(){
-  var keys=[[TL.flight,0]];
-  WORLDS.forEach(function(w,k){ keys.push([w.tk,N_SEG*(k+1)]); });
-  keys.push([TL.result,PATH.length-1]);
-  return keys;
+  PATH.push(ctrl[ctrl.length-1].p); KEYS.push([TL.result,PATH.length-1]);
 })();
 function headIndex(t){
   if(t<=KEYS[0][0]) return 0;
   for(var i=1;i<KEYS.length;i++){
     if(t<=KEYS[i][0]){
-      var a=KEYS[i-1], b=KEYS[i], u=(t-a[0])/(b[0]-a[0]);
+      var a=KEYS[i-1], b=KEYS[i], u=b[0]>a[0]?(t-a[0])/(b[0]-a[0]):1;
       if(i===1) u=easeInCubic(u); else if(i===KEYS.length-1) u=easeOutCubic(u);
       return Math.round(lerp(a[1],b[1],u));
     }
@@ -454,8 +500,7 @@ function headIndex(t){
 var canvas=document.getElementById('space'), ctx=canvas.getContext('2d');
 var elCaption=document.getElementById('caption'), elTip=document.getElementById('tip'), elOverlay=document.getElementById('overlayTop');
 var elWorldLabel=document.getElementById('worldLabel'), elPrev=document.getElementById('prevWorld'), elNext=document.getElementById('nextWorld'), elAll=document.getElementById('allWorlds');
-var elAllOn=document.getElementById('allOn');
-var elFocusCount=document.getElementById('focusCount');
+var elAllOn=document.getElementById('allOn'), elFocusCount=document.getElementById('focusCount');
 var elOverviewBtn=document.getElementById('overviewBtn'), elTopSection=document.getElementById('topSection'), elTopLabel=document.getElementById('topLabel'), elList=document.getElementById('list');
 var elZoom=document.getElementById('zoom'), elZoomLevel=document.getElementById('zoomReset');
 var zoomButtons=[document.getElementById('zoomOut'),elZoomLevel,document.getElementById('zoomIn')];
@@ -465,6 +510,13 @@ document.getElementById('productName').textContent=D.product.name;
 document.getElementById('productKind').textContent=(D.product.kind||'')+(D.product.brand?' · '+D.product.brand:'');
 document.getElementById('productTags').textContent=(D.product.tags||[]).join(' · ');
 document.getElementById('productNote').textContent=D.product.note||'';
+(function(){
+  var word=NUMWORD[NW]||String(NW), cap=capital(word);
+  document.getElementById('titleCount').textContent=cap+' Welten.';
+  document.getElementById('worldsTitle').textContent=cap+' Themenwelten';
+  CAPTIONS[2]=cap+' Welten, ein Profil: Jede Dimension zeigt die Inhalte, die zur Bedeutung der Marke passen. Ein Klick auf eine Dimension öffnet die Welt.';
+  document.getElementById('hint').textContent='Ziehen dreht den Raum, Scrollen zoomt. Klick auf eine Dimension, eine Listenzeile oder die Ziffern 1 bis '+Math.min(NW,9)+' öffnet die Welt, Escape die Übersicht. Der Schalter in der Liste blendet eine Dimension aus.';
+})();
 
 var gridCells=(function(){
   var g=document.getElementById('grid3'), cells=[], a, m;
@@ -480,25 +532,37 @@ var gridCells=(function(){
   }
   return cells;
 })();
-var worldRows=WORLDS.map(function(w){
-  var li=document.createElement('li'); li.setAttribute('data-world',String(w.k));
-  li.tabIndex=0; li.setAttribute('role','button'); li.setAttribute('aria-label','Welt '+(w.k+1)+': '+w.name+' öffnen');
-  li.addEventListener('keydown',function(e){ if(e.target!==li) return; if(e.key==='Enter'||e.key===' '){ e.preventDefault(); if(focused===w.k) showOverview(); else focusWorld(w.k); } });
-  var rank=document.createElement('span'); rank.className='rank'; rank.textContent=String(w.k+1);
-  var chip=document.createElement('span'); chip.className='chip'; chip.style.setProperty('--c',w.color);
-  var name=document.createElement('span'); name.className='wname'; name.textContent=w.name;
-  var sim=document.createElement('span'); sim.className='sim'; sim.textContent=fmtSim(w.pts[0].sim);
-  var best=document.createElement('span'); best.className='best'; best.textContent=shortTitle(w.pts[0].name,44);
-  var sw=document.createElement('input'); sw.type='checkbox'; sw.className='switch'; sw.checked=true; sw.id='switch-'+w.k;
-  sw.setAttribute('aria-label',w.name+' ein- oder ausschalten'); sw.title='Dimension ein- oder ausschalten'; sw.style.setProperty('--c',w.color);
-  sw.addEventListener('click',function(e){ e.stopPropagation(); });
-  sw.addEventListener('change',function(){ toggleWorld(w.k,sw.checked); });
-  w.switch=sw;
-  li.appendChild(rank); li.appendChild(chip); li.appendChild(name); li.appendChild(sim); li.appendChild(sw); li.appendChild(best);
-  li.addEventListener('click',function(){ if(focused===w.k) showOverview(); else focusWorld(w.k); });
-  document.getElementById('wlist').appendChild(li);
-  return li;
-});
+
+/* Liste der Welten mit Gruppenüberschriften, Schaltern und Tastaturbedienung */
+var worldRows=[];
+(function(){
+  var ol=document.getElementById('wlist'), prevGroup=null;
+  if(HEAT.length){
+    var ph=document.createElement('li'); ph.className='group'; ph.textContent=PSYCHO_NAME+' · '+HEAT.length+' Heatmaps'; ol.appendChild(ph);
+  }
+  WORLDS.forEach(function(w){
+    if(w.group!==prevGroup){
+      var g=groupOf(w.group), gh=document.createElement('li'); gh.className='group'; gh.textContent=g?g.name:w.group; ol.appendChild(gh);
+      prevGroup=w.group;
+    }
+    var li=document.createElement('li'); li.setAttribute('data-world',String(w.k));
+    li.tabIndex=0; li.setAttribute('role','button'); li.setAttribute('aria-label','Welt '+(w.k+1)+': '+w.name+' öffnen');
+    li.addEventListener('keydown',function(e){ if(e.target!==li) return; if(e.key==='Enter'||e.key===' '){ e.preventDefault(); if(focused===w.k) showOverview(); else focusWorld(w.k); } });
+    var rank=document.createElement('span'); rank.className='rank'; rank.textContent=String(w.k+1);
+    var chip=document.createElement('span'); chip.className='chip'; chip.style.setProperty('--c',w.color);
+    var name=document.createElement('span'); name.className='wname'; name.textContent=w.name;
+    var sim=document.createElement('span'); sim.className='sim'; sim.textContent=fmtSim(w.pts[0].sim);
+    var best=document.createElement('span'); best.className='best'; best.textContent=shortTitle(w.pts[0].name,44);
+    var sw=document.createElement('input'); sw.type='checkbox'; sw.className='switch'; sw.checked=true; sw.id='switch-'+w.k;
+    sw.setAttribute('aria-label',w.name+' ein- oder ausschalten'); sw.title='Dimension ein- oder ausschalten'; sw.style.setProperty('--c',w.color);
+    sw.addEventListener('click',function(e){ e.stopPropagation(); });
+    sw.addEventListener('change',function(){ toggleWorld(w.k,sw.checked); });
+    w.switch=sw;
+    li.appendChild(rank); li.appendChild(chip); li.appendChild(name); li.appendChild(sim); li.appendChild(sw); li.appendChild(best);
+    li.addEventListener('click',function(){ if(focused===w.k) showOverview(); else focusWorld(w.k); });
+    ol.appendChild(li); worldRows.push(li);
+  });
+})();
 
 /* ---------- Zustand ---------- */
 var W=0,H=0,DPR=1;
@@ -509,10 +573,10 @@ var reducedMotion=window.matchMedia && window.matchMedia('(prefers-reduced-motio
 var manualT=null;
 if(location.hash==='#canvas') document.documentElement.classList.add('canvas-only');
 var focused=-1, focusMix=0, hover=null;
-var OVERVIEW={ f:[(NW-1)/2*GAP-0.4*NW,0.0,0], yaw:0.95, pitch:0.22, dist:13.5+0.5*NW };
-function worldView(k){ return { f:[k*GAP,0,0], yaw:Math.PI/2, pitch:0, dist:5.2 }; }
+var OVERVIEW={ f:[SPAN_MIN+0.3*SPAN,0.0,0], yaw:0.95, pitch:0.2, dist:6+0.62*SPAN };
+function worldView(k){ return { f:[WORLDS[k].x,0,0], yaw:Math.PI/2, pitch:0, dist:4.8 }; }
 var view={ from:OVERVIEW, to:OVERVIEW, start:-100, cur:OVERVIEW };
-var dom={ phase:-1, ready:null, zoomLabel:'', focused:null, rows:[], cells:[], focusCount:'' };
+var dom={ phase:-1, ready:null, zoomLabel:'', rows:[], cells:[], focusCount:'' };
 
 function resize(){
   var rect=canvas.getBoundingClientRect();
@@ -536,6 +600,7 @@ function viewAt(t){
   view.cur={ f:lerpV(view.from.f,view.to.f,u), yaw:lerp(view.from.yaw,view.to.yaw,u), pitch:lerp(view.from.pitch,view.to.pitch,u), dist:lerp(view.from.dist,view.to.dist,u) };
   return view.cur;
 }
+/* Zoom und Drehung fließen in den Startzustand des Übergangs ein, damit nichts springt */
 function setView(target,t){
   viewAt(t);
   view.from={ f:view.cur.f, yaw:view.cur.yaw+orbitYaw+dragYaw, pitch:clamp(view.cur.pitch+dragPitch,-1.3,1.3), dist:view.cur.dist/zoom };
@@ -591,7 +656,8 @@ function updateFocusDom(){
       if(p.reason){ var r=document.createElement('span'); r.className='reason'; r.textContent=p.reason; li.appendChild(r); }
       elList.appendChild(li);
     });
-    elCaption.textContent='Welt '+(w.k+1)+' von '+NW+' · '+w.name+': '+(w.description||'')+' Der Quader zeigt nur einen Ausschnitt. Die Dimension reicht weit darüber hinaus; je weiter ein Inhalt vom Durchstoßpunkt entfernt liegt, desto geringer seine Ähnlichkeit.';
+    var g=groupOf(w.group);
+    elCaption.textContent='Welt '+(w.k+1)+' von '+NW+(g?' · '+g.name:'')+' · '+w.name+': '+(w.description||'')+' Der Quader zeigt nur einen Ausschnitt. Die Dimension reicht weit darüber hinaus; je weiter ein Inhalt vom Durchstoßpunkt entfernt liegt, desto geringer seine Ähnlichkeit.';
     elCaption.classList.remove('fade'); dom.phase=-2;
   } else if(dom.phase===-2){ dom.phase=-1; }
 }
@@ -611,7 +677,7 @@ function camera(t){
   if(focused<0&&view.to===OVERVIEW&&t<TL.result){
     /* Übersicht während des Flugs: die Kamera schwenkt mit */
     var p=easeInOutCubic(clamp((t-TL.flight)/(TL.result-TL.flight),0,1));
-    f=lerpV([1.0,0.0,0],OVERVIEW.f,p); dist=lerp(16,OVERVIEW.dist,p);
+    f=lerpV([PRODUCT_POS[0]+5,0,0],OVERVIEW.f,p); dist=lerp(OVERVIEW.dist*0.6,OVERVIEW.dist,p);
   }
   return { f:f, yaw:yaw+orbitYaw+dragYaw, pitch:clamp(pitch+dragPitch,-1.3,1.3), dist:dist/zoom, near:0.3, F:Math.min(W,H) };
 }
@@ -638,28 +704,67 @@ function label(text,x,y,size,weight,align,alpha){
   ctx.fillStyle='rgba(255,255,255,'+(0.82*alpha)+')'; ctx.fillRect(x0-pad,y-size*0.65,w+pad*2,size*1.3);
   ctx.fillStyle='rgba('+INK+','+alpha+')'; ctx.fillText(text,x,y);
 }
+function labelRect(text,x,y,size,align){
+  ctx.font='700 '+size+'px '+FONT;
+  var w=ctx.measureText(text).width+8, x0=align==='center'?x-w/2:align==='right'?x-w:x;
+  return { x0:x0, x1:x0+w, y0:y-size*0.7, y1:y+size*0.7 };
+}
+function overlaps(r,list){ for(var i=0;i<list.length;i++){ var q=list[i]; if(r.x0<q.x1&&r.x1>q.x0&&r.y0<q.y1&&r.y1>q.y0) return true; } return false; }
 function paneAlpha(k){ var w=WORLDS[k]; return (k===focused ? 1 : 1-focusMix)*w.onA*w.appA; }
+
+/* Schriftzug im Raum: Text auf einer aufrechten Ebene, über die Projektion seiner Grundlinie verzerrt */
+function text3d(str,xs,xe,baseY,z,heightWorld,alpha,cam){
+  ctx.font='700 100px '+FONT;
+  var tw=ctx.measureText(str).width, wWorld=heightWorld*tw/75, xc=(xs+xe)/2;
+  var a=project([xc-wWorld/2,baseY,z],cam), b=project([xc+wWorld/2,baseY,z],cam), c=project([xc-wWorld/2,baseY+heightWorld,z],cam);
+  if(!a||!b||!c) return;
+  var ex=[(b.x-a.x)/tw,(b.y-a.y)/tw], ey=[(a.x-c.x)/75,(a.y-c.y)/75];
+  ctx.save();
+  ctx.setTransform(DPR*ex[0],DPR*ex[1],DPR*ey[0],DPR*ey[1],DPR*a.x,DPR*a.y);
+  ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+  ctx.fillStyle='rgba('+INK+','+alpha+')'; ctx.fillText(str,0,0);
+  ctx.restore();
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
 
 function draw(t,dt){
   var cam=camera(t), i, k, pr;
   ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,W,H);
   var over=1-focusMix;
+  var headIdx=headIndex(t), labels=[];
 
-  /* Scheiben von hinten nach vorn */
-  var order=WORLDS.slice();
-  order.forEach(function(w){
+  /* Gruppennamen als transparente Schriftzüge hinter den Gruppen */
+  if(over>0.02){
+    GROUPS.forEach(function(g){
+      if(!g.n) return;
+      var firstOn=WORLDS.filter(function(w){ return w.group===g.id; }).some(function(w){ return t>=w.tk-0.3; });
+      if(!firstOn) return;
+      var lines=g.lines, hgt=lines.length>1?1.3:1.6;
+      lines.forEach(function(line,li){ text3d(line,g.xs,g.xe,(lines.length-1)*0.95-li*1.9-0.2,-HW-1.0,hgt,0.09*over,cam); });
+    });
+    if(HEAT.length&&t>=HEAT[0].t-0.3) text3d(PSYCHO_NAME,HEAT[0].x-0.4,HEAT[HEAT.length-1].x+0.4,-0.55,-HEAT_SIZE/2-1.0,1.1,0.09*over,cam);
+  }
+
+  /* Zeichenreihenfolge: Heatmaps und Quader von hinten nach vorn */
+  var drawables=[];
+  WORLDS.forEach(function(w){
     var c=project([w.x,0,0],cam); w.depth=c?c.depth:1e9; w.polys=null;
-    /* Eine Dimension erscheint erst, wenn der Vektor sie erreicht */
     w.appA=clamp((t-(w.tk-0.3))/0.5,0,1);
     for(i=0;i<w.pts.length;i++) w.pts[i].sr=0;
     if(w.extras){ for(i=0;i<w.extras.length;i++) w.extras[i].sr=0; }
+    drawables.push({ depth:w.depth, world:w });
   });
-  order.sort(function(a,b){ return b.depth-a.depth; });
-  var headIdx=headIndex(t), labels=[];
+  HEAT.forEach(function(h){
+    var c=project([h.x,0,0],cam); h.depth=c?c.depth:1e9;
+    h.appA=clamp((t-(h.t-0.3))/0.5,0,1);
+    drawables.push({ depth:h.depth, heat:h });
+  });
+  drawables.sort(function(a,b){ return b.depth-a.depth; });
 
-  order.forEach(function(w){
-    var pa=paneAlpha(w.k); if(pa<=0.01) return;
-    /* Ecken und Flächen des Quaders, Flächen von hinten nach vorn */
+  drawables.forEach(function(dr){
+    if(dr.heat){ drawHeat(dr.heat,t,cam,over,labels); return; }
+    var w=dr.world, pa=paneAlpha(w.k); if(pa<=0.01) return;
+    /* Ecken und Flächen des Quaders, Flächen von hinten nach vorn; erscheint und wächst, wenn der Vektor ankommt */
     var corners=[], ok=true, faces=[], grow=0.85+0.15*easeOutCubic(w.appA);
     for(i=0;i<8;i++){
       var cc=w.corners[i];
@@ -681,28 +786,25 @@ function draw(t,dt){
       }
     };
     if(ok) fillFaces(0,3);
-    /* Name der Welt über dem Quader (in der Übersicht); gezeichnet nach allen Quadern */
     var top=project([w.x,HY+0.3,0],cam);
-    if(top&&over>0.02&&onCanvas(top)) labels.push({ w:w, x:top.x, y:top.y, a:over*pa });
+    if(top&&over>0.02&&onCanvas(top)) labels.push({ text:w.name, x:top.x, y:top.y, a:over*pa, size:12 });
     /* Ring beim Durchstoß, in der Mittelebene des Quaders */
     var age=t-w.tk;
     if(age>=0&&age<=1.2){
-      var rr=0.15+1.4*easeOutCubic(age/1.2), ringA=0.7*(1-age/1.2)*pa;
+      var rr=0.15+1.2*easeOutCubic(age/1.2), ringA=0.7*(1-age/1.2)*pa;
       ctx.strokeStyle='rgba('+INK+','+ringA+')'; ctx.lineWidth=1.5; ctx.beginPath();
-      for(i=0;i<=36;i++){ var th=Math.PI*2*i/36; var q=project([w.x,w.pierce[1]+rr*Math.sin(th),w.pierce[2]+rr*Math.cos(th)],cam); if(!q) continue; if(i===0) ctx.moveTo(q.x,q.y); else ctx.lineTo(q.x,q.y); }
+      for(i=0;i<=36;i++){ var th=Math.PI*2*i/36; var q2=project([w.x,w.pierce[1]+rr*Math.sin(th),w.pierce[2]+rr*Math.cos(th)],cam); if(!q2) continue; if(i===0) ctx.moveTo(q2.x,q2.y); else ctx.lineTo(q2.x,q2.y); }
       ctx.stroke();
     }
-    /* Punkte der Welt */
+    /* Punkte der Welt und, in der Nahansicht, ihr Umfeld */
     var vis=[];
     for(i=0;i<w.pts.length;i++){
-      var c0=w.pts[i]; c0.sr=0;
-      if(t<c0.t0) continue;
+      var c0=w.pts[i]; if(t<c0.t0) continue;
       pr=project(c0.p,cam); if(!pr) continue; pr.pt=c0; vis.push(pr);
     }
     if(w.extras&&w.extraA>0.01){
       for(i=0;i<w.extras.length;i++){
-        var ex=w.extras[i]; ex.sr=0;
-        if(t<ex.t0) continue;
+        var ex=w.extras[i]; if(t<ex.t0) continue;
         pr=project(ex.p,cam); if(!pr) continue; pr.pt=ex; vis.push(pr);
       }
     }
@@ -720,7 +822,6 @@ function draw(t,dt){
       if(pp){
         ctx.strokeStyle='rgba(255,255,255,'+pa+')'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(pp.x,pp.y,5.5,0,Math.PI*2); ctx.stroke();
         disc(pp.x,pp.y,4,'rgba('+INK+','+pa+')');
-        if(w.k===focused&&focusMix>0.5&&onCanvas(pp)) label(shortTitle(D.product.name,34),pp.x,pp.y+22,13,700,'center',focusMix);
       }
     }
     if(ok) fillFaces(3,6);
@@ -738,8 +839,8 @@ function draw(t,dt){
     if(headIdx<PATH.length-1){
       var tail=Math.min(headIdx,40);
       for(i=headIdx-tail;i<headIdx;i++){
-        var q2=(i-(headIdx-tail))/tail, s1=pts[i], s2=pts[i+1]; if(!s1||!s2) continue;
-        ctx.strokeStyle='rgba('+INK+','+((0.35+0.65*q2)*over)+')'; ctx.lineWidth=1.25+2.4*q2;
+        var q3=(i-(headIdx-tail))/tail, s1=pts[i], s2=pts[i+1]; if(!s1||!s2) continue;
+        ctx.strokeStyle='rgba('+INK+','+((0.35+0.65*q3)*over)+')'; ctx.lineWidth=1.25+2.4*q3;
         ctx.beginPath(); ctx.moveTo(s1.x,s1.y); ctx.lineTo(s2.x,s2.y); ctx.stroke();
       }
       var hd=pts[headIdx]; if(hd) disc(hd.x,hd.y,4.5,'rgba('+INK+','+over+')');
@@ -756,22 +857,20 @@ function draw(t,dt){
     if(onCanvas(o)) label(shortTitle(D.product.name,34),o.x-6,o.y+20,13,700,'left',over);
   }
 
-  /* Namen der Welten: von vorn nach hinten gesetzt, bei Überlappung nach oben ausweichen */
-  labels.sort(function(a,b){ return a.w.k-b.w.k; });
-  ctx.font='700 12px '+FONT;
+  /* Namen der Welten und Heatmaps: von vorn nach hinten gesetzt, bei Überlappung nach oben ausweichen */
+  labels.sort(function(a,b){ return a.x-b.x; });
   var placed=[];
   labels.forEach(function(L){
-    var tw=ctx.measureText(L.w.name).width+8, x0=L.x-tw/2, x1=L.x+tw/2, y=L.y-4, guard=0;
-    while(guard++<24&&placed.some(function(q){ return x0<q.x1&&x1>q.x0&&Math.abs(y-q.y)<16; })) y-=17;
-    placed.push({ x0:x0, x1:x1, y:y });
-    label(L.w.name,L.x,y,12,700,'center',L.a);
+    var y=L.y-4, guard=0, r=labelRect(L.text,L.x,y,L.size,'center');
+    while(guard++<24&&overlaps(r,placed)){ y-=17; r=labelRect(L.text,L.x,y,L.size,'center'); }
+    placed.push(r);
+    label(L.text,L.x,y,L.size,700,'center',L.a);
   });
 
-  /* Nummern der fünf nächsten Inhalte je Welt, in der Frontalansicht mit Namen */
+  /* Nahansicht: Linien zu den nahen benannten Inhalten, Nummern der Top 5, Namen aller benannten Inhalte */
   WORLDS.forEach(function(w){
     var pa=paneAlpha(w.k); if(pa<=0.3) return;
     var isFocus=w.k===focused&&focusMix>0.5;
-    /* Nahansicht: dünne Linien vom Markenpunkt zu den nahen benannten Inhalten */
     if(isFocus){
       var pp=project(w.pierce,cam);
       if(pp){
@@ -780,14 +879,34 @@ function draw(t,dt){
           var np=w.pts[i]; if(!np.named||np.sim<LINE_MIN_SIM||!np.sr||t<np.t0+0.2) continue;
           ctx.beginPath(); ctx.moveTo(pp.x,pp.y); ctx.lineTo(np.sx,np.sy); ctx.stroke();
         }
+        if(onCanvas(pp)) label(shortTitle(D.product.name,34),pp.x,pp.y+22,13,700,'center',focusMix);
       }
     }
+    var taken=[];
     for(i=0;i<5&&i<w.pts.length;i++){
       var m=w.pts[i]; if(t<m.t0+0.2||!m.sr) continue;
       disc(m.sx,m.sy,7,'rgba(255,255,255,'+(0.9*pa)+')');
       ctx.font='700 10px '+FONT; ctx.textAlign='center'; ctx.textBaseline='middle';
       ctx.fillStyle='rgba('+INK+','+pa+')'; ctx.fillText(String(i+1),m.sx,m.sy+0.5);
-      if(isFocus) label(shortTitle(m.name,30),m.sx+(m.u>=0?12:-12),m.sy-11,13,700,m.u>=0?'left':'right',focusMix);
+      taken.push({ x0:m.sx-8, x1:m.sx+8, y0:m.sy-8, y1:m.sy+8 });
+    }
+    if(isFocus){
+      for(i=0;i<w.pts.length;i++){
+        var q=w.pts[i]; if(!q.named||!q.sr||t<q.t0+0.25) continue;
+        var text=shortTitle(q.name,30), size=i<5?13:11.5, placedAt=null;
+        var cands=[[q.sx+q.sr+6,q.sy,'left'],[q.sx-q.sr-6,q.sy,'right'],[q.sx,q.sy-q.sr-12,'center'],[q.sx,q.sy+q.sr+12,'center']];
+        for(var c2=0;c2<cands.length&&!placedAt;c2++){
+          var rc=labelRect(text,cands[c2][0],cands[c2][1],size,cands[c2][2]);
+          if(rc.x0>=4&&rc.x1<=W-4&&!overlaps(rc,taken)) placedAt={ x:cands[c2][0], y:cands[c2][1], al:cands[c2][2], r:rc };
+        }
+        if(!placedAt){
+          var yy=q.sy-q.sr-12, g2=0, rc2=labelRect(text,q.sx,yy,size,'center');
+          while(g2++<10&&overlaps(rc2,taken)){ yy-=15; rc2=labelRect(text,q.sx,yy,size,'center'); }
+          placedAt={ x:q.sx, y:yy, al:'center', r:rc2 };
+        }
+        taken.push(placedAt.r);
+        label(text,placedAt.x,placedAt.y,size,700,placedAt.al,focusMix*(i<5?1:0.9));
+      }
     }
   });
 
@@ -795,6 +914,22 @@ function draw(t,dt){
     ctx.strokeStyle='rgba('+INK+',.9)'; ctx.lineWidth=1.5;
     ctx.beginPath(); ctx.arc(hover.sx,hover.sy,hover.sr+2.5,0,Math.PI*2); ctx.stroke();
   }
+}
+
+/* Eine Heatmap des Psychografie-Stapels: Textur auf einer aufrechten Ebene, in Streifen perspektivisch gesetzt */
+function drawHeat(h,t,cam,over,labels){
+  var a=h.appA*over; if(a<=0.01||!h.tex) return;
+  var grow=0.85+0.15*easeOutCubic(h.appA), half=HEAT_SIZE/2*grow, N=8, sw=h.tex.width/N, sh=h.tex.height;
+  ctx.save(); ctx.globalAlpha=0.45*a;
+  for(var s=0;s<N;s++){
+    var zA=-half+s*(2*half/N), zB=zA+2*half/N;
+    var A=project([h.x,half,zA],cam), B=project([h.x,half,zB],cam), C=project([h.x,-half,zA],cam);
+    if(!A||!B||!C) continue;
+    var ex=[(B.x-A.x)/sw,(B.y-A.y)/sw], ey=[(C.x-A.x)/sh,(C.y-A.y)/sh];
+    ctx.setTransform(DPR*ex[0],DPR*ex[1],DPR*ey[0],DPR*ey[1],DPR*A.x,DPR*A.y);
+    ctx.drawImage(h.tex,s*sw,0,sw,sh,0,0,sw+0.5,sh);
+  }
+  ctx.restore(); ctx.setTransform(DPR,0,0,DPR,0,0);
 }
 
 /* ---------- Auswahl und Hinweis ---------- */
@@ -995,10 +1130,10 @@ document.addEventListener('keydown',function(e){
 document.getElementById('replay').addEventListener('click',function(){ restart(0); });
 dots.forEach(function(d){ d.addEventListener('click',function(){ restart(PHASE_START[Number(d.getAttribute('data-step'))]+0.001); }); });
 
-/* Render-API (tools/render-video.js --page themenwelten.html):
+/* Render-API (tools/render-video.js --page themenwelten.html --api siebenWelten):
    siebenWelten.seek(sekunden, {zoom}) zeichnet genau diesen Zeitpunkt, play() kehrt zur Animation zurück,
    focus(k) öffnet Welt k (0-basiert), overview() zeigt alle Welten, toggle(k, an) schaltet eine Dimension,
-   worlds() liefert die Daten der Welten. */
+   worlds() liefert die Daten der Welten, points() die sichtbaren Punkte mit Bildschirmkoordinaten. */
 window.siebenWelten={
   seek:function(sec,opts){
     manualT=Math.max(0,Number(sec)||0);
@@ -1011,8 +1146,9 @@ window.siebenWelten={
   focus:function(k){ focusWorld(Number(k)||0); return focused; },
   overview:function(){ showOverview(); return focused; },
   toggle:function(k,on){ k=Number(k)||0; if(WORLDS[k]) toggleWorld(k,on===undefined?!WORLDS[k].on:!!on); return WORLDS.map(function(w){ return w.on; }); },
-  worlds:function(){ return WORLDS.map(function(w){ return { k:w.k, name:w.name, top:w.pts.slice(0,5).map(function(p){ return { name:p.name, sim:p.sim }; }), visible:w.pts.filter(function(p){ return p.sr>0; }).length }; }); },
-  points:function(){ var out=[]; WORLDS.forEach(function(w){ w.pts.forEach(function(p){ if(p.sr>0) out.push({ world:w.k, rank:p.rank, x:p.sx, y:p.sy, r:p.sr, name:p.name, sim:p.sim }); }); }); return out; }
+  worlds:function(){ return WORLDS.map(function(w){ return { k:w.k, id:w.id, name:w.name, group:w.group, x:w.x, tk:w.tk, top:w.pts.slice(0,5).map(function(p){ return { name:p.name, sim:p.sim }; }), visible:w.pts.filter(function(p){ return p.sr>0; }).length }; }); },
+  points:function(){ var out=[]; WORLDS.forEach(function(w){ w.pts.forEach(function(p){ if(p.sr>0) out.push({ world:w.k, rank:p.rank, named:p.named, x:p.sx, y:p.sy, r:p.sr, name:p.name, sim:p.sim }); }); }); return out; },
+  timeline:function(){ return { flight:TL.flight, result:TL.result, end:TL.end, heat:HEAT.map(function(h){ return h.t; }) }; }
 };
 
 if(document.fonts&&document.fonts.load){ document.fonts.load('700 13px Gabarito').catch(function(){}); document.fonts.load('400 13px Gabarito').catch(function(){}); }

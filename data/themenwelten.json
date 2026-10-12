@@ -25,10 +25,10 @@
  },
  "worlds": [
   {
-   "id": "desserts",
-   "name": "Desserts",
-   "noun": "Dessert",
-   "description": "Weitere Desserts und Eismarken, vom Luxus-Genuss bis zum Alltagsprodukt für die Familie.",
+   "id": "in-category",
+   "name": "In-Category Produkte",
+   "noun": "Produkt",
+   "description": "Produkte der eigenen Kategorie: weitere Desserts und Eismarken, vom Luxus-Genuss bis zum Alltagsprodukt.",
    "items": [
     {
      "name": "Häagen-Dazs Dulce de Leche",
@@ -366,13 +366,14 @@
       0.2
      ]
     }
-   ]
+   ],
+   "group": "in-category"
   },
   {
-   "id": "artikel",
-   "name": "Online-Artikel",
-   "noun": "Artikel",
-   "description": "Erfundene Schlagzeilen redaktioneller Online-Artikel aus Luxus, Lifestyle, Mobilität und Ratgeber.",
+   "id": "websites",
+   "name": "Websites",
+   "noun": "Website",
+   "description": "Redaktionelle Websites und Artikelseiten aus Luxus, Lifestyle, Mobilität und Ratgeber.",
    "items": [
     {
      "name": "Die zehn teuersten Desserts der Welt und wo es sie gibt",
@@ -710,13 +711,14 @@
       0.2
      ]
     }
-   ]
+   ],
+   "group": "paid"
   },
   {
-   "id": "shows",
-   "name": "Fernsehshows",
+   "id": "streaming",
+   "name": "Streaming / CTV",
    "noun": "Show",
-   "description": "Fernsehshows und Serien, von Glamour- und Wettbewerbsformaten bis zu vertrauten Alltagsformaten.",
+   "description": "Shows und Serien auf Streaming-Diensten und Connected TV, von Glamour- und Wettbewerbsformaten bis zu vertrauten Alltagsformaten.",
    "items": [
     {
      "name": "Germany's Next Topmodel",
@@ -1054,7 +1056,8 @@
       0.2
      ]
     }
-   ]
+   ],
+   "group": "paid"
   },
   {
    "id": "influencer",
@@ -1398,357 +1401,14 @@
       0.7
      ]
     }
-   ]
+   ],
+   "group": "paid"
   },
   {
-   "id": "loyalty",
-   "name": "Loyalty-App-Features",
-   "noun": "Feature",
-   "description": "Funktionen einer Bonus-App im Supermarkt, von exklusiven Status-Vorteilen bis zu Alltagshelfern und verantwortungsvollem Einkauf.",
-   "items": [
-    {
-     "name": "Gold-Status mit exklusiven Vorteilen",
-     "detail": "Statusstufe",
-     "reason": "Sichtbarer Status, Belohnung für Treue",
-     "profile": [
-      0.92,
-      0.3,
-      0.25,
-      0.85,
-      0.3,
-      0.3,
-      0.35,
-      0.1,
-      0.2
-     ]
-    },
-    {
-     "name": "Premium-Prämien aus dem Gourmet-Regal",
-     "detail": "Prämienshop",
-     "reason": "Belohnung als Genuss, exklusive Auswahl",
-     "profile": [
-      0.85,
-      0.25,
-      0.2,
-      0.9,
-      0.3,
-      0.25,
-      0.35,
-      0.1,
-      0.15
-     ]
-    },
-    {
-     "name": "Vorab-Zugang zu limitierten Editionen",
-     "detail": "Exklusive Angebote",
-     "reason": "Zuerst haben, was andere noch nicht bekommen",
-     "profile": [
-      0.9,
-      0.3,
-      0.2,
-      0.8,
-      0.3,
-      0.2,
-      0.3,
-      0.1,
-      0.15
-     ]
-    },
-    {
-     "name": "Einladungen zu Verkostungen und Events",
-     "detail": "Mitglieder-Events",
-     "reason": "Erlebnis, Exklusivität und Zugehörigkeit zum Kreis",
-     "profile": [
-      0.8,
-      0.25,
-      0.2,
-      0.7,
-      0.25,
-      0.2,
-      0.55,
-      0.15,
-      0.2
-     ]
-    },
-    {
-     "name": "Persönliche Geburtstagsüberraschung",
-     "detail": "Geschenk",
-     "reason": "Wertschätzung als Belohnung, emotionaler Moment",
-     "profile": [
-      0.7,
-      0.2,
-      0.2,
-      0.75,
-      0.25,
-      0.25,
-      0.6,
-      0.15,
-      0.2
-     ]
-    },
-    {
-     "name": "Punkte-Boost bei Premium-Marken",
-     "detail": "Punkte sammeln",
-     "reason": "Belohnung fürs Besondere, Anreiz zum Aufstieg",
-     "profile": [
-      0.75,
-      0.35,
-      0.25,
-      0.85,
-      0.4,
-      0.3,
-      0.3,
-      0.15,
-      0.2
-     ]
-    },
-    {
-     "name": "Persönliche Empfehlungen für Genießer",
-     "detail": "Personalisierung",
-     "reason": "Genuss und Individualität, Gefühl des Erkanntwerdens",
-     "profile": [
-      0.65,
-      0.3,
-      0.25,
-      0.75,
-      0.35,
-      0.3,
-      0.45,
-      0.2,
-      0.25
-     ]
-    },
-    {
-     "name": "Sofort-Rabatt an der Kasse",
-     "detail": "Bezahlen",
-     "reason": "Komfort und Belohnung im Moment, ohne Aufwand",
-     "profile": [
-      0.55,
-      0.35,
-      0.3,
-      0.75,
-      0.45,
-      0.4,
-      0.35,
-      0.2,
-      0.3
-     ]
-    },
-    {
-     "name": "Jahresrückblick: gesammelte Punkte",
-     "detail": "Statistik",
-     "reason": "Erfolg sichtbar machen, Stolz auf das Erreichte",
-     "profile": [
-      0.5,
-      0.4,
-      0.3,
-      0.8,
-      0.55,
-      0.4,
-      0.3,
-      0.25,
-      0.3
-     ]
-    },
-    {
-     "name": "Rabatt auf Eigenmarken",
-     "detail": "Sparen",
-     "reason": "Vernünftig sparen im Alltag, wenig Glamour",
-     "profile": [
-      0.2,
-      0.35,
-      0.35,
-      0.4,
-      0.65,
-      0.55,
-      0.35,
-      0.4,
-      0.5
-     ]
-    },
-    {
-     "name": "Digitaler Kassenbon",
-     "detail": "Belege",
-     "reason": "Ordnung und Nutzen, reine Routine",
-     "profile": [
-      0.1,
-      0.3,
-      0.35,
-      0.3,
-      0.65,
-      0.7,
-      0.25,
-      0.45,
-      0.6
-     ]
-    },
-    {
-     "name": "Einkaufsliste mit Familienfreigabe",
-     "detail": "Planung",
-     "reason": "Gemeinsam planen, Alltag der Familie",
-     "profile": [
-      0.15,
-      0.2,
-      0.3,
-      0.3,
-      0.5,
-      0.6,
-      0.8,
-      0.45,
-      0.65
-     ]
-    },
-    {
-     "name": "Pfandbon in der App einlösen",
-     "detail": "Pfand",
-     "reason": "Praktische Gewohnheit ohne Statusbezug",
-     "profile": [
-      0.1,
-      0.2,
-      0.35,
-      0.25,
-      0.5,
-      0.75,
-      0.3,
-      0.45,
-      0.7
-     ]
-    },
-    {
-     "name": "Wochenplaner mit Familienrezepten",
-     "detail": "Rezepte",
-     "reason": "Fürsorge und Routine im Familienalltag",
-     "profile": [
-      0.15,
-      0.2,
-      0.3,
-      0.3,
-      0.45,
-      0.6,
-      0.85,
-      0.5,
-      0.7
-     ]
-    },
-    {
-     "name": "Punkte an soziale Projekte spenden",
-     "detail": "Spenden",
-     "reason": "Verantwortung und Gemeinschaft statt Belohnung",
-     "profile": [
-      0.1,
-      0.15,
-      0.2,
-      0.2,
-      0.3,
-      0.3,
-      0.85,
-      0.8,
-      0.5
-     ]
-    },
-    {
-     "name": "CO₂-Bilanz des Einkaufs",
-     "detail": "Nachhaltigkeit",
-     "reason": "Verantwortung und Vernunft, kein Statusbezug",
-     "profile": [
-      0.1,
-      0.2,
-      0.2,
-      0.25,
-      0.5,
-      0.3,
-      0.6,
-      0.9,
-      0.5
-     ]
-    },
-    {
-     "name": "Platin-Stufe mit Concierge-Service",
-     "detail": "Statusstufe",
-     "reason": "Höchster Status, persönliche Betreuung",
-     "profile": [
-      0.95,
-      0.3,
-      0.3,
-      0.85,
-      0.3,
-      0.25,
-      0.35,
-      0.2,
-      0.2
-     ]
-    },
-    {
-     "name": "Persönlicher Einkaufsberater per Chat",
-     "detail": "Service",
-     "reason": "Service wie im Luxushandel",
-     "profile": [
-      0.95,
-      0.25,
-      0.2,
-      0.85,
-      0.35,
-      0.25,
-      0.5,
-      0.2,
-      0.2
-     ]
-    },
-    {
-     "name": "Exklusive Vorab-Verkostung neuer Premium-Produkte",
-     "detail": "Mitglieder-Events",
-     "reason": "Zuerst probieren, Zugang für wenige",
-     "profile": [
-      0.95,
-      0.25,
-      0.25,
-      0.85,
-      0.3,
-      0.25,
-      0.45,
-      0.2,
-      0.2
-     ]
-    },
-    {
-     "name": "Prämien-Upgrade: Champagner statt Punkte",
-     "detail": "Prämienshop",
-     "reason": "Belohnung mit Glamour",
-     "profile": [
-      0.95,
-      0.25,
-      0.2,
-      0.9,
-      0.3,
-      0.25,
-      0.45,
-      0.2,
-      0.2
-     ]
-    },
-    {
-     "name": "VIP-Kasse ohne Wartezeit",
-     "detail": "Bezahlen, Privileg",
-     "reason": "Privileg, Zeit und Status",
-     "profile": [
-      0.95,
-      0.4,
-      0.2,
-      0.85,
-      0.3,
-      0.3,
-      0.35,
-      0.2,
-      0.2
-     ]
-    }
-   ]
-  },
-  {
-   "id": "autos",
-   "name": "Automodelle",
+   "id": "auto",
+   "name": "Markenkooperation Automobil",
    "noun": "Modell",
-   "description": "Konkrete Automodelle vom Luxus-Roadster bis zum vernünftigen Familien- und Nutzfahrzeug.",
+   "description": "Off-Category Produkte Auto: Automodelle als Kooperationspartner, vom Luxus-Roadster bis zum vernünftigen Familienfahrzeug.",
    "items": [
     {
      "name": "Maserati GranTurismo",
@@ -2086,13 +1746,14 @@
       0.2
      ]
     }
-   ]
+   ],
+   "group": "paid"
   },
   {
-   "id": "mode",
-   "name": "Bekleidungsmarken",
+   "id": "fashion",
+   "name": "Markenkooperation Fashion",
    "noun": "Marke",
-   "description": "Bekleidungsmarken von Luxus-Mode über Sport und Outdoor bis zu Basics und Arbeitskleidung.",
+   "description": "Off-Category Produkte Fashion: Bekleidungsmarken als Kooperationspartner, von Luxusmode bis Basics und Arbeitskleidung.",
    "items": [
     {
      "name": "Moncler",
@@ -2430,13 +2091,14 @@
       0.2
      ]
     }
-   ]
+   ],
+   "group": "paid"
   },
   {
    "id": "sport",
-   "name": "Sportarten",
+   "name": "Markenkooperation Sport",
    "noun": "Sportart",
-   "description": "Sportarten und Sportereignisse, vom exklusiven Polo bis zum Vereinssport und zur Alltagsbewegung.",
+   "description": "Sportarten und Sportereignisse als Kooperationspartner, vom exklusiven Polo bis zum Vereinssport.",
    "items": [
     {
      "name": "Polo",
@@ -2774,622 +2436,279 @@
       0.2
      ]
     }
-   ]
+   ],
+   "group": "paid"
   },
   {
-   "id": "arbeitgeber",
-   "name": "Arbeitgebermarken",
-   "noun": "Arbeitgeber",
-   "description": "Reale Unternehmen und Organisationen als Arbeitgebermarken, von Elite-Karriere bis Gemeinwohl.",
+   "id": "brand-app",
+   "name": "Brand-App-Features",
+   "noun": "Feature",
+   "description": "Funktionen einer Marken- oder Händler-App, von exklusiven Status-Vorteilen bis zu Alltagshelfern.",
    "items": [
     {
-     "name": "LVMH",
-     "detail": "Luxuskonzern, Paris",
-     "reason": "Luxuswelt, Glamour und Markenprestige",
+     "name": "Gold-Status mit exklusiven Vorteilen",
+     "detail": "Statusstufe",
+     "reason": "Sichtbarer Status, Belohnung für Treue",
      "profile": [
-      0.95,
-      0.35,
-      0.2,
-      0.75,
+      0.92,
       0.3,
+      0.25,
+      0.85,
+      0.3,
+      0.3,
+      0.35,
+      0.1,
+      0.2
+     ]
+    },
+    {
+     "name": "Premium-Prämien aus dem Gourmet-Regal",
+     "detail": "Prämienshop",
+     "reason": "Belohnung als Genuss, exklusive Auswahl",
+     "profile": [
+      0.85,
+      0.25,
       0.2,
+      0.9,
+      0.3,
+      0.25,
       0.35,
       0.1,
       0.15
      ]
     },
     {
-     "name": "Red Bull",
-     "detail": "Getränkekonzern, Österreich",
-     "reason": "Energie, Erlebnis und Siegermentalität",
+     "name": "Vorab-Zugang zu limitierten Editionen",
+     "detail": "Exklusive Angebote",
+     "reason": "Zuerst haben, was andere noch nicht bekommen",
+     "profile": [
+      0.9,
+      0.3,
+      0.2,
+      0.8,
+      0.3,
+      0.2,
+      0.3,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Einladungen zu Verkostungen und Events",
+     "detail": "Mitglieder-Events",
+     "reason": "Erlebnis, Exklusivität und Zugehörigkeit zum Kreis",
      "profile": [
       0.8,
       0.25,
       0.2,
-      0.9,
-      0.35,
+      0.7,
+      0.25,
       0.2,
-      0.45,
-      0.1,
-      0.15
-     ]
-    },
-    {
-     "name": "Porsche AG",
-     "detail": "Sportwagenhersteller",
-     "reason": "Leistung, Begehrlichkeit und Markenstolz",
-     "profile": [
-      0.9,
-      0.4,
-      0.25,
-      0.85,
-      0.4,
-      0.25,
-      0.4,
+      0.55,
       0.15,
       0.2
      ]
     },
     {
-     "name": "Rolex",
-     "detail": "Uhrenmanufaktur, Genf",
-     "reason": "Perfektion, Prestige und Exklusivität",
+     "name": "Persönliche Geburtstagsüberraschung",
+     "detail": "Geschenk",
+     "reason": "Wertschätzung als Belohnung, emotionaler Moment",
      "profile": [
-      0.9,
-      0.45,
+      0.7,
+      0.2,
+      0.2,
+      0.75,
       0.25,
-      0.8,
-      0.4,
       0.25,
-      0.3,
-      0.1,
+      0.6,
+      0.15,
       0.2
      ]
     },
     {
-     "name": "Goldman Sachs",
-     "detail": "Investmentbank, New York",
-     "reason": "Elite, Bonus und Leistung, Status durch Erfolg",
+     "name": "Punkte-Boost bei Premium-Marken",
+     "detail": "Punkte sammeln",
+     "reason": "Belohnung fürs Besondere, Anreiz zum Aufstieg",
      "profile": [
-      0.95,
-      0.5,
-      0.2,
-      0.9,
-      0.5,
-      0.2,
-      0.2,
-      0.1,
-      0.1
+      0.75,
+      0.35,
+      0.25,
+      0.85,
+      0.4,
+      0.3,
+      0.3,
+      0.15,
+      0.2
      ]
     },
     {
-     "name": "Lufthansa",
-     "detail": "Fluggesellschaft",
-     "reason": "Premium-Marke, Weltläufigkeit und Prestige",
+     "name": "Persönliche Empfehlungen für Genießer",
+     "detail": "Personalisierung",
+     "reason": "Genuss und Individualität, Gefühl des Erkanntwerdens",
      "profile": [
-      0.8,
-      0.4,
+      0.65,
       0.3,
-      0.7,
+      0.25,
+      0.75,
+      0.35,
+      0.3,
+      0.45,
+      0.2,
+      0.25
+     ]
+    },
+    {
+     "name": "Sofort-Rabatt an der Kasse",
+     "detail": "Bezahlen",
+     "reason": "Komfort und Belohnung im Moment, ohne Aufwand",
+     "profile": [
+      0.55,
+      0.35,
+      0.3,
+      0.75,
+      0.45,
       0.4,
       0.35,
-      0.45,
       0.2,
       0.3
      ]
     },
     {
-     "name": "Google",
-     "detail": "Technologiekonzern, USA",
-     "reason": "Leistungselite, Innovation und Begehrlichkeit",
+     "name": "Jahresrückblick: gesammelte Punkte",
+     "detail": "Statistik",
+     "reason": "Erfolg sichtbar machen, Stolz auf das Erreichte",
      "profile": [
-      0.75,
-      0.45,
-      0.2,
-      0.9,
-      0.55,
-      0.2,
-      0.45,
-      0.2,
-      0.15
-     ]
-    },
-    {
-     "name": "McKinsey & Company",
-     "detail": "Strategieberatung",
-     "reason": "Exzellenz, Aufstieg und Prestige",
-     "profile": [
-      0.85,
-      0.55,
-      0.2,
-      0.95,
-      0.55,
-      0.2,
-      0.25,
-      0.1,
-      0.1
-     ]
-    },
-    {
-     "name": "Siemens",
-     "detail": "Technologiekonzern, München",
-     "reason": "Solide Leistung, Ingenieursstolz und Verlässlichkeit",
-     "profile": [
-      0.45,
       0.5,
-      0.35,
-      0.6,
-      0.8,
       0.4,
-      0.4,
-      0.35,
-      0.4
-     ]
-    },
-    {
-     "name": "Bosch",
-     "detail": "Technologiekonzern, Stuttgart",
-     "reason": "Verantwortung und Verlässlichkeit vor Status",
-     "profile": [
       0.3,
-      0.35,
-      0.35,
-      0.45,
-      0.65,
-      0.45,
-      0.5,
       0.8,
+      0.55,
+      0.4,
+      0.3,
+      0.25,
+      0.3
+     ]
+    },
+    {
+     "name": "Rabatt auf Eigenmarken",
+     "detail": "Sparen",
+     "reason": "Vernünftig sparen im Alltag, wenig Glamour",
+     "profile": [
+      0.2,
+      0.35,
+      0.35,
+      0.4,
+      0.65,
+      0.55,
+      0.35,
+      0.4,
       0.5
      ]
     },
     {
-     "name": "Deutsche Telekom",
-     "detail": "Telekommunikation, Bonn",
-     "reason": "Großer Arbeitgeber, Sicherheit und Routine",
+     "name": "Digitaler Kassenbon",
+     "detail": "Belege",
+     "reason": "Ordnung und Nutzen, reine Routine",
      "profile": [
+      0.1,
       0.3,
       0.35,
-      0.45,
-      0.4,
-      0.55,
-      0.55,
-      0.45,
-      0.4,
-      0.8
-     ]
-    },
-    {
-     "name": "Regionaler Handwerksbetrieb",
-     "detail": "Handwerk, Mittelstand",
-     "reason": "Zusammenhalt im Team, Alltag und Verlässlichkeit",
-     "profile": [
-      0.15,
-      0.2,
-      0.35,
       0.3,
-      0.5,
       0.65,
-      0.75,
-      0.4,
-      0.85
-     ]
-    },
-    {
-     "name": "Deutsche Bahn",
-     "detail": "Verkehrsunternehmen",
-     "reason": "Daseinsvorsorge, Sicherheit und Gemeinschaft",
-     "profile": [
-      0.15,
-      0.2,
-      0.3,
-      0.2,
-      0.45,
-      0.55,
-      0.55,
-      0.75,
-      0.85
-     ]
-    },
-    {
-     "name": "Alnatura",
-     "detail": "Bio-Supermarkt, Darmstadt",
-     "reason": "Sinn, Nachhaltigkeit und Verantwortung",
-     "profile": [
-      0.1,
-      0.1,
-      0.15,
-      0.2,
-      0.35,
-      0.3,
-      0.75,
-      0.95,
-      0.5
-     ]
-    },
-    {
-     "name": "Stadtverwaltung München",
-     "detail": "Öffentlicher Dienst",
-     "reason": "Gemeinwohl, Sicherheit und geregelte Routine",
-     "profile": [
-      0.1,
-      0.2,
-      0.25,
-      0.15,
-      0.45,
-      0.5,
-      0.45,
-      0.8,
-      0.9
-     ]
-    },
-    {
-     "name": "Caritas",
-     "detail": "Wohlfahrtsverband",
-     "reason": "Fürsorge und Gemeinschaft statt Status",
-     "profile": [
-      0.05,
-      0.1,
-      0.15,
-      0.15,
-      0.3,
-      0.3,
-      0.95,
-      0.85,
-      0.55
-     ]
-    },
-    {
-     "name": "Ferrari",
-     "detail": "Sportwagen, Maranello",
-     "reason": "Markenmythos, Leistung und Stolz",
-     "profile": [
-      0.95,
-      0.25,
-      0.2,
-      0.85,
-      0.3,
-      0.35,
-      0.45,
-      0.2,
-      0.2
-     ]
-    },
-    {
-     "name": "Bain & Company",
-     "detail": "Strategieberatung",
-     "reason": "Exzellenz, Aufstieg und Prestige",
-     "profile": [
-      0.95,
-      0.25,
-      0.2,
-      0.85,
-      0.5,
-      0.25,
-      0.35,
-      0.2,
-      0.2
-     ]
-    },
-    {
-     "name": "Richemont",
-     "detail": "Luxuskonzern, Genf",
-     "reason": "Luxusuhren und Schmuck, Prestige",
-     "profile": [
-      0.95,
-      0.4,
-      0.2,
-      0.85,
-      0.3,
-      0.25,
-      0.35,
-      0.2,
-      0.2
-     ]
-    },
-    {
-     "name": "J.P. Morgan",
-     "detail": "Investmentbank, New York",
-     "reason": "Elite, Bonus und Status durch Erfolg",
-     "profile": [
-      0.95,
-      0.35,
-      0.2,
-      0.85,
-      0.45,
-      0.25,
-      0.35,
-      0.2,
-      0.2
-     ]
-    },
-    {
-     "name": "Emirates",
-     "detail": "Fluggesellschaft, Dubai",
-     "reason": "Premium-Service, Weltläufigkeit und Glanz",
-     "profile": [
-      0.95,
-      0.25,
-      0.25,
-      0.85,
-      0.3,
-      0.25,
-      0.5,
-      0.2,
-      0.2
-     ]
-    }
-   ]
-  },
-  {
-   "id": "benefits",
-   "name": "Arbeitgeber-Benefits",
-   "noun": "Benefit",
-   "description": "Leistungen, die Arbeitgeber anbieten, von Statussymbolen bis zur Entlastung im Alltag.",
-   "items": [
-    {
-     "name": "Business-Class-Dienstreisen",
-     "detail": "Reisen, Komfort",
-     "reason": "Premium-Komfort als Zeichen der Wertschätzung",
-     "profile": [
-      0.9,
-      0.3,
-      0.2,
-      0.75,
-      0.3,
-      0.2,
-      0.35,
-      0.1,
-      0.15
-     ]
-    },
-    {
-     "name": "Firmenwagen der Oberklasse",
-     "detail": "Mobilität, Statussymbol",
-     "reason": "Sichtbarer Status, Belohnung für Erfolg",
-     "profile": [
-      0.95,
-      0.35,
-      0.2,
-      0.8,
-      0.3,
-      0.2,
-      0.25,
-      0.1,
-      0.15
-     ]
-    },
-    {
-     "name": "Mitgliedschaft im Premium-Fitnessclub",
-     "detail": "Gesundheit, Lifestyle",
-     "reason": "Körperliche Exzellenz in exklusivem Umfeld",
-     "profile": [
-      0.8,
-      0.3,
-      0.25,
-      0.85,
-      0.4,
-      0.3,
-      0.35,
-      0.1,
-      0.2
-     ]
-    },
-    {
-     "name": "Einladungen zu VIP-Events",
-     "detail": "Netzwerk, Erlebnis",
-     "reason": "Glamour, Zugang und Bewunderung",
-     "profile": [
-      0.95,
-      0.25,
-      0.15,
       0.7,
       0.25,
-      0.15,
       0.45,
-      0.1,
-      0.1
+      0.6
      ]
     },
     {
-     "name": "Eckbüro mit Assistenz",
-     "detail": "Arbeitsplatz, Hierarchie",
-     "reason": "Sichtbare Hierarchie, Dominanz und Prestige",
+     "name": "Einkaufsliste mit Familienfreigabe",
+     "detail": "Planung",
+     "reason": "Gemeinsam planen, Alltag der Familie",
      "profile": [
-      0.95,
-      0.4,
+      0.15,
+      0.2,
       0.3,
-      0.7,
+      0.3,
+      0.5,
+      0.6,
+      0.8,
+      0.45,
+      0.65
+     ]
+    },
+    {
+     "name": "Pfandbon in der App einlösen",
+     "detail": "Pfand",
+     "reason": "Praktische Gewohnheit ohne Statusbezug",
+     "profile": [
+      0.1,
+      0.2,
       0.35,
-      0.3,
       0.25,
-      0.1,
-      0.2
-     ]
-    },
-    {
-     "name": "Executive Coaching",
-     "detail": "Entwicklung, Führung",
-     "reason": "Selbstoptimierung auf dem Weg nach oben",
-     "profile": [
+      0.5,
       0.75,
+      0.3,
       0.45,
-      0.15,
-      0.9,
-      0.55,
-      0.2,
-      0.3,
-      0.1,
-      0.1
-     ]
-    },
-    {
-     "name": "Bonus und Aktienbeteiligung",
-     "detail": "Vergütung, variabel",
-     "reason": "Belohnung für Leistung, Teilhabe am Erfolg",
-     "profile": [
-      0.8,
-      0.5,
-      0.15,
-      0.95,
-      0.55,
-      0.2,
-      0.25,
-      0.1,
-      0.1
-     ]
-    },
-    {
-     "name": "MBA-Förderung an einer Top-Business-School",
-     "detail": "Weiterbildung, Karriere",
-     "reason": "Exzellenz, Netzwerk und Karrieresprung",
-     "profile": [
-      0.7,
-      0.5,
-      0.15,
-      0.9,
-      0.6,
-      0.2,
-      0.3,
-      0.15,
-      0.1
-     ]
-    },
-    {
-     "name": "Workation im Ausland",
-     "detail": "Arbeitsmodell, Erlebnis",
-     "reason": "Erlebnis und Freiheit, lockerer Statusbezug",
-     "profile": [
-      0.45,
-      0.25,
-      0.2,
-      0.8,
-      0.35,
-      0.25,
-      0.6,
-      0.2,
-      0.25
-     ]
-    },
-    {
-     "name": "Weiterbildungsbudget",
-     "detail": "Entwicklung, fachlich",
-     "reason": "Fachliche Entwicklung, rational und nüchtern",
-     "profile": [
-      0.3,
-      0.4,
-      0.25,
-      0.6,
-      0.85,
-      0.3,
-      0.35,
-      0.3,
-      0.25
-     ]
-    },
-    {
-     "name": "Homeoffice-Ausstattung",
-     "detail": "Arbeitsplatz, praktisch",
-     "reason": "Nutzen und Routine im Arbeitsalltag",
-     "profile": [
-      0.15,
-      0.3,
-      0.35,
-      0.35,
-      0.7,
-      0.6,
-      0.35,
-      0.35,
-      0.8
-     ]
-    },
-    {
-     "name": "Gleitzeit",
-     "detail": "Arbeitszeit, Flexibilität",
-     "reason": "Vereinbarkeit und Routine, vernünftig statt glamourös",
-     "profile": [
-      0.1,
-      0.2,
-      0.3,
-      0.3,
-      0.6,
-      0.6,
-      0.5,
-      0.55,
-      0.85
-     ]
-    },
-    {
-     "name": "Fahrradleasing",
-     "detail": "Mobilität, Dienstrad",
-     "reason": "Vernunft, Gesundheit und Verantwortung",
-     "profile": [
-      0.1,
-      0.15,
-      0.2,
-      0.3,
-      0.6,
-      0.4,
-      0.45,
-      0.85,
-      0.5
-     ]
-    },
-    {
-     "name": "Betriebsrente",
-     "detail": "Vorsorge, Sicherheit",
-     "reason": "Sicherheit und Vorsorge, rationaler Anschluss",
-     "profile": [
-      0.1,
-      0.2,
-      0.25,
-      0.15,
-      0.55,
-      0.45,
-      0.4,
-      0.9,
-      0.75
-     ]
-    },
-    {
-     "name": "Jobticket",
-     "detail": "Mobilität, ÖPNV",
-     "reason": "Alltagsnutzen und Gewohnheit, kein Prestige",
-     "profile": [
-      0.05,
-      0.15,
-      0.25,
-      0.15,
-      0.65,
-      0.55,
-      0.3,
-      0.6,
-      0.85
-     ]
-    },
-    {
-     "name": "Kita-Zuschuss",
-     "detail": "Familie, Betreuung",
-     "reason": "Fürsorge für die Familie, Verantwortung",
-     "profile": [
-      0.05,
-      0.1,
-      0.2,
-      0.15,
-      0.4,
-      0.4,
-      0.8,
-      0.85,
       0.7
      ]
     },
     {
-     "name": "Chauffeur-Service für Führungskräfte",
-     "detail": "Mobilität, Status",
-     "reason": "Sichtbarer Status und Komfort",
+     "name": "Wochenplaner mit Familienrezepten",
+     "detail": "Rezepte",
+     "reason": "Fürsorge und Routine im Familienalltag",
+     "profile": [
+      0.15,
+      0.2,
+      0.3,
+      0.3,
+      0.45,
+      0.6,
+      0.85,
+      0.5,
+      0.7
+     ]
+    },
+    {
+     "name": "Punkte an soziale Projekte spenden",
+     "detail": "Spenden",
+     "reason": "Verantwortung und Gemeinschaft statt Belohnung",
+     "profile": [
+      0.1,
+      0.15,
+      0.2,
+      0.2,
+      0.3,
+      0.3,
+      0.85,
+      0.8,
+      0.5
+     ]
+    },
+    {
+     "name": "CO₂-Bilanz des Einkaufs",
+     "detail": "Nachhaltigkeit",
+     "reason": "Verantwortung und Vernunft, kein Statusbezug",
+     "profile": [
+      0.1,
+      0.2,
+      0.2,
+      0.25,
+      0.5,
+      0.3,
+      0.6,
+      0.9,
+      0.5
+     ]
+    },
+    {
+     "name": "Platin-Stufe mit Concierge-Service",
+     "detail": "Statusstufe",
+     "reason": "Höchster Status, persönliche Betreuung",
      "profile": [
       0.95,
-      0.25,
-      0.35,
+      0.3,
+      0.3,
       0.85,
       0.3,
       0.25,
@@ -3399,9 +2718,41 @@
      ]
     },
     {
-     "name": "Jahresbonus mit Luxusreise",
-     "detail": "Vergütung, Erlebnis",
-     "reason": "Belohnung als Erlebnis",
+     "name": "Persönlicher Einkaufsberater per Chat",
+     "detail": "Service",
+     "reason": "Service wie im Luxushandel",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.85,
+      0.35,
+      0.25,
+      0.5,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Exklusive Vorab-Verkostung neuer Premium-Produkte",
+     "detail": "Mitglieder-Events",
+     "reason": "Zuerst probieren, Zugang für wenige",
+     "profile": [
+      0.95,
+      0.25,
+      0.25,
+      0.85,
+      0.3,
+      0.25,
+      0.45,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Prämien-Upgrade: Champagner statt Punkte",
+     "detail": "Prämienshop",
+     "reason": "Belohnung mit Glamour",
      "profile": [
       0.95,
       0.25,
@@ -3415,54 +2766,175 @@
      ]
     },
     {
-     "name": "Mitgliedschaft im Private Members Club",
-     "detail": "Netzwerk, Exklusivität",
-     "reason": "Exklusiver Zugang und Netzwerk",
+     "name": "VIP-Kasse ohne Wartezeit",
+     "detail": "Bezahlen, Privileg",
+     "reason": "Privileg, Zeit und Status",
      "profile": [
       0.95,
       0.4,
       0.2,
       0.85,
       0.3,
-      0.25,
-      0.4,
-      0.2,
-      0.2
-     ]
-    },
-    {
-     "name": "Premium-Krankenversicherung mit Chefarzt",
-     "detail": "Gesundheit, Privileg",
-     "reason": "Privilegierter Zugang, Sicherheit auf hohem Niveau",
-     "profile": [
-      0.95,
-      0.25,
-      0.2,
-      0.85,
-      0.45,
-      0.25,
+      0.3,
       0.35,
-      0.3,
-      0.2
-     ]
-    },
-    {
-     "name": "Firmenloge im Stadion",
-     "detail": "Erlebnis, Repräsentation",
-     "reason": "Prestige-Erlebnis für Gäste und Team",
-     "profile": [
-      0.95,
-      0.25,
-      0.2,
-      0.85,
-      0.3,
-      0.25,
-      0.55,
       0.2,
       0.2
      ]
     }
-   ]
+   ],
+   "group": "owned"
+  }
+ ],
+ "psychografie": {
+  "name": "Psychografie",
+  "layers": [
+   {
+    "name": "Heatmap 1",
+    "profile": [
+     1.0,
+     0.8,
+     0.3,
+     0.6,
+     0.3,
+     0.45,
+     0.35,
+     0.0,
+     0.0
+    ]
+   },
+   {
+    "name": "Heatmap 2",
+    "profile": [
+     1.0,
+     0.8,
+     1.0,
+     0.6,
+     0.4,
+     0.6,
+     0.15,
+     0.0,
+     0.55
+    ]
+   },
+   {
+    "name": "Heatmap 3",
+    "profile": [
+     1.0,
+     0.8,
+     0.5,
+     0.8,
+     0.4,
+     0.4,
+     0.15,
+     0.0,
+     0.6
+    ]
+   },
+   {
+    "name": "Heatmap 4",
+    "profile": [
+     0.6,
+     0.2,
+     0.75,
+     1.0,
+     0.75,
+     0.5,
+     0.2,
+     0.0,
+     0.8
+    ]
+   },
+   {
+    "name": "Heatmap 5",
+    "profile": [
+     0.45,
+     0.1,
+     0.4,
+     0.2,
+     0.0,
+     1.0,
+     0.45,
+     0.0,
+     0.4
+    ]
+   },
+   {
+    "name": "Heatmap 6",
+    "profile": [
+     0.4,
+     0.4,
+     0.2,
+     0.45,
+     0.25,
+     0.0,
+     1.0,
+     0.7,
+     0.0
+    ]
+   },
+   {
+    "name": "Heatmap 7",
+    "profile": [
+     0.8,
+     0.75,
+     1.0,
+     0.35,
+     0.2,
+     0.6,
+     0.0,
+     0.05,
+     0.25
+    ]
+   },
+   {
+    "name": "Heatmap 8",
+    "profile": [
+     0.8,
+     0.75,
+     1.0,
+     0.35,
+     0.2,
+     0.8,
+     0.0,
+     0.05,
+     0.25
+    ]
+   },
+   {
+    "name": "Heatmap 9",
+    "profile": [
+     0.45,
+     1.0,
+     0.25,
+     0.25,
+     0.6,
+     0.0,
+     0.25,
+     0.35,
+     0.0
+    ]
+   }
+  ]
+ },
+ "groups": [
+  {
+   "id": "in-category",
+   "name": "In-Category",
+   "gapBefore": 1
+  },
+  {
+   "id": "paid",
+   "name": "Paid Media",
+   "gapBefore": 1.5
+  },
+  {
+   "id": "owned",
+   "name": "Owned Media & 1st Party",
+   "lines": [
+    "Owned Media",
+    "& 1st Party"
+   ],
+   "gapBefore": 2
   }
  ]
 }
