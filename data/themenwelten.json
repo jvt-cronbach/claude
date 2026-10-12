@@ -1060,6 +1060,1386 @@
    "group": "paid"
   },
   {
+   "id": "youtube",
+   "name": "YouTube Creator Videos",
+   "noun": "Video",
+   "group": "paid",
+   "description": "Einzelne Videos von Creatorn, die als Werbeumfeld gebucht werden können.",
+   "items": [
+    {
+     "name": "24 Stunden im teuersten Hotel von Dubai",
+     "detail": "Luxury-Lifestyle, Vlog",
+     "reason": "Luxus als Erlebnis, Status und Genuss im Mittelpunkt.",
+     "profile": [
+      1.0,
+      0.3,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Get ready with me: Roter Teppich in Cannes",
+     "detail": "Beauty, Vlog",
+     "reason": "Glamour und Inszenierung, der große Auftritt als Belohnung.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.9,
+      0.3,
+      0.25,
+      0.45,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Private Jet für einen Tag: Lohnt es sich?",
+     "detail": "Luxury-Lifestyle, Vlog",
+     "reason": "Luxus und Überlegenheit, emotional inszeniert.",
+     "profile": [
+      1.0,
+      0.35,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Blattgold-Dessert selbst gemacht",
+     "detail": "Food, Rezeptvideo",
+     "reason": "Goldene Inszenierung von Genuss, Belohnung zum Selbermachen.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.85,
+      0.3,
+      0.35,
+      0.45,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Ich teste das teuerste Eis der Welt",
+     "detail": "Food, Challenge",
+     "reason": "Premium-Genuss als Erlebnis, Exklusivität trifft Neugier.",
+     "profile": [
+      0.95,
+      0.35,
+      0.2,
+      0.85,
+      0.4,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Haul: Was ich auf der Fashion Week gekauft habe",
+     "detail": "Fashion, Haul",
+     "reason": "Mode als Statussymbol, Belohnung durch den Kauf.",
+     "profile": [
+      0.95,
+      0.25,
+      0.3,
+      0.85,
+      0.3,
+      0.35,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "First Class nach New York: Wie ist es wirklich?",
+     "detail": "Reise, Vlog",
+     "reason": "Exklusives Reiseerlebnis, Komfort und Status in einem.",
+     "profile": [
+      0.95,
+      0.4,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Champagner-Tasting: Die 5 besten Cuvées",
+     "detail": "Food, Tasting",
+     "reason": "Genuss und Exzellenz, rational unterfüttert durch Vergleich.",
+     "profile": [
+      0.9,
+      0.25,
+      0.2,
+      0.85,
+      0.45,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Mein erstes Sterne-Dinner: Omakase in Tokio",
+     "detail": "Food, Vlog",
+     "reason": "Kulinarische Belohnung auf höchstem Niveau, Genuss als Ritual.",
+     "profile": [
+      0.85,
+      0.25,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.5,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Yacht-Wochenende an der Côte d'Azur",
+     "detail": "Reise, Vlog",
+     "reason": "Glamouröses Erlebnis, Genuss und Status in einem Bild.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.75,
+      0.3,
+      0.25,
+      0.5,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Supercar-Garage: Rundgang durch meine Sammlung",
+     "detail": "Auto, Lifestyle-Vlog",
+     "reason": "Statusobjekte stolz inszeniert, mit Hang zu Fakten.",
+     "profile": [
+      0.95,
+      0.45,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Mein Luxus-Morgen: Routine in der Villa",
+     "detail": "Lifestyle, Vlog",
+     "reason": "Luxus als Alltag, getragen von Ritual und Gewohnheit.",
+     "profile": [
+      0.95,
+      0.25,
+      0.35,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.3
+     ]
+    },
+    {
+     "name": "Penthouse-Tour: 300 Quadratmeter über der Stadt",
+     "detail": "Immobilien, Hometour",
+     "reason": "Status und Luxus, mit Faktenanteil zu Lage und Ausstattung.",
+     "profile": [
+      0.9,
+      0.45,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Wie ich mit 25 meine erste Million verdient habe",
+     "detail": "Business, Talk",
+     "reason": "Erfolg und Belohnung, aber stark rational erklärt.",
+     "profile": [
+      0.5,
+      0.4,
+      0.3,
+      0.9,
+      0.7,
+      0.5,
+      0.3,
+      0.2,
+      0.3
+     ]
+    },
+    {
+     "name": "Dinner-Party für Freunde: Mein 4-Gänge-Menü",
+     "detail": "Food, Rezeptvideo",
+     "reason": "Genuss mit Gastgeberrolle, Gemeinschaft rückt nach vorn.",
+     "profile": [
+      0.6,
+      0.2,
+      0.3,
+      0.7,
+      0.4,
+      0.4,
+      0.9,
+      0.3,
+      0.4
+     ]
+    },
+    {
+     "name": "Marathon-Finish: Mein Weg unter 3 Stunden",
+     "detail": "Sport, Vlog",
+     "reason": "Leistung und Belohnung, getragen von Disziplin und Routine.",
+     "profile": [
+      0.3,
+      0.2,
+      0.3,
+      0.9,
+      0.6,
+      0.8,
+      0.4,
+      0.2,
+      0.3
+     ]
+    },
+    {
+     "name": "Luxusuhren als Wertanlage: Was lohnt sich?",
+     "detail": "Luxury, Ratgeber",
+     "reason": "Statusobjekte, aber nüchtern als Wertanlage betrachtet.",
+     "profile": [
+      0.6,
+      0.9,
+      0.3,
+      0.5,
+      0.7,
+      0.3,
+      0.2,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Waschmaschine reparieren: Lager wechseln",
+     "detail": "DIY, Tutorial",
+     "reason": "Nutzen und Routine, kein Erlebnis- oder Statusbezug.",
+     "profile": [
+      0.1,
+      0.3,
+      0.2,
+      0.2,
+      0.8,
+      0.6,
+      0.2,
+      0.4,
+      0.6
+     ]
+    },
+    {
+     "name": "Mathe-Abitur: Integralrechnung in 20 Minuten",
+     "detail": "Bildung, Lernvideo",
+     "reason": "Lernen und Nutzen, sachlich und ohne Inszenierung.",
+     "profile": [
+      0.1,
+      0.2,
+      0.1,
+      0.2,
+      0.9,
+      0.5,
+      0.2,
+      0.5,
+      0.4
+     ]
+    },
+    {
+     "name": "Unser Familienalltag mit drei Kindern",
+     "detail": "Familie, Vlog",
+     "reason": "Fürsorge und Alltag, geprägt von Nähe und Gewohnheit.",
+     "profile": [
+      0.1,
+      0.1,
+      0.1,
+      0.2,
+      0.3,
+      0.3,
+      0.9,
+      0.7,
+      0.6
+     ]
+    },
+    {
+     "name": "Wochenbudget: So sparen wir 300 Euro im Monat",
+     "detail": "Finanzen, Ratgeber",
+     "reason": "Sparen und Vernunft, Verantwortung für die Familie.",
+     "profile": [
+      0.1,
+      0.1,
+      0.1,
+      0.2,
+      0.6,
+      0.3,
+      0.4,
+      0.9,
+      0.5
+     ]
+    }
+   ]
+  },
+  {
+   "id": "podcast",
+   "name": "Podcast",
+   "noun": "Podcast",
+   "group": "paid",
+   "description": "Deutschsprachige und internationale Podcasts als buchbare Werbeumfelder.",
+   "items": [
+    {
+     "name": "Kaulitz Hills - Senf aus Hollywood",
+     "detail": "Comedy, Spotify",
+     "reason": "Hollywood-Glamour und Luxusleben, erzählt mit Genuss.",
+     "profile": [
+      1.0,
+      0.3,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Call Her Daddy",
+     "detail": "Talk, Alex Cooper",
+     "reason": "Glamour, Selbstbewusstsein und Erlebnis.",
+     "profile": [
+      1.0,
+      0.25,
+      0.2,
+      0.95,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Table Manners with Jessie Ware",
+     "detail": "Food, Jessie & Lennie Ware",
+     "reason": "Genuss am Tisch, Prominenz und Wärme.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.9,
+      0.3,
+      0.25,
+      0.45,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "SmartLess",
+     "detail": "Talk, Bateman, Arnett & Hayes",
+     "reason": "Hollywood-Stars unter sich, Status und Erlebnis.",
+     "profile": [
+      1.0,
+      0.35,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Off Menu",
+     "detail": "Food-Comedy, Gamble & Acaster",
+     "reason": "Traummenüs und Genuss, verspielt und exzellent.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.95,
+      0.3,
+      0.35,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Hobbylos",
+     "detail": "Comedy, Rezo & Julien Bam",
+     "reason": "Erfolg als Spiel, Belohnung und Spaß.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.85,
+      0.3,
+      0.35,
+      0.45,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "OMR Podcast",
+     "detail": "Business, Philipp Westermeyer",
+     "reason": "Erfolgsgeschichten und Ambition, Status durch Leistung.",
+     "profile": [
+      0.95,
+      0.35,
+      0.2,
+      0.85,
+      0.4,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Baywatch Berlin",
+     "detail": "Comedy, Klaas Heufer-Umlauf",
+     "reason": "Showbusiness mit Augenzwinkern, Glamour als Erlebnis.",
+     "profile": [
+      0.95,
+      0.25,
+      0.3,
+      0.85,
+      0.3,
+      0.35,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Gemischtes Hack",
+     "detail": "Comedy, Lobrecht & Schmitt",
+     "reason": "Erfolg und Spaß, Belohnung im Rampenlicht.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.5,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Alles gesagt?",
+     "detail": "Interview, ZEIT Online",
+     "reason": "Prominente erzählen vom Aufstieg, ausführlich und reflektiert.",
+     "profile": [
+      0.9,
+      0.25,
+      0.2,
+      0.85,
+      0.45,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Hotel Matze",
+     "detail": "Interview, Matze Hielscher",
+     "reason": "Wege nach oben, Erfolg als persönliches Erlebnis.",
+     "profile": [
+      0.85,
+      0.25,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.5,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Fest & Flauschig",
+     "detail": "Comedy, Böhmermann & Schulz",
+     "reason": "Lust am Erzählen, Erlebnis und Erfolg stehen vorn.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.75,
+      0.3,
+      0.25,
+      0.5,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "The Diary of a CEO",
+     "detail": "Business, Steven Bartlett",
+     "reason": "Erfolg und Exzellenz, Belohnung mit Faktenanteil.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.85,
+      0.5,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "How I Built This",
+     "detail": "Business, NPR",
+     "reason": "Erfolg als Belohnung, aber rational erzählt.",
+     "profile": [
+      0.5,
+      0.4,
+      0.3,
+      0.9,
+      0.7,
+      0.5,
+      0.3,
+      0.2,
+      0.3
+     ]
+    },
+    {
+     "name": "Doppelgänger Tech Talk",
+     "detail": "Tech, Klöckner & Glöckler",
+     "reason": "Ambition und Status, aber nüchtern mit Zahlen.",
+     "profile": [
+      0.5,
+      0.6,
+      0.3,
+      0.7,
+      0.9,
+      0.4,
+      0.2,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Verbrechen",
+     "detail": "True Crime, ZEIT Online",
+     "reason": "Spannung und Gefühl, ohne Status- oder Luxusbezug.",
+     "profile": [
+      0.4,
+      0.3,
+      0.2,
+      0.5,
+      0.7,
+      0.3,
+      0.8,
+      0.3,
+      0.3
+     ]
+    },
+    {
+     "name": "Lanz & Precht",
+     "detail": "Gesellschaft, ZDF",
+     "reason": "Prominenz trifft Vernunft, Diskurs statt Genuss.",
+     "profile": [
+      0.5,
+      0.5,
+      0.2,
+      0.5,
+      0.9,
+      0.3,
+      0.4,
+      0.5,
+      0.2
+     ]
+    },
+    {
+     "name": "Finanzfluss Podcast",
+     "detail": "Finanzen, Thomas Kehl",
+     "reason": "Vernunft, Sparen und Vorsorge, faktenorientiert.",
+     "profile": [
+      0.1,
+      0.2,
+      0.1,
+      0.3,
+      0.9,
+      0.4,
+      0.3,
+      0.7,
+      0.3
+     ]
+    },
+    {
+     "name": "Quarks Daily",
+     "detail": "Wissen, WDR",
+     "reason": "Wissen und Fakten, Nutzen für den Alltag.",
+     "profile": [
+      0.1,
+      0.1,
+      0.1,
+      0.2,
+      0.9,
+      0.4,
+      0.3,
+      0.6,
+      0.4
+     ]
+    },
+    {
+     "name": "Eltern-Gedöns",
+     "detail": "Familie, Christopher End",
+     "reason": "Fürsorge und Familienalltag, Verantwortung statt Glanz.",
+     "profile": [
+      0.1,
+      0.1,
+      0.1,
+      0.2,
+      0.3,
+      0.3,
+      0.9,
+      0.7,
+      0.6
+     ]
+    },
+    {
+     "name": "Betreutes Fühlen",
+     "detail": "Psychologie, Leon Windscheid",
+     "reason": "Fürsorge und Reflexion, Verantwortung ohne Statusbezug.",
+     "profile": [
+      0.1,
+      0.1,
+      0.1,
+      0.2,
+      0.6,
+      0.3,
+      0.6,
+      0.9,
+      0.4
+     ]
+    }
+   ]
+  },
+  {
+   "id": "kino",
+   "name": "Kinofilme",
+   "noun": "Film",
+   "group": "paid",
+   "description": "Kinofilme, in deren Umfeld Kinowerbung geschaltet werden kann.",
+   "items": [
+    {
+     "name": "Babylon - Rausch der Ekstase",
+     "detail": "Drama, 2022",
+     "reason": "Hollywood-Glamour, Exzess und Genuss.",
+     "profile": [
+      1.0,
+      0.3,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Der große Gatsby",
+     "detail": "Drama, 2013",
+     "reason": "Glamour und goldene Inszenierung, Luxus als Gefühl.",
+     "profile": [
+      1.0,
+      0.25,
+      0.2,
+      0.95,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Der Teufel trägt Prada",
+     "detail": "Komödie, 2006",
+     "reason": "Mode, Status und Aufstieg, Erfolg als Belohnung.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.9,
+      0.3,
+      0.25,
+      0.45,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "The Wolf of Wall Street",
+     "detail": "Drama, 2013",
+     "reason": "Exzess, Status und Belohnung ohne Maß.",
+     "profile": [
+      1.0,
+      0.35,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Top Gun: Maverick",
+     "detail": "Action, 2022",
+     "reason": "Elite, Überlegenheit und der Rausch der Leistung.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.95,
+      0.3,
+      0.35,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Wonka",
+     "detail": "Musical, 2023",
+     "reason": "Süßer Genuss, Traum und Belohnung, fantasievoll inszeniert.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.85,
+      0.3,
+      0.35,
+      0.45,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Catch Me If You Can",
+     "detail": "Komödie, 2002",
+     "reason": "Luxusleben als Spiel, Erfolg mit Charme.",
+     "profile": [
+      0.95,
+      0.35,
+      0.2,
+      0.85,
+      0.4,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Ocean's Eleven",
+     "detail": "Heist, 2001",
+     "reason": "Stil, Coolness und der große Coup als Belohnung.",
+     "profile": [
+      0.95,
+      0.25,
+      0.3,
+      0.85,
+      0.3,
+      0.35,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Elvis",
+     "detail": "Biopic, 2022",
+     "reason": "Ruhm, Glanz und Rausch des Erfolgs.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.5,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Casino Royale",
+     "detail": "Action, 2006",
+     "reason": "Eleganz, Überlegenheit und Genuss, souverän inszeniert.",
+     "profile": [
+      0.95,
+      0.4,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Crazy Rich Asians",
+     "detail": "Romantische Komödie, 2018",
+     "reason": "Reichtum und Glanz, verbunden mit Familie und Zugehörigkeit.",
+     "profile": [
+      0.85,
+      0.25,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.5,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "House of Gucci",
+     "detail": "Drama, 2021",
+     "reason": "Luxusmarke, Macht und Glamour als Familiengeschichte.",
+     "profile": [
+      0.9,
+      0.45,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Le Mans 66 - Gegen jede Chance",
+     "detail": "Drama, 2019",
+     "reason": "Exzellenz und Sieg, Leistung mit Faktenbezug.",
+     "profile": [
+      0.8,
+      0.25,
+      0.2,
+      0.85,
+      0.45,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "The Social Network",
+     "detail": "Drama, 2010",
+     "reason": "Erfolg und Status, erzählt über Zahlen und Kalkül.",
+     "profile": [
+      0.6,
+      0.5,
+      0.2,
+      0.8,
+      0.8,
+      0.4,
+      0.2,
+      0.2,
+      0.2
+     ]
+    },
+    {
+     "name": "Oppenheimer",
+     "detail": "Drama, 2023",
+     "reason": "Exzellenz und Macht, aber rational und ernst.",
+     "profile": [
+      0.5,
+      0.5,
+      0.3,
+      0.8,
+      0.9,
+      0.4,
+      0.2,
+      0.3,
+      0.2
+     ]
+    },
+    {
+     "name": "Ziemlich beste Freunde",
+     "detail": "Komödie, 2011",
+     "reason": "Reichtum als Rahmen, Freundschaft als Kern.",
+     "profile": [
+      0.6,
+      0.2,
+      0.2,
+      0.5,
+      0.3,
+      0.3,
+      0.9,
+      0.4,
+      0.5
+     ]
+    },
+    {
+     "name": "Creed - Rocky's Legacy",
+     "detail": "Drama, 2015",
+     "reason": "Sieg als Belohnung, getragen von Disziplin und Training.",
+     "profile": [
+      0.3,
+      0.2,
+      0.3,
+      0.9,
+      0.6,
+      0.8,
+      0.4,
+      0.2,
+      0.3
+     ]
+    },
+    {
+     "name": "Checker Tobi und das Geheimnis unseres Planeten",
+     "detail": "Kinder-Doku, 2019",
+     "reason": "Lernen und Staunen, Wissen für Familien.",
+     "profile": [
+      0.1,
+      0.1,
+      0.1,
+      0.3,
+      0.9,
+      0.4,
+      0.5,
+      0.6,
+      0.4
+     ]
+    },
+    {
+     "name": "Die Schule der magischen Tiere",
+     "detail": "Kinderfilm, 2021",
+     "reason": "Gemeinschaft und Fürsorge, Familienkino ohne Statusbezug.",
+     "profile": [
+      0.1,
+      0.1,
+      0.1,
+      0.3,
+      0.3,
+      0.4,
+      0.8,
+      0.7,
+      0.8
+     ]
+    },
+    {
+     "name": "Bauer unser",
+     "detail": "Dokumentarfilm, 2016",
+     "reason": "Verantwortung und Alltag, sachlich und bodenständig.",
+     "profile": [
+      0.1,
+      0.1,
+      0.1,
+      0.2,
+      0.6,
+      0.3,
+      0.4,
+      0.9,
+      0.5
+     ]
+    },
+    {
+     "name": "Tomorrow - Die Welt ist voller Lösungen",
+     "detail": "Dokumentarfilm, 2015",
+     "reason": "Verantwortung und Lösungen, Anschluss rational.",
+     "profile": [
+      0.1,
+      0.1,
+      0.1,
+      0.2,
+      0.4,
+      0.3,
+      0.4,
+      0.9,
+      0.7
+     ]
+    }
+   ]
+  },
+  {
+   "id": "dooh",
+   "name": "DOOH",
+   "noun": "Standort",
+   "group": "paid",
+   "description": "Standorte für digitale Außenwerbung, deren Bedeutung die Nähe zur Marke prägt.",
+   "items": [
+    {
+     "name": "Königsallee Düsseldorf",
+     "detail": "Düsseldorf, Einkaufsboulevard",
+     "reason": "Luxusmeile, Status und Flanieren als Erlebnis.",
+     "profile": [
+      1.0,
+      0.3,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Elbphilharmonie Hamburg",
+     "detail": "Hamburg, Konzerthaus",
+     "reason": "Wahrzeichen der Exzellenz, Erlebnis und Prestige.",
+     "profile": [
+      1.0,
+      0.25,
+      0.2,
+      0.95,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Jungfernstieg Hamburg",
+     "detail": "Hamburg, Boulevard",
+     "reason": "Eleganter Boulevard an der Alster, Status und Genuss.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.9,
+      0.3,
+      0.25,
+      0.45,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Kampen auf Sylt",
+     "detail": "Sylt, Strandort",
+     "reason": "Mondäner Strandort, Luxus als Lebensgefühl.",
+     "profile": [
+      1.0,
+      0.35,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Opernplatz Frankfurt",
+     "detail": "Frankfurt, Platz",
+     "reason": "Abendausgehen und Genuss, festliche Atmosphäre.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.85,
+      0.3,
+      0.35,
+      0.45,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Yachthafen Hohe Düne",
+     "detail": "Rostock, Marina",
+     "reason": "Marina und Yachten, Status mit Blick auf Details.",
+     "profile": [
+      0.95,
+      0.35,
+      0.2,
+      0.85,
+      0.4,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "KaDeWe Berlin",
+     "detail": "Berlin, Luxuskaufhaus",
+     "reason": "Luxuskaufhaus mit Feinkost, Genuss und Status.",
+     "profile": [
+      0.95,
+      0.25,
+      0.3,
+      0.85,
+      0.3,
+      0.35,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Staatsoper Unter den Linden",
+     "detail": "Berlin, Opernhaus",
+     "reason": "Hochkultur und Abendgarderobe, Glanz als Erlebnis.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.5,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "First-Class-Terminal Frankfurt",
+     "detail": "Frankfurt, Flughafenterminal",
+     "reason": "Exklusiver Zugang, Überlegenheit und Komfort.",
+     "profile": [
+      0.95,
+      0.4,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Kurhaus Baden-Baden",
+     "detail": "Baden-Baden, Kurhaus",
+     "reason": "Casino und Kurtradition, Glanz mit Haltung.",
+     "profile": [
+      0.9,
+      0.25,
+      0.2,
+      0.85,
+      0.45,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Alte Oper Frankfurt",
+     "detail": "Frankfurt, Konzerthaus",
+     "reason": "Festlicher Rahmen, Genuss und Gemeinschaft der Gala.",
+     "profile": [
+      0.85,
+      0.25,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.5,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Rheinpromenade Düsseldorf",
+     "detail": "Düsseldorf, Promenade",
+     "reason": "Mondänes Flanieren, Genuss mit Blick aufs Wasser.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.75,
+      0.3,
+      0.25,
+      0.5,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Maximilianstraße München",
+     "detail": "München, Luxusmeile",
+     "reason": "Luxusmarken und Status, mit Blick für Qualität.",
+     "profile": [
+      0.95,
+      0.45,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Flughafen München, Terminal 2",
+     "detail": "München, Flughafen",
+     "reason": "Reisen mit Anspruch, aber Zweck und Ablauf dominieren.",
+     "profile": [
+      0.8,
+      0.6,
+      0.4,
+      0.5,
+      0.6,
+      0.5,
+      0.3,
+      0.2,
+      0.4
+     ]
+    },
+    {
+     "name": "Allianz Arena München",
+     "detail": "München, Stadion",
+     "reason": "Sieg und Gemeinschaft, Erlebnis ohne Luxusbezug.",
+     "profile": [
+      0.4,
+      0.3,
+      0.3,
+      0.9,
+      0.4,
+      0.5,
+      0.8,
+      0.2,
+      0.4
+     ]
+    },
+    {
+     "name": "Messe Frankfurt",
+     "detail": "Frankfurt, Messegelände",
+     "reason": "Geschäft und Leistung, rational geprägt.",
+     "profile": [
+      0.5,
+      0.5,
+      0.3,
+      0.7,
+      0.9,
+      0.4,
+      0.3,
+      0.2,
+      0.3
+     ]
+    },
+    {
+     "name": "Europa-Passage Hamburg",
+     "detail": "Hamburg, Einkaufszentrum",
+     "reason": "Shopping für alle, Gemeinschaft und Routine.",
+     "profile": [
+      0.5,
+      0.3,
+      0.4,
+      0.6,
+      0.4,
+      0.5,
+      0.8,
+      0.3,
+      0.5
+     ]
+    },
+    {
+     "name": "Baumarkt-Parkplatz im Gewerbegebiet Neuss",
+     "detail": "Neuss, Gewerbegebiet",
+     "reason": "Erledigung und Nutzen, Projekt statt Genuss.",
+     "profile": [
+      0.1,
+      0.3,
+      0.2,
+      0.2,
+      0.8,
+      0.6,
+      0.2,
+      0.4,
+      0.6
+     ]
+    },
+    {
+     "name": "Recyclinghof Köln-Ossendorf",
+     "detail": "Köln, Wertstoffhof",
+     "reason": "Pflicht und Verantwortung, kein Erlebnisbezug.",
+     "profile": [
+      0.1,
+      0.1,
+      0.1,
+      0.2,
+      0.4,
+      0.3,
+      0.4,
+      0.9,
+      0.7
+     ]
+    },
+    {
+     "name": "Bahnhofsunterführung Hamburg-Altona",
+     "detail": "Hamburg, Unterführung",
+     "reason": "Durchgangsort, geprägt von Routine und Zweck.",
+     "profile": [
+      0.1,
+      0.1,
+      0.2,
+      0.1,
+      0.3,
+      0.8,
+      0.3,
+      0.4,
+      0.9
+     ]
+    },
+    {
+     "name": "Schulbushaltestelle Osnabrück-Hellern",
+     "detail": "Osnabrück, Haltestelle",
+     "reason": "Familienalltag und Routine, Versorgung statt Status.",
+     "profile": [
+      0.1,
+      0.1,
+      0.1,
+      0.1,
+      0.2,
+      0.4,
+      0.5,
+      0.8,
+      0.8
+     ]
+    }
+   ]
+  },
+  {
    "id": "influencer",
    "name": "Influencer",
    "noun": "Influencer",
@@ -2440,6 +3820,351 @@
    "group": "paid"
   },
   {
+   "id": "events",
+   "name": "Markenkooperation Veranstaltungen",
+   "noun": "Veranstaltung",
+   "group": "paid",
+   "description": "Veranstaltungen, die sich für Markenkooperationen und Sponsoring eignen.",
+   "items": [
+    {
+     "name": "Salzburger Festspiele",
+     "detail": "Festival, Salzburg",
+     "reason": "Hochkultur und Gesellschaft, Glanz als Erlebnis.",
+     "profile": [
+      1.0,
+      0.3,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Wiener Opernball",
+     "detail": "Ball, Wien",
+     "reason": "Glamour, Abendgarderobe und großer Auftritt.",
+     "profile": [
+      1.0,
+      0.25,
+      0.2,
+      0.95,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Berlinale-Gala",
+     "detail": "Filmgala, Berlin",
+     "reason": "Roter Teppich, Stars und Glanz.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.9,
+      0.3,
+      0.25,
+      0.45,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Großer Preis von Monaco",
+     "detail": "Motorsport, Monte Carlo",
+     "reason": "Luxus, Yachten und Sieg, Glamour pur.",
+     "profile": [
+      1.0,
+      0.35,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Cirque du Soleil",
+     "detail": "Show, Tournee",
+     "reason": "Perfektion und Staunen, Erlebnis als Belohnung.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.95,
+      0.3,
+      0.35,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Moulin Rouge! Das Musical",
+     "detail": "Musical, Köln",
+     "reason": "Rausch, Glamour und Genuss auf der Bühne.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.85,
+      0.3,
+      0.35,
+      0.45,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Berlin Fashion Week",
+     "detail": "Mode, Berlin",
+     "reason": "Mode, Status und Inszenierung.",
+     "profile": [
+      0.95,
+      0.25,
+      0.3,
+      0.85,
+      0.3,
+      0.35,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Met Gala",
+     "detail": "Modegala, New York",
+     "reason": "Glamour-Gipfel, Status und Inszenierung.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.5,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Bayreuther Festspiele",
+     "detail": "Oper, Bayreuth",
+     "reason": "Tradition und Prestige, exklusiver Zugang.",
+     "profile": [
+      0.95,
+      0.4,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Konzert in der Elbphilharmonie",
+     "detail": "Klassik, Hamburg",
+     "reason": "Exzellenz und Erlebnis im Wahrzeichen.",
+     "profile": [
+      0.9,
+      0.25,
+      0.2,
+      0.85,
+      0.45,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Coachella",
+     "detail": "Festival, Indio",
+     "reason": "Lifestyle-Festival, Inszenierung und Zugehörigkeit.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.75,
+      0.3,
+      0.25,
+      0.5,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Art Basel",
+     "detail": "Kunstmesse, Basel",
+     "reason": "Kunst als Statusobjekt, Sammler und Prestige.",
+     "profile": [
+      0.95,
+      0.45,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Neujahrskonzert der Wiener Philharmoniker",
+     "detail": "Klassik, Wien",
+     "reason": "Festliches Ritual, Glanz und Tradition.",
+     "profile": [
+      0.95,
+      0.25,
+      0.35,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.3
+     ]
+    },
+    {
+     "name": "Rock am Ring",
+     "detail": "Festival, Nürburg",
+     "reason": "Erlebnis und Gemeinschaft, ohne Luxusbezug.",
+     "profile": [
+      0.5,
+      0.2,
+      0.3,
+      0.6,
+      0.3,
+      0.4,
+      0.9,
+      0.2,
+      0.4
+     ]
+    },
+    {
+     "name": "Berlin-Marathon",
+     "detail": "Sportevent, Berlin",
+     "reason": "Leistung und Belohnung, getragen von Disziplin.",
+     "profile": [
+      0.3,
+      0.2,
+      0.3,
+      0.9,
+      0.6,
+      0.8,
+      0.4,
+      0.2,
+      0.3
+     ]
+    },
+    {
+     "name": "Hannover Messe",
+     "detail": "Industriemesse, Hannover",
+     "reason": "Leistung und Nutzen, rational geprägt.",
+     "profile": [
+      0.4,
+      0.5,
+      0.3,
+      0.6,
+      0.9,
+      0.4,
+      0.3,
+      0.3,
+      0.3
+     ]
+    },
+    {
+     "name": "Oktoberfest",
+     "detail": "Volksfest, München",
+     "reason": "Genuss und Gemeinschaft, Tradition und Ritual.",
+     "profile": [
+      0.5,
+      0.2,
+      0.4,
+      0.5,
+      0.2,
+      0.4,
+      0.9,
+      0.2,
+      0.6
+     ]
+    },
+    {
+     "name": "Cranger Kirmes",
+     "detail": "Volksfest, Herne",
+     "reason": "Volksfest für alle, Gewohnheit und Gemeinschaft.",
+     "profile": [
+      0.2,
+      0.1,
+      0.2,
+      0.3,
+      0.2,
+      0.5,
+      0.8,
+      0.4,
+      0.9
+     ]
+    },
+    {
+     "name": "Nürnberger Christkindlesmarkt",
+     "detail": "Weihnachtsmarkt, Nürnberg",
+     "reason": "Gemeinschaft, Tradition und Familie, kein Statusbezug.",
+     "profile": [
+      0.2,
+      0.1,
+      0.2,
+      0.2,
+      0.2,
+      0.4,
+      0.9,
+      0.5,
+      0.8
+     ]
+    },
+    {
+     "name": "Flohmarkt am Mauerpark",
+     "detail": "Flohmarkt, Berlin",
+     "reason": "Stöbern und Sparen, Routine und Nachbarschaft.",
+     "profile": [
+      0.1,
+      0.2,
+      0.2,
+      0.2,
+      0.6,
+      0.5,
+      0.5,
+      0.6,
+      0.8
+     ]
+    },
+    {
+     "name": "Tag der offenen Tür der Bundesregierung",
+     "detail": "Info-Event, Berlin",
+     "reason": "Information und Verantwortung, sachlich und offen.",
+     "profile": [
+      0.1,
+      0.1,
+      0.1,
+      0.2,
+      0.7,
+      0.3,
+      0.4,
+      0.9,
+      0.5
+     ]
+    }
+   ]
+  },
+  {
    "id": "brand-app",
    "name": "Brand-App-Features",
    "noun": "Feature",
@@ -2783,6 +4508,1041 @@
     }
    ],
    "group": "owned"
+  },
+  {
+   "id": "nbo",
+   "name": "Next Best Offer",
+   "noun": "Angebot",
+   "group": "owned",
+   "description": "Angebote, die die Marke einem Kunden als nächsten Schritt machen kann.",
+   "items": [
+    {
+     "name": "Einladung zur Preview der neuen Edition",
+     "detail": "Exklusiv-Einladung",
+     "reason": "Exklusiver Vorabzugang, Status und Vorfreude.",
+     "profile": [
+      1.0,
+      0.3,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Gewinnspiel: Dinner mit Sternekoch",
+     "detail": "Gewinnspiel",
+     "reason": "Belohnung auf höchstem Niveau, Glamour-Erlebnis.",
+     "profile": [
+      1.0,
+      0.25,
+      0.2,
+      0.95,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Goldene Geschenkverpackung gratis",
+     "detail": "Geschenkservice",
+     "reason": "Goldene Inszenierung, Genuss als Geschenk.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.9,
+      0.3,
+      0.25,
+      0.45,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Einladung in die VIP-Lounge beim Markenevent",
+     "detail": "Event-Einladung",
+     "reason": "Statuserlebnis im kleinen Kreis, Glamour inklusive.",
+     "profile": [
+      1.0,
+      0.35,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Vorab-Zugang zur Winter-Edition",
+     "detail": "Early Access",
+     "reason": "Zuerst genießen, Vorsprung als Status.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.95,
+      0.3,
+      0.35,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Premium-Bundle mit Champagner",
+     "detail": "Bundle",
+     "reason": "Genuss in Kombination, Luxus zum Anlass.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.85,
+      0.3,
+      0.35,
+      0.45,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Tasting-Set der Signature-Sorten",
+     "detail": "Probierset",
+     "reason": "Genuss als Erlebnis, Exzellenz im Vergleich.",
+     "profile": [
+      0.95,
+      0.35,
+      0.2,
+      0.85,
+      0.4,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Persönliche Gravur auf der Geschenkbox",
+     "detail": "Personalisierung",
+     "reason": "Individuelle Inszenierung, Belohnung mit Status.",
+     "profile": [
+      0.95,
+      0.25,
+      0.3,
+      0.85,
+      0.3,
+      0.35,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Gold-Edition als Geschenkset zum Jubiläum",
+     "detail": "Geschenkset",
+     "reason": "Goldene Inszenierung, Anlass und Belohnung.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.5,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Limited Edition reservieren",
+     "detail": "Vorbestellung",
+     "reason": "Knappheit und Exklusivität, Status durch Zugang.",
+     "profile": [
+      0.95,
+      0.4,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Rezeptkarte: Dessert-Pairing mit Grand Cru",
+     "detail": "Content-Angebot",
+     "reason": "Genuss-Exzellenz, kulinarische Belohnung.",
+     "profile": [
+      0.9,
+      0.25,
+      0.2,
+      0.85,
+      0.45,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Einladung zum Gala-Dinner der Marke",
+     "detail": "Event-Einladung",
+     "reason": "Glamour und Gemeinschaft im exklusiven Rahmen.",
+     "profile": [
+      0.85,
+      0.25,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.5,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Treuebonus: Gold-Status mit Vorteilen",
+     "detail": "Loyalty",
+     "reason": "Status durch Treue, Belohnung als Ritual.",
+     "profile": [
+      0.95,
+      0.25,
+      0.35,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.3
+     ]
+    },
+    {
+     "name": "Rezept-Newsletter: Desserts für Gäste",
+     "detail": "Newsletter",
+     "reason": "Genuss mit Gastgeberrolle, Gemeinschaft im Fokus.",
+     "profile": [
+      0.6,
+      0.2,
+      0.3,
+      0.7,
+      0.4,
+      0.4,
+      0.9,
+      0.3,
+      0.4
+     ]
+    },
+    {
+     "name": "Date-Night-Paket für zwei",
+     "detail": "Bundle",
+     "reason": "Genuss zu zweit, Nähe und Erlebnis.",
+     "profile": [
+      0.6,
+      0.2,
+      0.2,
+      0.5,
+      0.3,
+      0.3,
+      0.9,
+      0.3,
+      0.5
+     ]
+    },
+    {
+     "name": "Punkte sammeln: Bonus für jeden Kauf",
+     "detail": "Loyalty",
+     "reason": "Belohnung, aber als Routine und Nutzen gedacht.",
+     "profile": [
+      0.4,
+      0.3,
+      0.4,
+      0.8,
+      0.6,
+      0.8,
+      0.3,
+      0.2,
+      0.4
+     ]
+    },
+    {
+     "name": "Sortenquiz: Welche Sorte passt zu dir?",
+     "detail": "Quiz",
+     "reason": "Spielerisch, aber rational begründete Auswahl.",
+     "profile": [
+      0.4,
+      0.5,
+      0.3,
+      0.6,
+      0.8,
+      0.4,
+      0.5,
+      0.3,
+      0.3
+     ]
+    },
+    {
+     "name": "Coupon auf Eigenmarken des Händlers",
+     "detail": "Coupon",
+     "reason": "Sparen und Vernunft, kein Markenerlebnis.",
+     "profile": [
+      0.1,
+      0.2,
+      0.1,
+      0.3,
+      0.9,
+      0.4,
+      0.3,
+      0.7,
+      0.3
+     ]
+    },
+    {
+     "name": "Mengenrabatt auf den 10er-Pack",
+     "detail": "Rabatt",
+     "reason": "Vorratskauf und Preisnutzen, rational und routiniert.",
+     "profile": [
+      0.1,
+      0.3,
+      0.2,
+      0.2,
+      0.8,
+      0.6,
+      0.2,
+      0.4,
+      0.6
+     ]
+    },
+    {
+     "name": "Familien-Vorratsbox mit 24 Stück",
+     "detail": "Vorratsangebot",
+     "reason": "Versorgung der Familie, Nutzen und Routine.",
+     "profile": [
+      0.1,
+      0.1,
+      0.1,
+      0.2,
+      0.5,
+      0.5,
+      0.6,
+      0.8,
+      0.7
+     ]
+    },
+    {
+     "name": "Spende pro Kauf an ein Kinderhilfswerk",
+     "detail": "Charity",
+     "reason": "Verantwortung und Fürsorge, Anschluss rational.",
+     "profile": [
+      0.1,
+      0.1,
+      0.1,
+      0.2,
+      0.3,
+      0.3,
+      0.6,
+      0.9,
+      0.5
+     ]
+    }
+   ]
+  },
+  {
+   "id": "retail-online",
+   "name": "Retail-Features online",
+   "noun": "Feature",
+   "group": "owned",
+   "description": "Funktionen eines Online-Shops, die das Einkaufserlebnis prägen.",
+   "items": [
+    {
+     "name": "Premium-Verpackung mit Goldprägung",
+     "detail": "Checkout-Option",
+     "reason": "Goldene Inszenierung, Status beim Auspacken.",
+     "profile": [
+      1.0,
+      0.3,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Kuratierte Genuss-Box",
+     "detail": "Produktbundle",
+     "reason": "Exzellenz in der Auswahl, Genuss als Erlebnis.",
+     "profile": [
+      1.0,
+      0.25,
+      0.2,
+      0.95,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Geschenkverpackung mit Grußkarte",
+     "detail": "Checkout-Option",
+     "reason": "Inszenierung des Genusses als Geschenk.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.9,
+      0.3,
+      0.25,
+      0.45,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "VIP-Vorabzugang zum Sale",
+     "detail": "Loyalty-Feature",
+     "reason": "Vorsprung und Exklusivität, Status durch Zugang.",
+     "profile": [
+      1.0,
+      0.35,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Unboxing-Video in der Produktansicht",
+     "detail": "Produktseite",
+     "reason": "Erlebnis vor dem Kauf, Genuss visuell inszeniert.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.95,
+      0.3,
+      0.35,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Wunschzeitfenster für die Lieferung",
+     "detail": "Lieferoption",
+     "reason": "Komfort und Kontrolle, Belohnung planbar.",
+     "profile": [
+      0.95,
+      0.35,
+      0.2,
+      0.85,
+      0.4,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Signature-Kollektion als eigene Kategorie",
+     "detail": "Navigation",
+     "reason": "Premium-Linie hervorgehoben, Status sichtbar.",
+     "profile": [
+      0.95,
+      0.25,
+      0.3,
+      0.85,
+      0.3,
+      0.35,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Empfehlung für besondere Anlässe",
+     "detail": "Personalisierung",
+     "reason": "Anlassbezogener Genuss, Status durch Auswahl.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.5,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Limitierte Editionen vorbestellen",
+     "detail": "Pre-Order",
+     "reason": "Knappheit und Vorfreude, Belohnung durch Zugang.",
+     "profile": [
+      0.95,
+      0.4,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Sommelier-Empfehlung zum Dessert",
+     "detail": "Content-Feature",
+     "reason": "Genuss-Exzellenz, kulinarisch inszeniert.",
+     "profile": [
+      0.9,
+      0.25,
+      0.2,
+      0.85,
+      0.45,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Express-Lieferung am selben Abend",
+     "detail": "Lieferoption",
+     "reason": "Sofortige Belohnung, Genuss ohne Warten.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.85,
+      0.3,
+      0.4,
+      0.35,
+      0.1,
+      0.25
+     ]
+    },
+    {
+     "name": "Gutschein-Karte als Geschenk versenden",
+     "detail": "Gifting",
+     "reason": "Genuss verschenken, Anlass und Nähe.",
+     "profile": [
+      0.85,
+      0.25,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.5,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Gold-Mitgliedschaft mit Concierge-Chat",
+     "detail": "Loyalty-Feature",
+     "reason": "Persönlicher Service, Status und Überlegenheit.",
+     "profile": [
+      0.95,
+      0.45,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Bewertungen mit Geschmacksprofil",
+     "detail": "Social Proof",
+     "reason": "Erlebnisorientiert, aber rational abgesichert.",
+     "profile": [
+      0.5,
+      0.3,
+      0.2,
+      0.85,
+      0.5,
+      0.3,
+      0.7,
+      0.3,
+      0.3
+     ]
+    },
+    {
+     "name": "Rezeptideen für die Dinner-Party",
+     "detail": "Content-Feature",
+     "reason": "Genuss mit Gästen, Gemeinschaft rückt nach vorn.",
+     "profile": [
+      0.6,
+      0.2,
+      0.3,
+      0.7,
+      0.4,
+      0.4,
+      0.9,
+      0.3,
+      0.4
+     ]
+    },
+    {
+     "name": "Punkte-Konto mit Prämienshop",
+     "detail": "Loyalty-Feature",
+     "reason": "Belohnung, aber als Routine und Nutzen.",
+     "profile": [
+      0.4,
+      0.3,
+      0.4,
+      0.8,
+      0.6,
+      0.8,
+      0.3,
+      0.2,
+      0.4
+     ]
+    },
+    {
+     "name": "Sortenvergleich nach Zutaten",
+     "detail": "Produktvergleich",
+     "reason": "Auswahl mit Verstand, Genuss bleibt Ziel.",
+     "profile": [
+      0.4,
+      0.5,
+      0.3,
+      0.6,
+      0.8,
+      0.4,
+      0.5,
+      0.3,
+      0.3
+     ]
+    },
+    {
+     "name": "Sparfilter: günstigste Preise zuerst",
+     "detail": "Filter",
+     "reason": "Preisnutzen und Vernunft, kein Erlebnisbezug.",
+     "profile": [
+      0.1,
+      0.2,
+      0.1,
+      0.3,
+      0.9,
+      0.4,
+      0.3,
+      0.7,
+      0.3
+     ]
+    },
+    {
+     "name": "Mengenrabatt im Warenkorb",
+     "detail": "Checkout-Feature",
+     "reason": "Vorrat und Preisvorteil, rational und routiniert.",
+     "profile": [
+      0.1,
+      0.3,
+      0.2,
+      0.2,
+      0.8,
+      0.6,
+      0.2,
+      0.4,
+      0.6
+     ]
+    },
+    {
+     "name": "Filter nach Nachhaltigkeits-Label",
+     "detail": "Filter",
+     "reason": "Verantwortung und Fakten, Anschluss rational.",
+     "profile": [
+      0.1,
+      0.1,
+      0.1,
+      0.2,
+      0.4,
+      0.3,
+      0.4,
+      0.9,
+      0.7
+     ]
+    },
+    {
+     "name": "Wiederbestell-Liste für den Wocheneinkauf",
+     "detail": "Account-Feature",
+     "reason": "Routine und Versorgung, Alltag statt Anlass.",
+     "profile": [
+      0.1,
+      0.1,
+      0.2,
+      0.1,
+      0.3,
+      0.8,
+      0.3,
+      0.4,
+      0.9
+     ]
+    }
+   ]
+  },
+  {
+   "id": "retail-offline",
+   "name": "Retail-Features offline",
+   "noun": "Feature",
+   "group": "owned",
+   "description": "Funktionen im stationären Handel, die das Einkaufserlebnis am Regal prägen.",
+   "items": [
+    {
+     "name": "Beleuchtete Premium-Truhe am Eingang",
+     "detail": "Platzierung",
+     "reason": "Goldene Inszenierung, Status am Eingang.",
+     "profile": [
+      1.0,
+      0.3,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Goldene Sonderplatzierung",
+     "detail": "Platzierung",
+     "reason": "Luxus-Inszenierung, Marke hervorgehoben.",
+     "profile": [
+      1.0,
+      0.25,
+      0.2,
+      0.95,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Geschenkservice an der Kasse",
+     "detail": "Service",
+     "reason": "Genuss verschenken, Anlass und Inszenierung.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.9,
+      0.3,
+      0.25,
+      0.45,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Digitales Display mit Gold-Kampagne",
+     "detail": "Instore-Media",
+     "reason": "Glamour-Botschaft am Point of Sale.",
+     "profile": [
+      1.0,
+      0.35,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Limitierte Edition nur in Flagship-Filialen",
+     "detail": "Sortiment",
+     "reason": "Knappheit und Exklusivität, Status durch Zugang.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.95,
+      0.3,
+      0.35,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Pairing-Station mit Champagner",
+     "detail": "Promotion",
+     "reason": "Genuss in Kombination, Glamour zum Mitnehmen.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.85,
+      0.3,
+      0.35,
+      0.45,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Feinkost-Theke mit Beratung",
+     "detail": "Service",
+     "reason": "Genuss und Expertise, Status durch Auswahl.",
+     "profile": [
+      0.95,
+      0.35,
+      0.2,
+      0.85,
+      0.4,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Personal Shopper für Geschenkkörbe",
+     "detail": "Service",
+     "reason": "Persönlicher Service, Status und Exzellenz.",
+     "profile": [
+      0.95,
+      0.4,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Verkostung mit Sommelier",
+     "detail": "Promotion",
+     "reason": "Genuss-Exzellenz, Erlebnis mit Expertise.",
+     "profile": [
+      0.9,
+      0.25,
+      0.2,
+      0.85,
+      0.45,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Kühlbox-Service für den Heimweg",
+     "detail": "Service",
+     "reason": "Komfort und Belohnung, Genuss sicher nach Hause.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.85,
+      0.3,
+      0.4,
+      0.35,
+      0.1,
+      0.25
+     ]
+    },
+    {
+     "name": "Exklusive Vorab-Verkostung für Stammkunden",
+     "detail": "Event",
+     "reason": "Status durch Einladung, Genuss als Belohnung.",
+     "profile": [
+      0.85,
+      0.25,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.5,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Dessert-Lounge mit Sitzbereich",
+     "detail": "Store-Erlebnis",
+     "reason": "Genuss vor Ort, Erlebnis und Entspannung.",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.75,
+      0.3,
+      0.25,
+      0.5,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Premium-Regal mit Spiegel und Spotlight",
+     "detail": "Platzierung",
+     "reason": "Luxus-Ästhetik, Status sichtbar gemacht.",
+     "profile": [
+      0.95,
+      0.45,
+      0.2,
+      0.85,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Rezeptkarten für Gäste-Desserts",
+     "detail": "Instore-Content",
+     "reason": "Genuss mit Gästen, Gemeinschaft im Fokus.",
+     "profile": [
+      0.6,
+      0.2,
+      0.3,
+      0.7,
+      0.4,
+      0.4,
+      0.9,
+      0.3,
+      0.4
+     ]
+    },
+    {
+     "name": "Familien-Sonntag mit Probieraktion",
+     "detail": "Event",
+     "reason": "Gemeinschaft und Genuss, Nähe statt Glanz.",
+     "profile": [
+      0.6,
+      0.2,
+      0.2,
+      0.5,
+      0.3,
+      0.3,
+      0.9,
+      0.3,
+      0.5
+     ]
+    },
+    {
+     "name": "Kundenkarte mit Bonuspunkten",
+     "detail": "Loyalty",
+     "reason": "Belohnung, aber als Routine und Nutzen.",
+     "profile": [
+      0.4,
+      0.3,
+      0.4,
+      0.8,
+      0.6,
+      0.8,
+      0.3,
+      0.2,
+      0.4
+     ]
+    },
+    {
+     "name": "Sortenvergleich auf dem Regalschild",
+     "detail": "Instore-Info",
+     "reason": "Auswahl mit Verstand, Genuss bleibt Ziel.",
+     "profile": [
+      0.4,
+      0.5,
+      0.3,
+      0.6,
+      0.8,
+      0.4,
+      0.5,
+      0.3,
+      0.3
+     ]
+    },
+    {
+     "name": "Selbstscan-Kasse",
+     "detail": "Checkout",
+     "reason": "Effizienz und Routine, Nutzen im Vordergrund.",
+     "profile": [
+      0.2,
+      0.2,
+      0.3,
+      0.2,
+      0.6,
+      0.9,
+      0.2,
+      0.3,
+      0.7
+     ]
+    },
+    {
+     "name": "Einkaufswagen mit Kindersitz",
+     "detail": "Infrastruktur",
+     "reason": "Fürsorge und Familienalltag, Versorgung statt Anlass.",
+     "profile": [
+      0.1,
+      0.1,
+      0.1,
+      0.2,
+      0.3,
+      0.3,
+      0.9,
+      0.7,
+      0.6
+     ]
+    },
+    {
+     "name": "Regionalregal mit Herkunftsangabe",
+     "detail": "Sortiment",
+     "reason": "Verantwortung und Herkunft, Anschluss rational.",
+     "profile": [
+      0.1,
+      0.1,
+      0.1,
+      0.2,
+      0.4,
+      0.3,
+      0.4,
+      0.9,
+      0.7
+     ]
+    },
+    {
+     "name": "Pfandautomat im Eingangsbereich",
+     "detail": "Infrastruktur",
+     "reason": "Pflicht und Routine, kein Erlebnisbezug.",
+     "profile": [
+      0.1,
+      0.1,
+      0.2,
+      0.1,
+      0.3,
+      0.8,
+      0.3,
+      0.4,
+      0.9
+     ]
+    }
+   ]
   }
  ],
  "psychografie": {
