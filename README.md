@@ -42,8 +42,13 @@ Schriftzügen im Raum:
   ebenso Shift + Scrollen (oder waagerechtes Scrollen) und Bild-auf/Bild-ab beziehungsweise Shift + Pfeiltasten
   von Dimension zu Dimension. Drehen und Zoomen bleiben wie gehabt.
 - Die Gruppennamen „Paid Media“ und „Owned Media & 1st Party“ schweben als Schriftzüge vor und unter ihren Dimensionen.
-- Der runde Schalter rechts in der Weltenliste blendet eine Dimension aus, „Alle einschalten“ holt sie zurück.
+- Der runde Schalter rechts in der Weltenliste blendet eine Dimension aus. Die Gruppenzeilen „Psychografie“,
+  „Paid Media“ und „Owned Media & 1st Party“ haben ebenfalls einen Schalter: Er blendet die ganze Gruppe aus, mit
+  ihrem Schriftzug im Raum (bei Psychografie den Heatmap-Stapel) und ihrem Chip in der Navigation. Sind nur einige
+  Dimensionen einer Gruppe aktiv, zeigt der Gruppenschalter das als Zwischenzustand. „Alle einschalten“ holt alles zurück.
   Hover zeigt Name, Ähnlichkeit, Begründung und das Mini-Raster des Inhalts.
+- „Menü ausblenden“ unter der Weltenliste (oder die Taste M) klappt die linke Spalte weg, die Canvas nimmt dann die
+  ganze Breite. „Menü einblenden“ oben links auf der Canvas bringt sie zurück; der Browser merkt sich die Wahl.
 - Nach einer Änderung der Daten bettet `python3 tools/inline-data.py` sie wieder in die Seite ein.
 - `themenwelten.html#canvas` zeigt nur die Animation. Für ein Video:
   `node tools/render-video.js --page themenwelten.html --api siebenWelten --seconds 20 --no-zoom`.

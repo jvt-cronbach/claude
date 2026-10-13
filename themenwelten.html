@@ -115,8 +115,13 @@
     display:grid;grid-template-columns:1.4em 12px 1fr auto 18px;grid-template-rows:auto auto;gap:0 8px;align-items:baseline;
     padding:3px 6px;margin:0 -6px;border-radius:0;cursor:pointer;font-size:14px;line-height:1.2;
   }
-  .wlist li.group{display:block;padding:10px 6px 2px;cursor:default;font-size:12px;font-weight:700;color:var(--full-black)}
+  .wlist li.group{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 6px 2px;cursor:default;font-size:12px;font-weight:700;color:var(--full-black)}
   .wlist li.group:hover{background:none}
+  .wlist li.group .switch{top:0}
+  .menu-off .column{display:none}
+  .menu-off .stage{grid-template-columns:minmax(0,1fr)}
+  .menu-btn{position:absolute;left:24px;top:var(--page-margin);z-index:3}
+  .menu-off .overlay-top{top:calc(var(--page-margin) + 52px)}
   .wlist li:hover{background:var(--neutral-20)}
   .wlist li:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
   .wlist li.active{background:var(--neutral-20)}
@@ -225,6 +230,9 @@
     .brand.phone{display:block;top:16px;right:16px;height:24px;width:102px}
     .art-note{left:16px;bottom:12px;max-width:calc(100% - 190px)}
     .overlay-top{left:16px;top:12px;max-width:calc(100% - 32px)}
+    .menu-btn{left:16px;top:12px}
+    .menu-off .overlay-top{top:60px}
+    .menu-off .stage{grid-template-rows:minmax(340px,100vh)}
     .zoom{right:16px;bottom:12px}
     .zoom-btn{width:36px;height:36px;font-size:20px}
     .zoom-level{height:36px;min-width:56px}
@@ -285,12 +293,14 @@
       <div class="controls">
         <button class="pill" type="button" id="replay">Neu abspielen</button>
         <button class="pill" type="button" id="overviewBtn" hidden>Alle Welten</button>
+        <button class="pill" type="button" id="menuOff">Menü ausblenden</button>
         <span class="hint" id="hint">Ziehen dreht den Raum, Scrollen zoomt. Ein Klick auf eine Dimension öffnet die Welt, der Schalter in der Liste blendet sie aus.</span>
       </div>
     </aside>
 
     <div class="art">
       <div class="brand desk" role="img" aria-label="True Relevance"></div>
+      <button class="pill small menu-btn" type="button" id="menuOn" hidden>Menü einblenden</button>
       <canvas id="space" role="img" aria-label="Themenwelten stehen als Quader nebeneinander. Der Bedeutungsvektor einer Marke durchstößt jeden Quader, und um den Durchstoßpunkt erscheinen die Inhalte mit ähnlichem psychologischem Profil."></canvas>
       <div class="overlay-top" id="overlayTop">
         <div class="worldnav" role="group" aria-label="Themenwelt wählen">
@@ -537,7 +547,7 @@ document.getElementById('productNote').textContent=D.product.note||'';
   document.getElementById('titleCount').textContent=cap+' Welten.';
   document.getElementById('worldsTitle').textContent=cap+' Themenwelten';
   CAPTIONS[2]=cap+' Welten, ein Profil: Jede Dimension zeigt die Inhalte, die zur Bedeutung der Marke passen. Ein Klick auf eine Dimension öffnet die Welt.';
-  document.getElementById('hint').textContent='Ziehen dreht den Raum, Scrollen zoomt, Shift + Scrollen oder der Regler fährt am Vektor entlang. Klick auf eine Dimension, eine Listenzeile oder die Ziffern 1 bis '+Math.min(NW,9)+' öffnet die Welt, Escape die Übersicht. Der Schalter in der Liste blendet eine Dimension aus.';
+  document.getElementById('hint').textContent='Ziehen dreht den Raum, Scrollen zoomt, Shift + Scrollen oder der Regler fährt am Vektor entlang. Klick auf eine Dimension, eine Listenzeile oder die Ziffern 1 bis '+Math.min(NW,9)+' öffnet die Welt, Escape die Übersicht. Die Schalter in der Liste blenden Dimensionen oder ganze Gruppen aus, die Taste M das Menü.';
 })();
 
 (function buildTravelChips(){
@@ -572,16 +582,25 @@ var gridCells=(function(){
 })();
 
 /* Liste der Welten mit Gruppenüberschriften, Schaltern und Tastaturbedienung */
-var worldRows=[];
+var worldRows=[], groupSwitches={}, psychoSwitch=null;
+function groupHeader(ol,text,id,onChange){
+  var li=document.createElement('li'); li.className='group';
+  var span=document.createElement('span'); span.textContent=text; li.appendChild(span);
+  var sw=document.createElement('input'); sw.type='checkbox'; sw.className='switch'; sw.checked=true; sw.id='gswitch-'+id;
+  sw.setAttribute('aria-label',text+' ein- oder ausschalten'); sw.title='Gruppe ein- oder ausschalten'; sw.style.setProperty('--c',COLORS[1]);
+  sw.addEventListener('change',function(){ onChange(sw.checked); });
+  li.appendChild(sw); ol.appendChild(li);
+  return sw;
+}
 (function(){
   var ol=document.getElementById('wlist'), prevGroup=null;
   if(HEAT.length){
-    var ph=document.createElement('li'); ph.className='group'; ph.textContent=PSYCHO_NAME+' · '+HEAT.length+' Heatmaps'; ol.appendChild(ph);
+    psychoSwitch=groupHeader(ol,PSYCHO_NAME+' · '+HEAT.length+' Heatmaps','psycho',function(on){ setPsycho(on); });
   }
   WORLDS.forEach(function(w){
     if(w.group!==prevGroup){
       var g=groupOf(w.group), gname=g?g.name:w.group;
-      if(gname){ var gh=document.createElement('li'); gh.className='group'; gh.textContent=gname; ol.appendChild(gh); }
+      if(gname){ groupSwitches[w.group]=groupHeader(ol,gname,w.group,function(on){ toggleGroup(w.group,on); }); }
       prevGroup=w.group;
     }
     var li=document.createElement('li'); li.setAttribute('data-world',String(w.k));
@@ -650,6 +669,12 @@ function setView(target,t){
   view.to=target; view.start=t;
   zoom=1; zoomTarget=1; dragYaw=0; dragPitch=0; orbitYaw=0;
 }
+var psychoOn=true, psychoA=1;
+function setPsycho(on){
+  psychoOn=!!on;
+  if(psychoSwitch&&psychoSwitch.checked!==psychoOn) psychoSwitch.checked=psychoOn;
+  syncGroupDom();
+}
 function toggleWorld(k,on){
   var w=WORLDS[k]; if(!w) return;
   w.on=!!on;
@@ -657,8 +682,22 @@ function toggleWorld(k,on){
   worldRows[k].classList.toggle('off',!w.on);
   if(!w.on&&focused===k) showOverview();
   if(!w.on&&hover&&hover.world===k){ hover=null; hideTip(); }
-  elAllOn.hidden=WORLDS.every(function(x){ return x.on; });
+  syncGroupDom();
   updateNav();
+}
+function toggleGroup(id,on){ WORLDS.forEach(function(w){ if(w.group===id) toggleWorld(w.k,on); }); }
+function groupOn(id){ return WORLDS.some(function(w){ return w.group===id&&w.on; }); }
+/* Gruppenschalter spiegeln ihre Welten: an, aus oder gemischt; Chips ausgeschalteter Gruppen sind gesperrt */
+function syncGroupDom(){
+  Object.keys(groupSwitches).forEach(function(id){
+    var ws=WORLDS.filter(function(w){ return w.group===id; }), n=ws.filter(function(w){ return w.on; }).length, sw=groupSwitches[id];
+    sw.checked=n>0; sw.indeterminate=n>0&&n<ws.length;
+  });
+  elAllOn.hidden=psychoOn&&WORLDS.every(function(x){ return x.on; });
+  travelChips.forEach(function(c){
+    var j=c.getAttribute('data-jump'), off=j==='psycho'?!psychoOn:(j!=='all'&&!groupOn(j));
+    c.disabled=!ready()||off;
+  });
 }
 function nextOn(from,dir){ for(var k=from+dir;k>=0&&k<NW;k+=dir){ if(WORLDS[k].on) return k; } return -1; }
 function updateNav(){
@@ -816,9 +855,11 @@ function draw(t,dt){
       var firstOn=WORLDS.filter(function(w){ return w.group===g.id; }).some(function(w){ return t>=w.tk-0.3; });
       if(!firstOn) return;
       var lines=g.lines.filter(function(l){ return l; }), hgt=lines.length>1?1.0:1.3;
-      lines.forEach(function(line,li){ text3d(line,g.xs,g.xe,-HY-0.5-hgt-li*hgt*1.2,HW+0.6,hgt,0.16*over,cam); });
+      var gA=0; WORLDS.forEach(function(w){ if(w.group===g.id) gA=Math.max(gA,w.onA); });
+      if(gA<=0.01) return;
+      lines.forEach(function(line,li){ text3d(line,g.xs,g.xe,-HY-0.5-hgt-li*hgt*1.2,HW+0.6,hgt,0.16*over*gA,cam); });
     });
-    if(HEAT.length&&t>=HEAT[0].t-0.3) text3d(PSYCHO_NAME,HEAT[0].x-0.4,HEAT[HEAT.length-1].x+0.4,-HEAT_SIZE/2-0.5-0.9,HEAT_SIZE/2+0.6,0.9,0.16*over,cam);
+    if(HEAT.length&&t>=HEAT[0].t-0.3&&psychoA>0.01) text3d(PSYCHO_NAME,HEAT[0].x-0.4,HEAT[HEAT.length-1].x+0.4,-HEAT_SIZE/2-0.5-0.9,HEAT_SIZE/2+0.6,0.9,0.16*over*psychoA,cam);
   }
 
   /* Zeichenreihenfolge: Heatmaps und Quader von hinten nach vorn */
@@ -832,7 +873,7 @@ function draw(t,dt){
   });
   HEAT.forEach(function(h){
     var c=project([h.x,0,0],cam); h.depth=c?c.depth:1e9;
-    h.appA=clamp((t-(h.t-0.3))/0.5,0,1);
+    h.appA=clamp((t-(h.t-0.3))/0.5,0,1)*psychoA;
     drawables.push({ depth:h.depth, heat:h });
   });
   drawables.sort(function(a,b){ return b.depth-a.depth; });
@@ -1089,7 +1130,7 @@ function syncDom(t){
     dom.ready=rd;
     elZoom.classList.toggle('ready',rd); elOverlay.classList.toggle('ready',rd);
     zoomButtons.forEach(function(b){ b.disabled=!rd; });
-    travelChips.forEach(function(c){ c.disabled=!rd; }); elSlider.disabled=!rd;
+    elSlider.disabled=!rd; syncGroupDom();
     updateNav();
   }
   var zl=zoom.toFixed(1).replace('.',',')+'×';
@@ -1125,13 +1166,14 @@ function frame(now){
   if(manualT!==null){
     t=manualT;
     if(!userRotated&&focused<0) orbitYaw=Math.max(0,t-(TL.result+1))*0.05;
-    zoom=zoomTarget; focusMix=focused>=0?1:0;
+    zoom=zoomTarget; focusMix=focused>=0?1:0; psychoA=psychoOn?1:0;
     WORLDS.forEach(function(w){ w.onA=w.on?1:0; w.extraA=w.k===focused?1:0; });
   } else {
     t=(now-t0)/1000;
     if(t>=TL.result+1&&!userRotated&&!reducedMotion&&focused<0) orbitYaw+=dt*0.05;
     zoom+=(zoomTarget-zoom)*Math.min(1,dt*10);
     focusMix+=((focused>=0?1:0)-focusMix)*Math.min(1,dt*5);
+    psychoA+=((psychoOn?1:0)-psychoA)*Math.min(1,dt*6);
     WORLDS.forEach(function(w){ w.onA+=((w.on?1:0)-w.onA)*Math.min(1,dt*6); w.extraA+=((w.k===focused?1:0)-w.extraA)*Math.min(1,dt*4); });
   }
   draw(t,dt); syncDom(t);
@@ -1198,7 +1240,7 @@ document.getElementById('zoomOut').addEventListener('click',function(){ setZoom(
 elZoomLevel.addEventListener('click',function(){ setZoom(1); });
 elPrev.addEventListener('click',function(){ focusWorld(nextOn(focused<0?NW:focused,-1)); });
 elNext.addEventListener('click',function(){ focusWorld(nextOn(focused,1)); });
-elAllOn.addEventListener('click',function(){ WORLDS.forEach(function(w){ toggleWorld(w.k,true); }); });
+elAllOn.addEventListener('click',function(){ setPsycho(true); WORLDS.forEach(function(w){ toggleWorld(w.k,true); }); });
 elAll.addEventListener('click',showOverview);
 elOverviewBtn.addEventListener('click',showOverview);
 document.addEventListener('keydown',function(e){
@@ -1206,6 +1248,7 @@ document.addEventListener('keydown',function(e){
   if(e.key==='+'||e.key==='='){ setZoom(zoomTarget*ZOOM_STEP); }
   else if(e.key==='-'){ setZoom(zoomTarget/ZOOM_STEP); }
   else if(e.key==='Escape'||e.key==='0'){ if(focused>=0) showOverview(); else overviewAll(); }
+  else if(e.key==='m'||e.key==='M'){ setMenu(document.documentElement.classList.contains('menu-off')); }
   else if(e.key==='PageDown'||(e.shiftKey&&e.key==='ArrowRight')){ e.preventDefault(); stepTravel(1); }
   else if(e.key==='PageUp'||(e.shiftKey&&e.key==='ArrowLeft')){ e.preventDefault(); stepTravel(-1); }
   else if(e.key==='ArrowRight'){ focusWorld(nextOn(focused,1)); }
@@ -1213,6 +1256,16 @@ document.addEventListener('keydown',function(e){
   else if(/^[1-9]$/.test(e.key)&&Number(e.key)<=NW){ focusWorld(Number(e.key)-1); }
 });
 document.getElementById('replay').addEventListener('click',function(){ restart(0); });
+/* Seitenmenü ein- und ausblenden; die Wahl bleibt im Browser gespeichert */
+var elMenuOn=document.getElementById('menuOn');
+function setMenu(on){
+  document.documentElement.classList.toggle('menu-off',!on);
+  elMenuOn.hidden=!!on;
+  try{ localStorage.setItem('welten-menu',on?'1':'0'); }catch(err){}
+}
+document.getElementById('menuOff').addEventListener('click',function(){ setMenu(false); });
+elMenuOn.addEventListener('click',function(){ setMenu(true); });
+(function(){ var saved=null; try{ saved=localStorage.getItem('welten-menu'); }catch(err){} if(saved==='0') setMenu(false); })();
 dots.forEach(function(d){ d.addEventListener('click',function(){ restart(PHASE_START[Number(d.getAttribute('data-step'))]+0.001); }); });
 
 /* Render-API (tools/render-video.js --page themenwelten.html --api siebenWelten):
@@ -1231,6 +1284,8 @@ window.siebenWelten={
   focus:function(k){ focusWorld(Number(k)||0); return focused; },
   overview:function(){ showOverview(); return focused; },
   toggle:function(k,on){ k=Number(k)||0; if(WORLDS[k]) toggleWorld(k,on===undefined?!WORLDS[k].on:!!on); return WORLDS.map(function(w){ return w.on; }); },
+  toggleGroup:function(id,on){ if(id==='psycho') setPsycho(on===undefined?!psychoOn:!!on); else toggleGroup(id,on===undefined?!groupOn(id):!!on); return { psycho:psychoOn, groups:GROUPS.map(function(g){ return [g.id,groupOn(g.id)]; }) }; },
+  menu:function(on){ setMenu(on===undefined?document.documentElement.classList.contains('menu-off'):!!on); return !document.documentElement.classList.contains('menu-off'); },
   travel:function(x,dist){ travelTo(Number(x)||0,dist,true); return travelX; },
   group:function(id){ var b=travelChips.filter(function(c){ return c.getAttribute('data-jump')===id; })[0]; if(b) b.click(); return id; },
   camera:function(){ return { f:view.cur.f.slice(), dist:view.cur.dist, traveling:traveling }; },
