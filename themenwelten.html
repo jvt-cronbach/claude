@@ -516,15 +516,16 @@ var PATH=[], KEYS=[];
   PATH.push(ctrl[ctrl.length-1].p); KEYS.push([TL.result,PATH.length-1]);
 })();
 function headIndex(t){
-  if(t<=KEYS[0][0]) return 0;
-  for(var i=1;i<KEYS.length;i++){
-    if(t<=KEYS[i][0]){
-      var a=KEYS[i-1], b=KEYS[i], u=b[0]>a[0]?(t-a[0])/(b[0]-a[0]):1;
-      if(i===1) u=easeInCubic(u); else if(i===KEYS.length-1) u=easeOutCubic(u);
+  var K=KEYS_ACTIVE;
+  if(t<=K[0][0]) return 0;
+  for(var i=1;i<K.length;i++){
+    if(t<=K[i][0]){
+      var a=K[i-1], b=K[i], u=b[0]>a[0]?(t-a[0])/(b[0]-a[0]):1;
+      if(i===1) u=easeInCubic(u); else if(i===K.length-1) u=easeOutCubic(u);
       return Math.round(lerp(a[1],b[1],u));
     }
   }
-  return PATH.length-1;
+  return capIdx;
 }
 
 /* ---------- DOM ---------- */
@@ -547,7 +548,7 @@ document.getElementById('productNote').textContent=D.product.note||'';
   document.getElementById('titleCount').textContent=cap+' Welten.';
   document.getElementById('worldsTitle').textContent=cap+' Themenwelten';
   CAPTIONS[2]=cap+' Welten, ein Profil: Jede Dimension zeigt die Inhalte, die zur Bedeutung der Marke passen. Ein Klick auf eine Dimension öffnet die Welt.';
-  document.getElementById('hint').textContent='Ziehen dreht den Raum, Scrollen zoomt, Shift + Scrollen oder der Regler fährt am Vektor entlang. Klick auf eine Dimension, eine Listenzeile oder die Ziffern 1 bis '+Math.min(NW,9)+' öffnet die Welt, Escape die Übersicht. Die Schalter in der Liste blenden Dimensionen oder ganze Gruppen aus, die Taste M das Menü.';
+  document.getElementById('hint').textContent='Ziehen dreht den Raum, Scrollen zoomt, Shift + Scrollen oder der Regler fährt am Vektor entlang. Klick auf eine Dimension, eine Listenzeile oder die Ziffern 1 bis '+Math.min(NW,9)+' öffnet die Welt, Escape die Übersicht. Die Schalter in der Liste blenden Dimensionen oder ganze Gruppen aus; der Vektor endet dann bei der letzten aktiven Dimension. Die Taste M blendet das Menü aus.';
 })();
 
 (function buildTravelChips(){
@@ -563,7 +564,7 @@ document.getElementById('productNote').textContent=D.product.note||'';
   });
   travelChips=Array.prototype.slice.call(elTravel.querySelectorAll('.chip-btn'));
   first.addEventListener('click',overviewAll);
-  elSlider.addEventListener('input',function(){ travelTo(SPAN_MIN+SPAN*Number(elSlider.value)/1000,traveling?travelDist:TRAVEL_DIST,!traveling); });
+  elSlider.addEventListener('input',function(){ travelTo(SPAN_MIN+ACTIVE.span*Number(elSlider.value)/1000,traveling?travelDist:TRAVEL_DIST,!traveling); });
 })();
 
 var gridCells=(function(){
@@ -638,6 +639,33 @@ function travelView(x,dist){ return { f:[x,0,0], yaw:OVERVIEW.yaw, pitch:0.2, di
 function baseView(){ return traveling?travelView(travelX,travelDist):OVERVIEW; }
 function worldView(k){ return { f:[WORLDS[k].x,0,0], yaw:Math.PI/2, pitch:0, dist:4.8 }; }
 var view={ from:OVERVIEW, to:OVERVIEW, start:-100, cur:OVERVIEW };
+/* Aktives Ende der Kette: der Vektor endet bei der letzten eingeschalteten Dimension; Übersicht, Regler und
+   Flugdauer rahmen nur diesen Teil. capIdx ist der letzte gezeichnete Punkt des Pfads, capCur gleitet dorthin. */
+var ACTIVE={ xe:SPAN_MAX, span:SPAN }, capIdx=PATH.length-1, capCur=PATH.length-1, KEYS_ACTIVE=KEYS.slice(), travelChip='all';
+function refitActive(){
+  var k, last=null, xe, tipX;
+  for(k=NW-1;k>=0;k--){ if(WORLDS[k].on){ last=WORLDS[k]; break; } }
+  if(last){ xe=last.x+HX; tipX=last.pierce[0]+1.6; }
+  else if(psychoOn&&HEAT.length){ xe=HEAT[HEAT.length-1].x+0.6; tipX=xe+0.6; }
+  else { xe=PRODUCT_POS[0]+2; tipX=PRODUCT_POS[0]+1.2; }
+  if(xe===ACTIVE.xe) return;
+  var idx=PATH.length-1;
+  if(!last||last.k<NW-1){ for(k=0;k<PATH.length;k++){ if(PATH[k][0]>=tipX){ idx=k; break; } } }
+  var newResult=tAtX(xe+1.0), t=elapsed(), wasReady=t>=TL.result, snap=null;
+  /* Kamera: aus der fertigen Übersicht oder dem jetzt endenden Flug weich zur neuen Übersicht */
+  if(manualT===null&&focused<0&&!traveling&&view.to===OVERVIEW){
+    if(wasReady){ var c=viewAt(t); snap={ f:c.f.slice(), yaw:c.yaw, pitch:c.pitch, dist:c.dist }; }
+    else if(t>=newResult){ var sw=camera(t); snap={ f:sw.f.slice(), yaw:OVERVIEW.yaw, pitch:OVERVIEW.pitch, dist:sw.dist*zoom }; }
+  }
+  capIdx=idx; TL.result=newResult; TL.end=newResult+0.8; PHASE_START[2]=newResult;
+  KEYS_ACTIVE=KEYS.filter(function(key){ return key[1]<capIdx; }); KEYS_ACTIVE.push([TL.result,capIdx]);
+  ACTIVE.xe=xe; ACTIVE.span=xe-SPAN_MIN;
+  OVERVIEW.f=[SPAN_MIN+0.3*ACTIVE.span,0,0]; OVERVIEW.dist=6+0.62*ACTIVE.span;
+  if(manualT===null&&wasReady&&t<TL.result){ t0-=(TL.result-t)*1000; t=TL.result; }   /* fertig bleibt fertig */
+  else if(manualT!==null) capCur=capIdx;
+  if(snap){ view.from=snap; view.to=OVERVIEW; view.start=t; }
+  if(traveling){ if(travelX>ACTIVE.xe) travelTo(ACTIVE.xe,travelDist,true); else syncTravelDom(travelChip); }
+}
 var dom={ phase:-1, ready:null, zoomLabel:'', rows:[], cells:[], focusCount:'' };
 
 function resize(){
@@ -673,6 +701,7 @@ var psychoOn=true, psychoA=1;
 function setPsycho(on){
   psychoOn=!!on;
   if(psychoSwitch&&psychoSwitch.checked!==psychoOn) psychoSwitch.checked=psychoOn;
+  refitActive();
   syncGroupDom();
 }
 function toggleWorld(k,on){
@@ -680,6 +709,7 @@ function toggleWorld(k,on){
   w.on=!!on;
   if(w.switch&&w.switch.checked!==w.on) w.switch.checked=w.on;
   worldRows[k].classList.toggle('off',!w.on);
+  refitActive();
   if(!w.on&&focused===k) showOverview();
   if(!w.on&&hover&&hover.world===k){ hover=null; hideTip(); }
   syncGroupDom();
@@ -723,7 +753,7 @@ function travelTo(x,dist,animate){
   if(!ready()) return;
   var t=elapsed();
   if(focused>=0){ focused=-1; hover=null; hideTip(); updateFocusDom(); animate=true; }
-  travelX=clamp(x,SPAN_MIN,SPAN_MAX); travelDist=dist||travelDist||TRAVEL_DIST; traveling=true;
+  travelX=clamp(x,SPAN_MIN,ACTIVE.xe); travelDist=dist||travelDist||TRAVEL_DIST; traveling=true;
   var target=travelView(travelX,travelDist);
   if(animate){ setView(target,t); }
   else { view.from=target; view.to=target; view.start=-100; view.cur=target; zoom=1; zoomTarget=1; dragYaw=0; dragPitch=0; orbitYaw=0; }
@@ -739,13 +769,14 @@ function overviewAll(){
   syncTravelDom('all');
 }
 function syncTravelDom(activeId){
-  var v=Math.round((travelX-SPAN_MIN)/SPAN*1000);
+  travelChip=activeId;
+  var v=Math.round(clamp((travelX-SPAN_MIN)/ACTIVE.span,0,1)*1000);
   if(traveling&&String(elSlider.value)!==String(v)) elSlider.value=String(v);
   travelChips.forEach(function(c){ c.classList.toggle('active',c.getAttribute('data-jump')===(traveling?activeId:'all')); });
 }
 function stepTravel(dir){
   var cur=traveling?travelX:view.cur.f[0], best=-1;
-  for(var k=0;k<NW;k++){ var x=WORLDS[k].x; if(dir>0&&x>cur+0.3&&(best<0||x<WORLDS[best].x)) best=k; if(dir<0&&x<cur-0.3&&(best<0||x>WORLDS[best].x)) best=k; }
+  for(var k=0;k<NW;k++){ if(!WORLDS[k].on) continue; var x=WORLDS[k].x; if(dir>0&&x>cur+0.3&&(best<0||x<WORLDS[best].x)) best=k; if(dir<0&&x<cur-0.3&&(best<0||x>WORLDS[best].x)) best=k; }
   if(best>=0) travelTo(WORLDS[best].x,TRAVEL_DIST,true);
   else if(dir<0) travelTo(PRODUCT_POS[0]+3,TRAVEL_DIST,true);
 }
@@ -776,6 +807,7 @@ function updateFocusDom(){
 }
 function restart(fromSeconds){
   t0=performance.now()-(fromSeconds||0)*1000;
+  capCur=capIdx;
   orbitYaw=0; dragYaw=0; dragPitch=0; userRotated=false;
   zoom=1; zoomTarget=1; focused=-1; focusMix=0; hover=null; hideTip();
   traveling=false; travelX=SPAN_MIN; travelDist=TRAVEL_DIST; syncTravelDom('all');
@@ -846,7 +878,7 @@ function draw(t,dt){
   var cam=camera(t), i, k, pr;
   ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,W,H);
   var over=1-focusMix;
-  var headIdx=headIndex(t), labels=[];
+  var headIdx=Math.min(headIndex(t),Math.round(capCur)), flying=t<TL.result||Math.round(capCur)!==capIdx, labels=[];
 
   /* Gruppennamen als transparente Schriftzüge hinter den Gruppen */
   if(over>0.02){
@@ -949,11 +981,11 @@ function draw(t,dt){
     var pts=[];
     for(i=0;i<=headIdx;i++) pts.push(project(PATH[i],cam));
     ctx.lineCap='round'; ctx.lineJoin='round';
-    ctx.strokeStyle='rgba('+BLACK+','+((headIdx<PATH.length-1?0.8:0.55)*over)+')'; ctx.lineWidth=1.25;
+    ctx.strokeStyle='rgba('+BLACK+','+((flying?0.8:0.55)*over)+')'; ctx.lineWidth=1.25;
     ctx.beginPath(); var started=false;
     for(i=0;i<=headIdx;i++){ pr=pts[i]; if(!pr){ started=false; continue; } if(!started){ ctx.moveTo(pr.x,pr.y); started=true; } else ctx.lineTo(pr.x,pr.y); }
     ctx.stroke();
-    if(headIdx<PATH.length-1){
+    if(flying){
       var tail=Math.min(headIdx,40);
       for(i=headIdx-tail;i<headIdx;i++){
         var q3=(i-(headIdx-tail))/tail, s1=pts[i], s2=pts[i+1]; if(!s1||!s2) continue;
@@ -1166,7 +1198,7 @@ function frame(now){
   if(manualT!==null){
     t=manualT;
     if(!userRotated&&focused<0) orbitYaw=Math.max(0,t-(TL.result+1))*0.05;
-    zoom=zoomTarget; focusMix=focused>=0?1:0; psychoA=psychoOn?1:0;
+    zoom=zoomTarget; focusMix=focused>=0?1:0; psychoA=psychoOn?1:0; capCur=capIdx;
     WORLDS.forEach(function(w){ w.onA=w.on?1:0; w.extraA=w.k===focused?1:0; });
   } else {
     t=(now-t0)/1000;
@@ -1174,6 +1206,7 @@ function frame(now){
     zoom+=(zoomTarget-zoom)*Math.min(1,dt*10);
     focusMix+=((focused>=0?1:0)-focusMix)*Math.min(1,dt*5);
     psychoA+=((psychoOn?1:0)-psychoA)*Math.min(1,dt*6);
+    capCur+=(capIdx-capCur)*Math.min(1,dt*6); if(Math.abs(capIdx-capCur)<0.5) capCur=capIdx;
     WORLDS.forEach(function(w){ w.onA+=((w.on?1:0)-w.onA)*Math.min(1,dt*6); w.extraA+=((w.k===focused?1:0)-w.extraA)*Math.min(1,dt*4); });
   }
   draw(t,dt); syncDom(t);
@@ -1291,7 +1324,7 @@ window.siebenWelten={
   camera:function(){ return { f:view.cur.f.slice(), dist:view.cur.dist, traveling:traveling }; },
   worlds:function(){ return WORLDS.map(function(w){ return { k:w.k, id:w.id, name:w.name, group:w.group, x:w.x, tk:w.tk, top:w.pts.slice(0,5).map(function(p){ return { name:p.name, sim:p.sim }; }), visible:w.pts.filter(function(p){ return p.sr>0; }).length }; }); },
   points:function(){ var out=[]; WORLDS.forEach(function(w){ w.pts.forEach(function(p){ if(p.sr>0) out.push({ world:w.k, rank:p.rank, named:p.named, x:p.sx, y:p.sy, r:p.sr, name:p.name, sim:p.sim }); }); }); return out; },
-  timeline:function(){ return { flight:TL.flight, result:TL.result, end:TL.end, heat:HEAT.map(function(h){ return h.t; }) }; }
+  timeline:function(){ return { flight:TL.flight, result:TL.result, end:TL.end, chainEnd:ACTIVE.xe, cap:capIdx, heat:HEAT.map(function(h){ return h.t; }) }; }
 };
 
 if(document.fonts&&document.fonts.load){ document.fonts.load('700 13px Gabarito').catch(function(){}); document.fonts.load('400 13px Gabarito').catch(function(){}); }

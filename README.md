@@ -46,6 +46,8 @@ Schriftzügen im Raum:
   „Paid Media“ und „Owned Media & 1st Party“ haben ebenfalls einen Schalter: Er blendet die ganze Gruppe aus, mit
   ihrem Schriftzug im Raum (bei Psychografie den Heatmap-Stapel) und ihrem Chip in der Navigation. Sind nur einige
   Dimensionen einer Gruppe aktiv, zeigt der Gruppenschalter das als Zwischenzustand. „Alle einschalten“ holt alles zurück.
+  Der Vektor endet immer bei der letzten eingeschalteten Dimension: Ohne Owned Media & 1st Party hört er nach der
+  letzten Paid-Media-Dimension auf, Übersicht, Regler und Flugdauer rahmen dann nur diesen Teil der Kette.
   Hover zeigt Name, Ähnlichkeit, Begründung und das Mini-Raster des Inhalts.
 - „Menü ausblenden“ unter der Weltenliste (oder die Taste M) klappt die linke Spalte weg, die Canvas nimmt dann die
   ganze Breite. „Menü einblenden“ oben links auf der Canvas bringt sie zurück; der Browser merkt sich die Wahl.
