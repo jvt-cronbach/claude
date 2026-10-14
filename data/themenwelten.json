@@ -25,6 +25,352 @@
  },
  "worlds": [
   {
+   "id": "cep",
+   "name": "Category Entry Points",
+   "noun": "Situation",
+   "group": "situation",
+   "description": "Situationen, in denen Menschen an Eis denken: Anlass, Zeitpunkt, Ort, Begleitung und Stimmung.",
+   "items": [
+    {
+     "name": "Einen beruflichen Erfolg feiern",
+     "detail": "Warum: Erfolg feiern",
+     "reason": "Stolz auf das Erreichte, Genuss als Krönung",
+     "profile": [
+      0.95,
+      0.3,
+      0.2,
+      0.9,
+      0.3,
+      0.25,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Gönn-Moment am Freitagabend",
+     "detail": "Wann: Freitagabend",
+     "reason": "Die Woche geschafft: verdienter Luxus zum Abschluss",
+     "profile": [
+      0.85,
+      0.3,
+      0.25,
+      0.85,
+      0.3,
+      0.3,
+      0.4,
+      0.1,
+      0.2
+     ]
+    },
+    {
+     "name": "Sundowner auf der Dachterrasse",
+     "detail": "Wo: Rooftop-Bar",
+     "reason": "Exklusiver Ort, Glamour und Blick über die Stadt",
+     "profile": [
+      0.95,
+      0.25,
+      0.2,
+      0.75,
+      0.25,
+      0.2,
+      0.45,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Dessert beim Dinner mit Gästen",
+     "detail": "Mit wem: Gäste",
+     "reason": "Als Gastgeber beeindrucken, Premium auf dem Tisch",
+     "profile": [
+      0.95,
+      0.35,
+      0.25,
+      0.75,
+      0.3,
+      0.25,
+      0.5,
+      0.15,
+      0.2
+     ]
+    },
+    {
+     "name": "Ein Tag im Beach Club",
+     "detail": "Wo: Beach Club",
+     "reason": "Sehen und gesehen werden, Luxus im Sommer",
+     "profile": [
+      0.95,
+      0.2,
+      0.2,
+      0.7,
+      0.2,
+      0.2,
+      0.45,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Pause beim Luxus-Shopping",
+     "detail": "Während: Shopping",
+     "reason": "Belohnung zwischen zwei Boutiquen, Genuss mit Stil",
+     "profile": [
+      0.9,
+      0.3,
+      0.3,
+      0.8,
+      0.3,
+      0.3,
+      0.4,
+      0.1,
+      0.2
+     ]
+    },
+    {
+     "name": "Nach dem gewonnenen Tennis-Match",
+     "detail": "Wann: nach dem Sieg",
+     "reason": "Triumph auskosten, den Sieg mit Genuss krönen",
+     "profile": [
+      0.9,
+      0.3,
+      0.25,
+      0.95,
+      0.35,
+      0.35,
+      0.35,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Ein Abend nur für mich",
+     "detail": "Wie: Me-Time",
+     "reason": "Selbstbelohnung, sich etwas Besonderes gönnen",
+     "profile": [
+      0.85,
+      0.25,
+      0.2,
+      0.85,
+      0.25,
+      0.2,
+      0.4,
+      0.1,
+      0.2
+     ]
+    },
+    {
+     "name": "Bootsausflug am Wochenende",
+     "detail": "Wo: auf dem Wasser",
+     "reason": "Glamour-Kulisse, Sommer mit Status",
+     "profile": [
+      0.95,
+      0.2,
+      0.25,
+      0.7,
+      0.2,
+      0.25,
+      0.5,
+      0.1,
+      0.2
+     ]
+    },
+    {
+     "name": "Bestandene Prüfung feiern",
+     "detail": "Warum: Meilenstein",
+     "reason": "Etwas geschafft: Stolz und Genuss im Moment",
+     "profile": [
+      0.8,
+      0.3,
+      0.25,
+      0.95,
+      0.35,
+      0.3,
+      0.45,
+      0.1,
+      0.2
+     ]
+    },
+    {
+     "name": "Date-Night zu zweit",
+     "detail": "Mit wem: Partner",
+     "reason": "Romantik mit Stil, Eindruck machen",
+     "profile": [
+      0.85,
+      0.2,
+      0.2,
+      0.7,
+      0.2,
+      0.2,
+      0.6,
+      0.1,
+      0.15
+     ]
+    },
+    {
+     "name": "Sommerfest mit Freunden",
+     "detail": "Mit wem: Freunde",
+     "reason": "Feiern in Gesellschaft, Genuss mit Stil",
+     "profile": [
+      0.8,
+      0.2,
+      0.3,
+      0.7,
+      0.2,
+      0.3,
+      0.65,
+      0.1,
+      0.25
+     ]
+    },
+    {
+     "name": "Filmabend auf dem Sofa",
+     "detail": "Wann: Wochenende, abends",
+     "reason": "Genuss zu Hause, mehr Gemütlichkeit als Bühne",
+     "profile": [
+      0.7,
+      0.2,
+      0.25,
+      0.7,
+      0.25,
+      0.25,
+      0.6,
+      0.1,
+      0.3
+     ]
+    },
+    {
+     "name": "Trost nach einem schlechten Tag",
+     "detail": "Wie: niedergeschlagen",
+     "reason": "Geborgenheit und Trost statt Glanz",
+     "profile": [
+      0.4,
+      0.1,
+      0.25,
+      0.45,
+      0.15,
+      0.3,
+      0.85,
+      0.2,
+      0.4
+     ]
+    },
+    {
+     "name": "Grillen mit der Clique im Park",
+     "detail": "Mit wem: Clique",
+     "reason": "Gemeinschaft und Teilen, Status zweitrangig",
+     "profile": [
+      0.35,
+      0.15,
+      0.4,
+      0.4,
+      0.2,
+      0.4,
+      0.9,
+      0.25,
+      0.5
+     ]
+    },
+    {
+     "name": "Kindergeburtstag im Garten",
+     "detail": "Anlass: Familienfest",
+     "reason": "Teilen und Fürsorge statt Status",
+     "profile": [
+      0.25,
+      0.15,
+      0.4,
+      0.35,
+      0.25,
+      0.4,
+      0.85,
+      0.3,
+      0.6
+     ]
+    },
+    {
+     "name": "Eis für die Kinder nach der Kita",
+     "detail": "Mit wem: Kinder",
+     "reason": "Kleine Freude im Familienalltag",
+     "profile": [
+      0.15,
+      0.15,
+      0.45,
+      0.25,
+      0.3,
+      0.45,
+      0.85,
+      0.4,
+      0.75
+     ]
+    },
+    {
+     "name": "Abkühlung nach dem Joggen",
+     "detail": "Wann: nach dem Sport",
+     "reason": "Funktionale Erfrischung statt Genuss-Inszenierung",
+     "profile": [
+      0.2,
+      0.35,
+      0.6,
+      0.45,
+      0.55,
+      0.75,
+      0.3,
+      0.4,
+      0.5
+     ]
+    },
+    {
+     "name": "Schneller Kauf an der Tankstelle",
+     "detail": "Wo: unterwegs",
+     "reason": "Spontaner Impuls, Funktion statt Erlebnis",
+     "profile": [
+      0.2,
+      0.35,
+      0.85,
+      0.3,
+      0.4,
+      0.7,
+      0.3,
+      0.3,
+      0.6
+     ]
+    },
+    {
+     "name": "Wocheneinkauf für den Vorrat",
+     "detail": "Wo: Supermarkt",
+     "reason": "Planung und Routine, Menge statt Moment",
+     "profile": [
+      0.15,
+      0.5,
+      0.75,
+      0.25,
+      0.55,
+      0.6,
+      0.5,
+      0.45,
+      0.85
+     ]
+    },
+    {
+     "name": "Leichter Snack mit wenig Zucker",
+     "detail": "Wie: kalorienbewusst",
+     "reason": "Vernunft und Verzicht, Kalorien im Blick",
+     "profile": [
+      0.1,
+      0.6,
+      0.4,
+      0.3,
+      0.7,
+      0.5,
+      0.35,
+      0.85,
+      0.4
+     ]
+    }
+   ],
+   "color": "blue"
+  },
+  {
    "id": "in-category",
    "name": "In-Category Produkte",
    "noun": "Produkt",
@@ -5678,9 +6024,14 @@
  },
  "groups": [
   {
+   "id": "situation",
+   "name": "Situation",
+   "gapBefore": 1
+  },
+  {
    "id": "in-category",
    "name": "",
-   "gapBefore": 1
+   "gapBefore": 2
   },
   {
    "id": "paid",
