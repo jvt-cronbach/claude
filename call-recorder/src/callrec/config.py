@@ -55,7 +55,8 @@ class CalendarConfig:
 
 @dataclass
 class TranscriptionConfig:
-    model: str = "large-v3"
+    # "auto" = large-v3 on a usable NVIDIA GPU, large-v3-turbo (int8) on the CPU
+    model: str = "auto"
     device: str = "auto"  # auto | cuda | cpu
     compute_type: str = "auto"  # auto -> float16 (cuda) / int8 (cpu)
     language: str = "de"  # ISO code or "auto"
@@ -103,7 +104,7 @@ class SpeakerConfig:
 @dataclass
 class SummaryConfig:
     enabled: bool = True
-    provider: str = "ollama"  # ollama | openai (OpenAI-compatible local server: LM Studio, llama.cpp ...)
+    provider: str = "ollama"  # ollama | openai (local OpenAI-compatible server) | anthropic (Claude API, cloud!)
     ollama_url: str = "http://127.0.0.1:11434"
     openai_url: str = "http://127.0.0.1:1234/v1"
     openai_api_key: str = ""  # most local servers ignore it
@@ -115,6 +116,16 @@ class SummaryConfig:
     temperature: float = 0.2
     max_chunk_chars: int = 24000
     timeout_s: float = 900.0
+    # --- Claude via the Anthropic API (provider = "anthropic"): the transcript LEAVES this computer.
+    # Only usable after the explicit confirmation in the settings dialog / `callrec anthropic enable`,
+    # which sets the flag below; a preset can never set it or select this provider.
+    anthropic_transcripts_leave_this_computer_confirmed: bool = False
+    anthropic_model: str = "claude-opus-5-5"
+    anthropic_effort: str = "medium"  # low | medium | high | xhigh | max | "" (= not sent)
+    anthropic_max_tokens: int = 32000
+    anthropic_max_chunk_chars: int = 300000
+    anthropic_max_retries: int = 4
+    anthropic_refusal_fallback: bool = True
 
 
 @dataclass
@@ -181,8 +192,14 @@ class Config:
             raise ConfigError("audio.gap_threshold_s muss > 0 sein")
         if self.transcript.timestamp_format not in TIMESTAMP_FORMATS:
             raise ConfigError(f"transcript.timestamp_format muss einer von {', '.join(TIMESTAMP_FORMATS)} sein")
-        if self.summary.provider not in ("ollama", "openai"):
-            raise ConfigError("summary.provider muss 'ollama' oder 'openai' sein")
+        if self.summary.provider not in SUMMARY_PROVIDERS:
+            raise ConfigError("summary.provider muss 'ollama', 'openai' oder 'anthropic' sein")
+        if self.summary.anthropic_effort not in ANTHROPIC_EFFORTS:
+            raise ConfigError(f"summary.anthropic_effort muss einer von {', '.join(e or '(leer)' for e in ANTHROPIC_EFFORTS)} sein")
+        if self.summary.anthropic_max_tokens < 1024:
+            raise ConfigError("summary.anthropic_max_tokens muss >= 1024 sein")
+        if self.summary.anthropic_max_chunk_chars < 10000:
+            raise ConfigError("summary.anthropic_max_chunk_chars muss >= 10000 sein")
         if self.handoff.mode not in ("folder", "graph"):
             raise ConfigError("handoff.mode muss 'folder' oder 'graph' sein")
         if self.handoff.graph_scope not in GRAPH_FILE_SCOPES:
@@ -192,6 +209,9 @@ class Config:
 
 
 TIMESTAMP_FORMATS = ("hh:mm:ss", "mm:ss", "none")
+SUMMARY_PROVIDERS = ("ollama", "openai", "anthropic")
+CLOUD_PROVIDERS = ("anthropic",)  # providers that send the transcript to a third party by design
+ANTHROPIC_EFFORTS = ("low", "medium", "high", "xhigh", "max", "")
 GRAPH_FILE_SCOPES = ("Sites.Selected", "Files.ReadWrite.All")
 
 
@@ -241,8 +261,13 @@ PRESET_SECTIONS = ("transcription", "diarization", "speakers", "transcript", "su
 # Keys that decide where conversation content is sent: only config.toml may set them,
 # never a preset file (presets are meant to be swapped and shared).
 PRESET_FORBIDDEN_KEYS = {
-    "summary": ("allow_remote_endpoint_data_leaves_this_computer", "ollama_url", "openai_url", "openai_api_key"),
+    "summary": (
+        "allow_remote_endpoint_data_leaves_this_computer", "ollama_url", "openai_url", "openai_api_key",
+        "anthropic_transcripts_leave_this_computer_confirmed",
+    ),
 }
+# Values a preset may not select: a preset must never switch the summary to a cloud provider.
+PRESET_FORBIDDEN_VALUES = {("summary", "provider"): CLOUD_PROVIDERS}
 
 
 def config_from_dict(data: dict[str, Any], base: Config | None = None) -> Config:
@@ -303,6 +328,12 @@ def apply_preset(cfg: Config, preset: dict[str, Any], name: str) -> Config:
                     del values[k]
                     dropped.append(f"{section}.{k}")
             allowed[section] = values
+    for (section, k), bad in PRESET_FORBIDDEN_VALUES.items():
+        values = allowed.get(section)
+        if isinstance(values, dict) and values.get(k) in bad:
+            values = dict(values)
+            dropped.append(f"{section}.{k} = {values.pop(k)!r}")
+            allowed[section] = values
     out = config_from_dict(allowed, base=cfg)
     for k in ignored:
         out.warnings.append(f"Preset {name!r}: Abschnitt [{k}] ist in Presets nicht erlaubt und wurde ignoriert")
@@ -345,6 +376,9 @@ def save_preset(cfg: Config, name: str) -> Path:
     for section, keys in PRESET_FORBIDDEN_KEYS.items():
         for k in keys:
             data.get(section, {}).pop(k, None)
+    for (section, k), bad in PRESET_FORBIDDEN_VALUES.items():
+        if data.get(section, {}).get(k) in bad:
+            data[section].pop(k)
     with path.open("wb") as fh:
         tomli_w.dump(data, fh)
     return path
@@ -395,8 +429,10 @@ tolerance_after_min = 10
 request_timeout_s = 8.0
 
 [transcription]
-model = "large-v3"
-# "auto" = GPU (CUDA), bei Problemen automatisch CPU
+# "auto" = large-v3 auf einer nutzbaren NVIDIA-GPU, sonst large-v3-turbo (int8) auf der CPU.
+# Feste Wahl z.B. "large-v3", "large-v3-turbo", "medium".
+model = "auto"
+# "auto" = NVIDIA-GPU (CUDA), falls vorhanden und nutzbar (einmal geprüft), sonst direkt CPU
 device = "auto"
 compute_type = "auto"
 # "de" oder "auto" für automatische Spracherkennung
@@ -450,6 +486,8 @@ apply_replacements = true
 [summary]
 enabled = true
 # "ollama" oder "openai" (OpenAI-kompatibler lokaler Server, z.B. LM Studio, llama.cpp)
+# oder "anthropic" (Claude über die Anthropic-API - das TRANSKRIPT VERLÄSST DANN DIESEN RECHNER;
+# nur über Einstellungen > Zusammenfassung bzw. "callrec anthropic enable" mit Bestätigung)
 provider = "ollama"
 ollama_url = "http://127.0.0.1:11434"
 openai_url = "http://127.0.0.1:1234/v1"

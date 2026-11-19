@@ -3,9 +3,11 @@
 - ``OllamaProvider``: Ollama native API (``/api/tags``, ``/api/chat``, ``/api/pull``, ``/api/version``)
 - ``OpenAICompatProvider``: any OpenAI-compatible server (``/v1/models``, ``/v1/chat/completions``),
   e.g. LM Studio or llama.cpp ``llama-server``.
+- ``AnthropicProvider`` (:mod:`callrec.llm_anthropic`): Claude via the official Anthropic API -
+  a deliberate, separately confirmed cloud option; it never uses the endpoint settings below.
 
-Endpoints must be on this computer unless the user set the explicitly named override
-``summary.allow_remote_endpoint_data_leaves_this_computer``.
+Endpoints of the two local providers must be on this computer unless the user set the explicitly
+named override ``summary.allow_remote_endpoint_data_leaves_this_computer``.
 Field names were checked against the Ollama ``docs/api.md`` / ``docs/api/errors.mdx`` and the
 llama.cpp ``tools/server/README.md`` (see README "Prüfstand").
 """
@@ -282,12 +284,41 @@ class OpenAICompatProvider:
         raise LlmUnavailable("Modelle für diesen Server bitte in dessen eigener Oberfläche laden (z.B. LM Studio).")
 
 
-def make_provider(cfg: Any, session: Any = None) -> LlmProvider:
+ANTHROPIC_NOT_CONFIRMED = (
+    "Als Anbieter ist Claude (Anthropic) eingetragen, die Übertragung der Transkripte an Anthropic wurde "
+    "aber nicht bestätigt. Bitte unter Einstellungen > Zusammenfassung auswählen und bestätigen "
+    "(oder 'callrec anthropic enable')."
+)
+
+
+def make_provider(cfg: Any, session: Any = None, *, anthropic_key: tuple[str, str] | None = None,
+                  anthropic_transport: Any = None) -> LlmProvider:
     """Build the provider from a SummaryConfig."""
+    if cfg.provider == "anthropic":
+        from callrec.llm_anthropic import AnthropicProvider, CloudNotConfirmed
+
+        if not cfg.anthropic_transcripts_leave_this_computer_confirmed:
+            raise CloudNotConfirmed(ANTHROPIC_NOT_CONFIRMED)
+        if anthropic_key is None:
+            from callrec.apikey import load_key
+
+            anthropic_key = load_key()
+        key, source = anthropic_key
+        return AnthropicProvider(  # type: ignore[return-value]
+            key, cfg.anthropic_model, timeout_s=cfg.timeout_s, effort=cfg.anthropic_effort,
+            max_tokens=cfg.anthropic_max_tokens, max_chunk_chars=cfg.anthropic_max_chunk_chars,
+            max_attempts=cfg.anthropic_max_retries, refusal_fallback=cfg.anthropic_refusal_fallback,
+            key_source=source, transport=anthropic_transport,
+        )
     allow = bool(cfg.allow_remote_endpoint_data_leaves_this_computer)
     if cfg.provider == "openai":
         return OpenAICompatProvider(cfg.openai_url, cfg.timeout_s, cfg.openai_api_key, allow, session)
     return OllamaProvider(cfg.ollama_url, cfg.timeout_s, allow, session)
+
+
+def summary_model(cfg: Any) -> str:
+    """Model name the configured provider uses."""
+    return str(cfg.anthropic_model if cfg.provider == "anthropic" else cfg.model)
 
 
 def model_available(wanted: str, installed: list[str]) -> bool:
