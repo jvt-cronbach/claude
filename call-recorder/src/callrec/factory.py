@@ -20,9 +20,16 @@ def build_components(cfg: Config, profiles: ProfileStore | None = None) -> Compo
     models = paths.models_dir()
 
     def transcriber():  # type: ignore[no-untyped-def]
+        from callrec.asr.gpu import gpu_status, mark_cuda_failed
         from callrec.asr.transcriber import WhisperSubprocessTranscriber
 
-        return WhisperSubprocessTranscriber(cfg.transcription, models / "whisper")
+        def usable() -> bool | None:
+            if cfg.transcription.device != "auto":
+                return None
+            return gpu_status().usable  # cached after the first check
+
+        return WhisperSubprocessTranscriber(cfg.transcription, models / "whisper", gpu_usable=usable,
+                                            on_cuda_failed=mark_cuda_failed)
 
     def diarizer():  # type: ignore[no-untyped-def]
         from callrec.speakers.diarize import SherpaDiarizer

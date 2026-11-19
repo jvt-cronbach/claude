@@ -28,7 +28,8 @@ from callrec.userfiles import PROMPT_FILES, ensure_user_files
 log = logging.getLogger(__name__)
 
 PAD: dict[str, Any] = {"padx": 6, "pady": 3}
-WHISPER_MODELS = ["large-v3", "large-v3-turbo", "distil-large-v3.5", "medium", "small", "base"]
+WHISPER_MODELS = ["auto", "large-v3", "large-v3-turbo", "distil-large-v3.5", "medium", "small", "base"]
+PROVIDERS = ["ollama", "openai", "anthropic"]
 AUTO_DEVICE = "auto (Windows-Standard für Kommunikation)"
 NO_PRESET = "(kein Preset)"
 
@@ -71,8 +72,12 @@ class SettingsDialog:
         render_names: list[str],
         save: Callable[[Config], None],
         provider_factory: Callable[[Config], Any] | None = None,
+        gpu_status_fn: Callable[[bool], Any] | None = None,
+        anthropic_factory: Callable[[Config, str], Any] | None = None,
     ) -> None:
         self.root = root
+        self.gpu_status_fn = gpu_status_fn
+        self.anthropic_factory = anthropic_factory
         self.cfg = copy.deepcopy(cfg)
         self.save_fn = save
         self.provider_factory = provider_factory
@@ -113,7 +118,7 @@ class SettingsDialog:
         f.columnconfigure(1, weight=1)
         return f
 
-    def field(self, tab: ttk.Frame, row: int, label: str, section: str, key: str,
+    def field(self, tab: ttk.Frame | ttk.Labelframe, row: int, label: str, section: str, key: str,
               values: list[str] | None = None, width: int = 50) -> tk.Variable:
         value = getattr(getattr(self.cfg, section), key)
         ttk.Label(tab, text=label).grid(row=row, column=0, sticky="w", **PAD)
@@ -214,6 +219,54 @@ class SettingsDialog:
         ttk.Button(bar, text="Korrekturliste bearbeiten …", command=lambda: edit_text_file(
             self.win, paths.replacements_file(), "Korrekturliste",
             "Eine Regel pro Zeile: 'falsch => richtig' oder 're: Ausdruck => Ersatz'.")).pack(side="left", padx=2)
+        self.gpu_btn = ttk.Button(bar, text="GPU erneut prüfen", command=lambda: self.refresh_gpu(True))
+        self.gpu_btn.pack(side="left", padx=2)
+        self.effective_var = tk.StringVar(value="Effektiv: wird ermittelt …")
+        ttk.Label(t, textvariable=self.effective_var, wraplength=520, foreground="#555").grid(
+            row=len(rows) + 1, column=0, columnspan=3, sticky="w", **PAD)
+        ttk.Label(t, text="Modell „auto“: large-v3 auf einer NVIDIA-GPU, ohne GPU large-v3-turbo (int8). "
+                  "Der Echtzeitfaktor jeder Transkription steht in meta.json und im Protokoll.",
+                  wraplength=520, foreground="#555").grid(row=len(rows) + 2, column=0, columnspan=3, sticky="w", **PAD)
+        self._gpu: Any = None
+        for key in ("model", "device", "compute_type"):
+            var = self.vars.get(("transcription", key))
+            if var is not None:
+                var.trace_add("write", lambda *a: self._show_effective())
+        self.refresh_gpu(False)
+
+    def _gpu_fn(self) -> Callable[[bool], Any]:
+        if self.gpu_status_fn is not None:
+            return self.gpu_status_fn
+        from callrec.asr.gpu import gpu_status
+
+        return lambda force: gpu_status(force=force)
+
+    def _show_effective(self) -> None:
+        from callrec.asr.gpu import describe_effective
+        from callrec.config import TranscriptionConfig
+
+        tc = TranscriptionConfig(
+            model=str(self.vars[("transcription", "model")].get()).strip() or "auto",
+            device=str(self.vars[("transcription", "device")].get()).strip() or "auto",
+            compute_type=self.cfg.transcription.compute_type,
+        )
+        self.effective_var.set(describe_effective(tc, self._gpu))
+
+    def refresh_gpu(self, force: bool) -> None:
+        fn = self._gpu_fn()
+        if force:
+            self.effective_var.set("Prüfe GPU …")
+            self.gpu_btn.state(["disabled"])
+
+        def done(res: Any) -> None:
+            self.gpu_btn.state(["!disabled"])
+            if isinstance(res, Exception):
+                self.effective_var.set(f"GPU-Prüfung fehlgeschlagen: {res}")
+                return
+            self._gpu = res
+            self._show_effective()
+
+        self._bg(lambda: fn(force), done)
 
     def _speakers(self) -> None:
         t = self._tab("Sprecher")
@@ -247,7 +300,7 @@ class SettingsDialog:
 
         t = self._tab("Zusammenfassung")
         self.field(t, 0, "Zusammenfassung erstellen:", "summary", "enabled")
-        self.field(t, 1, "Anbieter:", "summary", "provider", ["ollama", "openai"])
+        self.field(t, 1, "Anbieter:", "summary", "provider", PROVIDERS)
         self.field(t, 2, "Ollama-Adresse:", "summary", "ollama_url")
         self.field(t, 3, "OpenAI-kompatible Adresse (…/v1):", "summary", "openai_url")
         self.model_var = self.field(t, 4, "Modell:", "summary", "model", [])
@@ -270,6 +323,92 @@ class SettingsDialog:
                       "(allow_remote_endpoint_data_leaves_this_computer). Gesprächsinhalte können dann "
                       "diesen Rechner verlassen.", foreground="#b00020", wraplength=520).grid(
                 row=11, column=0, columnspan=2, sticky="w", **PAD)
+        self._anthropic_frame(t, 12)
+
+    def _anthropic_frame(self, tab: ttk.Frame, row: int) -> None:
+        from callrec.llm_anthropic import DEFAULT_MODEL, MODEL_CHOICES
+
+        f = ttk.LabelFrame(tab, text="Claude (Anthropic-API) – nur bei Anbieter „anthropic“")
+        f.grid(row=row, column=0, columnspan=3, sticky="we", padx=6, pady=6)
+        f.columnconfigure(1, weight=1)
+        ttk.Label(f, text="Bei diesem Anbieter wird das TRANSKRIPT an Anthropic übertragen (verlässt diesen Rechner). "
+                  "Kosten pro Token über Ihr Anthropic-Konto.", foreground="#b00020", wraplength=500).grid(
+            row=0, column=0, columnspan=3, sticky="w", **PAD)
+        self.field(f, 1, "Claude-Modell:", "summary", "anthropic_model", list(MODEL_CHOICES), width=40)
+        self.anthropic_model_info = tk.StringVar()
+        ttk.Label(f, textvariable=self.anthropic_model_info, foreground="#555", wraplength=500).grid(
+            row=2, column=0, columnspan=3, sticky="w", **PAD)
+        mvar = self.vars[("summary", "anthropic_model")]
+
+        def show_model(*_a: Any) -> None:
+            m = str(mvar.get()).strip()
+            info = MODEL_CHOICES.get(m, "eigene Modell-ID (nicht geprüft)")
+            self.anthropic_model_info.set(f"{info}" + (" – Standard" if m == DEFAULT_MODEL else ""))
+
+        mvar.trace_add("write", show_model)
+        show_model()
+        self.field(f, 3, "Denktiefe (effort):", "summary", "anthropic_effort", ["low", "medium", "high", "xhigh", "max", ""], width=12)
+        ttk.Label(f, text="API-Schlüssel:").grid(row=4, column=0, sticky="w", **PAD)
+        self.key_var = tk.StringVar(value="")
+        ttk.Entry(f, textvariable=self.key_var, show="•", width=44).grid(row=4, column=1, sticky="we", **PAD)
+        kb = ttk.Frame(f)
+        kb.grid(row=5, column=0, columnspan=3, sticky="w", **PAD)
+        ttk.Button(kb, text="Schlüssel speichern", command=self.save_key).pack(side="left", padx=2)
+        ttk.Button(kb, text="Schlüssel löschen", command=self.delete_key).pack(side="left", padx=2)
+        self.test_btn = ttk.Button(kb, text="Verbindung testen", command=self.test_anthropic)
+        self.test_btn.pack(side="left", padx=2)
+        self.key_status = tk.StringVar()
+        ttk.Label(f, textvariable=self.key_status, wraplength=500).grid(row=6, column=0, columnspan=3, sticky="w", **PAD)
+        self._show_key_status()
+
+    def _show_key_status(self, extra: str = "") -> None:
+        from callrec import apikey
+
+        key, source = apikey.load_key()
+        state = f"Schlüssel: {apikey.mask(key)} ({source})" if key else "Kein Schlüssel hinterlegt (Anthropic-Konsole > API Keys)."
+        self.key_status.set(state + (f"\n{extra}" if extra else ""))
+
+    def save_key(self) -> None:
+        from callrec import apikey
+
+        try:
+            apikey.store_key(self.key_var.get())
+        except apikey.ApiKeyError as exc:
+            messagebox.showerror("API-Schlüssel", str(exc), parent=self.win)
+            return
+        self.key_var.set("")
+        self._show_key_status("Gespeichert (Windows-DPAPI-verschlüsselt, nicht in config.toml).")
+
+    def delete_key(self) -> None:
+        from callrec import apikey
+
+        apikey.delete_key()
+        self._show_key_status("Gespeicherter Schlüssel gelöscht.")
+
+    def test_anthropic(self) -> None:
+        try:
+            cfg = self.collect()
+        except ConfigError as exc:
+            self.key_status.set(str(exc))
+            return
+        typed = self.key_var.get().strip()
+        if self.anthropic_factory is not None:
+            provider = self.anthropic_factory(cfg, typed)
+        else:
+            from callrec import apikey
+            from callrec.llm_anthropic import AnthropicProvider
+
+            key = typed or apikey.load_key()[0]
+            provider = AnthropicProvider(key, cfg.summary.anthropic_model, effort=cfg.summary.anthropic_effort,
+                                         max_attempts=1, timeout_s=60.0)
+        self.test_btn.state(["disabled"])
+        self.key_status.set("Teste Verbindung zu api.anthropic.com … (sendet nur „Antworte nur mit: OK“)")
+
+        def done(res: Any) -> None:
+            self.test_btn.state(["!disabled"])
+            self._show_key_status(str(res))
+
+        self._bg(provider.test_connection, done)
 
     def _provider(self) -> Any:
         cfg = self.collect()
@@ -386,12 +525,30 @@ class SettingsDialog:
         except (ConfigError, HotkeyError) as exc:
             messagebox.showerror("Ungültige Einstellung", str(exc), parent=self.win)
             return
+        if not self.confirm_cloud(cfg):
+            return
         self.save_fn(cfg)
         self.cfg = cfg
         self.saved = True
         messagebox.showinfo("Gespeichert", "Einstellungen gespeichert. Sie gelten für neue Verarbeitungen; "
                             "Tastenkürzel und Geräte nach einem Neustart des Programms.", parent=self.win)
         self.win.destroy()
+
+    def confirm_cloud(self, cfg: Config) -> bool:
+        """Selecting Claude (Anthropic) needs an explicit confirmation; switching away revokes it."""
+        from callrec.llm_anthropic import ANTHROPIC_SETTINGS_WARNING
+
+        s = cfg.summary
+        if s.provider != "anthropic":
+            s.anthropic_transcripts_leave_this_computer_confirmed = False
+            return True
+        if s.anthropic_transcripts_leave_this_computer_confirmed:
+            return True
+        if not messagebox.askyesno("Transkripte an Anthropic senden?", ANTHROPIC_SETTINGS_WARNING,
+                                   icon="warning", parent=self.win):
+            return False
+        s.anthropic_transcripts_leave_this_computer_confirmed = True
+        return True
 
     def run(self) -> bool:
         self.win.attributes("-topmost", True)

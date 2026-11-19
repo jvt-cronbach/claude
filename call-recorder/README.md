@@ -3,19 +3,23 @@
 CallRecorder ist ein kleines Windows-11-Programm im Infobereich (Tray). Es nimmt Gespräche
 – typischerweise Microsoft-Teams-Anrufe über ein Headset – **mit Einwilligung aller
 Teilnehmenden** auf, ohne die Aufzeichnungsfunktion von Teams zu nutzen, und erstellt
-anschließend **vollständig lokal**:
+anschließend **lokal** (die Zusammenfassung wahlweise auch mit Claude über die Anthropic-API,
+siehe unten):
 
 - ein Transkript mit Sprechernamen und Zeitstempeln (`transcript.md`),
 - ein kurzes Ergebnisprotokoll mit Entscheidungen und Aufgaben (`summary.md`),
 - Metadaten inkl. Einwilligungsbestätigung (`meta.json`),
 - die Audiospuren (FLAC oder Opus).
 
-Audio, Transkripte und Stimmprofile verlassen den Rechner nicht. Netzwerkzugriffe gibt
-es nur für den Kalender (Microsoft Graph, nur Termin-Metadaten), für das Herunterladen der
-Modelle – und für **einen einzigen, bewusst ausgelösten Schritt**: Auf Klick kann die
-**Zusammenfassung** (nur sie) an einen SharePoint-Ordner übergeben werden, damit z. B. ein
-Microsoft-365-Assistent sie lesen kann (Abschnitt 10). Dieser Schritt verlässt den rein
-lokalen Bereich absichtlich und geschieht nie automatisch.
+Audio und Stimmprofile verlassen den Rechner nie. Transkripte bleiben lokal – **außer** Sie
+wählen ausdrücklich Claude (Anthropic) als Anbieter für die Zusammenfassung (Abschnitt 6a): Dann
+wird für jede Zusammenfassung der Transkripttext an Anthropic übertragen. Das ist eine bewusste,
+gesondert bestätigte Einstellung (nie per Preset), die Einwilligungsabfrage nennt sie dann
+ausdrücklich. Weitere Netzwerkzugriffe gibt es nur für den Kalender (Microsoft Graph, nur
+Termin-Metadaten), für das Herunterladen der Modelle – und für **einen bewusst ausgelösten
+Schritt**: Auf Klick kann die **Zusammenfassung** (nur sie) an einen SharePoint-Ordner übergeben
+werden, damit z. B. ein Microsoft-365-Assistent sie lesen kann (Abschnitt 10). Dieser Schritt
+geschieht nie automatisch.
 
 ---
 
@@ -27,6 +31,7 @@ lokalen Bereich absichtlich und geschieht nie automatisch.
 4. [Installation](#4-installation)
 5. [Entra-App-Registrierung (Kalender, optional SharePoint-Upload)](#5-entra-app-registrierung-kalender-optional-sharepoint-upload)
 6. [Sprachmodell für die Zusammenfassung](#6-sprachmodell-für-die-zusammenfassung)
+   (6a. [Claude über die Anthropic-API](#6a-claude-über-die-anthropic-api-cloud))
 7. [Erster Start und Bedienung](#7-erster-start-und-bedienung)
 8. [Sprecher zuordnen und Stimmprofile](#8-sprecher-zuordnen-und-stimmprofile)
 9. [Transkript schrittweise verbessern](#9-transkript-schrittweise-verbessern)
@@ -50,12 +55,22 @@ Zusammenfassungen an SharePoint übergeben (Abschnitt 10), sollten die Teilnehme
 darüber informiert sein.
 CallRecorder fragt vor **jeder** Aufnahme nach dieser Bestätigung. Ohne Häkchen startet
 keine Aufnahme; die Abfrage lässt sich bewusst nicht per Konfiguration abschalten.
-Die Bestätigung wird mit Zeitstempel, Ihrem Namen und der Teilnehmerliste in `meta.json`
-gespeichert. Die Verantwortung, dass die Zustimmung tatsächlich vorliegt, bleibt bei Ihnen.
+Die Bestätigung wird mit Zeitstempel, Ihrem Namen, der Teilnehmerliste und dem zu diesem Zeitpunkt
+eingestellten Zusammenfassungs-Anbieter (`summary_provider`) in `meta.json` gespeichert. Die
+Verantwortung, dass die Zustimmung tatsächlich vorliegt, bleibt bei Ihnen.
+
+**Zusammenfassung durch Claude (Anthropic).** Ist dieser Anbieter gewählt (Abschnitt 6a), lautet
+der Einwilligungstext vor jeder Aufnahme (Dialog und Konsole) ausdrücklich, dass das Transkript zur
+Zusammenfassung an Anthropic übertragen wird, und die Aufnahme startet nur mit diesem Text. Für
+ältere Aufnahmen, deren Einwilligung den Hinweis nicht enthält, wird nichts übertragen, bis Sie
+die Zustimmung nachträglich gesondert bestätigen (wird in `meta.json` unter
+`consent.additional_confirmations` vermerkt). Klären Sie vorab, ob die Übertragung an einen
+Cloud-Anbieter mit Ihren Datenschutzpflichten vereinbar ist (Auftragsverarbeitung, Verarbeitung
+außerhalb der EU, Vertraulichkeit; maßgeblich sind die kommerziellen Bedingungen von Anthropic).
 
 **Datenschutz (DSGVO).** Aufnahmen, Transkripte und Protokolle sind personenbezogene
-Daten. Informieren Sie die Teilnehmenden über Zweck und Speicherdauer und löschen Sie
-Aufnahmen, wenn sie nicht mehr benötigt werden.
+Daten. Informieren Sie die Teilnehmenden über Zweck, Speicherdauer und – bei Claude – über die
+Übertragung an Anthropic und löschen Sie Aufnahmen, wenn sie nicht mehr benötigt werden.
 
 **Stimmprofile sind biometrische Daten (Art. 9 DSGVO).** Für die automatische
 Wiedererkennung speichert CallRecorder pro Person einen „Stimmabdruck“ (Sprecher-Embedding).
@@ -92,9 +107,11 @@ die Embeddings der Sprecher dieses Gesprächs (für die spätere Zuordnung); lö
    Beide Spuren werden fortlaufend auf die Festplatte geschrieben (absturzsicher; bei einem
    Absturz geht höchstens die letzte ~2 Sekunden verloren).
 5. **Nach dem Stopp** (im Hintergrund, Fortschritt im Tray-Tooltip):
-   FLAC/Opus erzeugen → Transkription mit faster-whisper (GPU, sonst CPU) →
+   FLAC/Opus erzeugen → Transkription mit faster-whisper (NVIDIA-GPU, sonst direkt CPU) →
    Sprechertrennung der Gegenseite (sherpa-onnx) → Abgleich mit gespeicherten Stimmprofilen →
-   `transcript.md` → Zusammenfassung über Ollama → `summary.md`.
+   `transcript.md` → Zusammenfassung lokal über Ollama/OpenAI-kompatiblen Server **oder** – nur
+   wenn ausdrücklich gewählt – über Claude (Anthropic-API; dafür verlässt der Transkripttext den
+   Rechner) → `summary.md`.
 6. **Unbekannte Stimmen** erscheinen als „Sprecher 1 … n“. Der Zuordnungsdialog öffnet sich
    automatisch; einmal zugeordnete Stimmen werden beim nächsten Gespräch erkannt.
 
@@ -110,10 +127,13 @@ Die Mikrofonspur ist immer **Sie** (Name aus dem Microsoft-Konto bzw. den Einste
   (mit „tcl/tk“, ist Standard). Python 3.11 geht nicht (numpy 2.5 gibt es dafür nicht).
 - Visual C++ Runtime 2015–2022 x64 (`msvcp140.dll`, für die Transkription; meist schon
   vorhanden, sonst `winget install Microsoft.VCRedist.2015+.x64` – `setup.ps1` warnt)
-- NVIDIA-Grafikkarte mit aktuellem Treiber (CUDA 12 kompatibel, Treiber ≥ 525).
-  Für `large-v3` werden ca. 5 GB Grafikspeicher benötigt; sonst `large-v3-turbo` oder
-  `medium` einstellen. Ohne GPU läuft alles auf der CPU (deutlich langsamer).
-- Optional: [Ollama](https://ollama.com) für die Zusammenfassung
+- Optional: NVIDIA-Grafikkarte mit aktuellem Treiber (CUDA 12 kompatibel, Treiber ≥ 525).
+  Für `large-v3` werden ca. 5 GB Grafikspeicher benötigt. **Ohne NVIDIA-GPU** (z. B. nur
+  AMD Radeon oder Intel-Grafik) erkennt CallRecorder das einmalig und transkribiert direkt auf der
+  CPU; mit `transcription.model = "auto"` (Standard) dann mit `large-v3-turbo` (int8). Zum
+  Vergleich: Auf einem Rechner ohne NVIDIA-GPU brauchte `large-v3` ca. 45 s für 19 s Audio.
+- Optional: [Ollama](https://ollama.com) für die lokale Zusammenfassung **oder** ein
+  Anthropic-API-Konto für Claude (Abschnitt 6a)
 - Freier Speicher: ~4 GB (Modelle + NVIDIA-Bibliotheken) plus Aufnahmen
   (Spuren werden in der Geräte-Abtastrate, meist 48 kHz mono, gespeichert: FLAC grob
   100–200 MB pro Stunde und Spur, Opus etwa ein Zehntel davon; während der Aufnahme
@@ -133,13 +153,20 @@ Die Mikrofonspur ist immer **Sie** (Name aus dem Microsoft-Konto bzw. den Einste
    Optionen:
    - `-Autostart` – CallRecorder bei der Anmeldung starten
    - `-WithWhisperModel` – das Whisper-Modell (≈ 3 GB) gleich mitladen
-   - `-NoCuda` – keine NVIDIA-Bibliotheken installieren (nur CPU)
+   - NVIDIA-Bibliotheken (ca. 1,5 GB) werden **nur installiert, wenn eine NVIDIA-Grafikkarte
+     erkannt wird** (Grafikadapter bzw. `nvidia-smi`).
+     `-NoCuda` – nie installieren; `-WithCuda` – trotzdem installieren
    - `-PythonVersion 3.13` – andere Python-Version (nur 3.12 oder 3.13)
 
    Das Skript legt `.venv` an, installiert alle Pakete in exakt gepinnten Versionen
    (`requirements.txt`, `requirements-cuda.txt`, `constraints-win.txt`), prüft die Importe
-   und die GPU, legt die Konfiguration an, lädt die Sprechertrennungsmodelle und erstellt
-   eine Startmenü-Verknüpfung „CallRecorder“.
+   und die GPU (Ergebnis wird gemerkt, `callrec gpu`), legt die Konfiguration an, lädt die
+   Sprechertrennungsmodelle und erstellt eine Startmenü-Verknüpfung „CallRecorder“.
+
+   **Bestehende Installation ohne NVIDIA-GPU:** In einer älteren `config.toml` steht
+   `model = "large-v3"` – das gilt als bewusste Wahl und bleibt (im Protokoll steht dann ein
+   Hinweis). Für die automatische Wahl `model = "auto"` eintragen bzw. in den Einstellungen
+   *Transkription → Whisper-Modell* „auto“ wählen.
 
 3. Konfiguration öffnen und mindestens die Kalenderdaten eintragen (Abschnitt 5):
 
@@ -259,13 +286,17 @@ sonst Eingabe von Hand oder `.ics`-Import.
 
 ## 6. Sprachmodell für die Zusammenfassung
 
-Die Zusammenfassung erzeugt ein **lokal laufendes** Sprachmodell. Zwei Anbieter sind möglich
-(`[summary] provider`):
+Die Zusammenfassung erzeugt standardmäßig ein **lokal laufendes** Sprachmodell. Drei Anbieter
+sind möglich (`[summary] provider`):
 
 | Anbieter | Typische Adresse | Hinweis |
 |---|---|---|
 | `ollama` (Standard) | `http://127.0.0.1:11434` | Modelle direkt aus CallRecorder laden/aktualisieren |
 | `openai` – beliebiger OpenAI-kompatibler Server | LM Studio: `http://127.0.0.1:1234/v1`, llama.cpp `llama-server`: `http://127.0.0.1:9931/v1` (Standardport laut aktueller llama.cpp-Doku) | Modelle in der Oberfläche des Servers laden |
+| `anthropic` – Claude (Cloud) | fest `https://api.anthropic.com` | **Transkript verlässt den Rechner**, nur mit Bestätigung, Abschnitt 6a |
+
+Ohne NVIDIA-GPU sind lokale Sprachmodelle sehr langsam; dann ist Claude (6a) die schnellere
+Alternative – mit den genannten Folgen für den Datenschutz.
 
 **Ollama einrichten**
 
@@ -292,7 +323,7 @@ Läuft der Server nicht oder fehlt das Modell, wird die Zusammenfassung **übers
 Hinweis im Tray und Vermerk in `meta.json`). Später nachholen: Tray-Menü
 **„Letzte Aufnahme: Zusammenfassung neu erstellen“** oder `callrec summarize <Ordner>`.
 
-**Nur lokal:** CallRecorder akzeptiert nur Adressen auf diesem Rechner (`localhost`,
+**Nur lokal (Ollama/OpenAI-kompatibel):** CallRecorder akzeptiert für diese beiden Anbieter nur Adressen auf diesem Rechner (`localhost`,
 `127.x.x.x`, `::1`) und ignoriert dafür Proxy-Einstellungen. Weiterleitungen (HTTP 3xx)
 werden nie befolgt; mehrdeutige Adressen (mit `@`, `\` oder Leerzeichen) werden abgelehnt.
 Adresse und Freigabe lassen sich nur in `config.toml` ändern, nicht über ein Preset. Ein Server auf einem anderen
@@ -303,6 +334,61 @@ Gesprächsinhalte diesen Rechner**; das Protokoll und die Einstellungen weisen d
 
 **Anweisungen anpassen:** Die Texte, die das Modell bekommt, liegen als bearbeitbare Dateien in
 `%APPDATA%\CallRecorder\prompts\` (siehe Abschnitt 9).
+
+**Fortschritt:** Während das Modell arbeitet, zeigen Tray-Tooltip und Konsole die verstrichene
+Zeit („Protokoll: warte auf ollama (gemma3:12b) – 95 s“), bei Claude zusätzlich die bereits
+empfangenen Zeichen.
+
+### 6a. Claude über die Anthropic-API (Cloud)
+
+> **Achtung:** Mit diesem Anbieter wird für jede Zusammenfassung der **vollständige
+> Transkripttext** (mit Sprechernamen und Zeitstempeln) sowie Titel, Datum und die Namen der
+> Teilnehmenden an Anthropic übertragen. **Nie** übertragen werden Audio, Stimmprofile,
+> Sprecher-Embeddings, E-Mail-Adressen und `meta.json`.
+
+1. **Konto und Schlüssel:** Unter <https://console.anthropic.com> anmelden, unter *Billing*
+   Guthaben aufladen und unter *API Keys* einen Schlüssel erstellen (beginnt mit `sk-ant-`).
+   Abgerechnet wird **pro Token** (Eingabe und Ausgabe) über Ihr Anthropic-Konto; Preise siehe
+   Anthropic-Website. Zur Orientierung (Stand 11/2026, je 1 Mio. Token Eingabe/Ausgabe):
+   Claude Opus 5.5 4 $/20 $, Sonnet 5.5 2 $/10 $, Haiku 5.5 0,10 $/0,50 $. Ein einstündiges
+   Gespräch hat grob 15 000–25 000 Token Transkript. Die Token je Zusammenfassung stehen in
+   `meta.json` unter `processing.summary.usage`.
+2. **Aktivieren:** *Einstellungen → Zusammenfassung*: Anbieter `anthropic` wählen, Schlüssel
+   eintragen, **„Schlüssel speichern“**, **„Verbindung testen“** (sendet nur „Antworte nur mit: OK“
+   und prüft Schlüssel, Modell, Netz und Guthaben – kostet einen Bruchteil eines Cents), dann
+   **„Speichern“** und die Rückfrage „Transkripte an Anthropic senden?“ mit *Ja* bestätigen.
+   Oder in PowerShell:
+
+   ```powershell
+   .venv\Scripts\python -m callrec anthropic set-key     # Eingabe unsichtbar
+   .venv\Scripts\python -m callrec anthropic enable      # zeigt den Hinweis, Bestätigung mit "ja"
+   .venv\Scripts\python -m callrec anthropic test
+   .venv\Scripts\python -m callrec anthropic status
+   .venv\Scripts\python -m callrec anthropic disable     # zurück zu Ollama, Freigabe widerrufen
+   ```
+
+   Ein Preset kann diesen Anbieter **nie** auswählen oder freigeben (wird ignoriert und gemeldet).
+   Wechseln Sie in den Einstellungen auf einen lokalen Anbieter, wird die Freigabe widerrufen.
+3. **Wo liegt der Schlüssel?** Nicht in `config.toml`, nicht in Presets, nicht im Protokoll,
+   sondern in `%LOCALAPPDATA%\CallRecorder\anthropic_api_key.bin`, mit Windows-DPAPI
+   verschlüsselt (nur Ihr Windows-Konto auf diesem Rechner kann ihn lesen). Alternativ wird die
+   Umgebungsvariable `ANTHROPIC_API_KEY` verwendet (der gespeicherte Schlüssel hat Vorrang).
+   Löschen: `callrec anthropic delete-key` bzw. „Schlüssel löschen“.
+4. **Modell:** Standard ist `claude-opus-5-5` (beste Qualität); in den Einstellungen sind
+   `claude-sonnet-5-5` und `claude-haiku-5-5` (günstiger) auswählbar, `anthropic_effort` steuert
+   die Denktiefe (`medium` = Standard). Bei einer Ablehnung durch die Sicherheitsfilter von
+   Anthropic darf die API automatisch ein Ersatzmodell nutzen (`anthropic_refusal_fallback`); das
+   tatsächlich verwendete Modell steht in `summary.md` und `meta.json` (`served_model`).
+5. **Technik:** Verbindungen nur zu `https://api.anthropic.com` (fest eingestellt, keine
+   konfigurierbare Adresse, `ANTHROPIC_BASE_URL` wird ignoriert, Weiterleitungen werden nicht
+   befolgt). Bei Überlastung (529), Ratenlimit (429) oder Netzproblemen wird mit Wartezeit
+   mehrfach wiederholt; danach wird die Zusammenfassung übersprungen und kann später neu erstellt
+   werden. Sehr lange Transkripte werden automatisch in Teile zerlegt
+   (`anthropic_max_chunk_chars`). Fehlermeldungen (Schlüssel ungültig, kein Guthaben,
+   Ausgabenlimit, keine Verbindung) erscheinen auf Deutsch im Tray und in `meta.json`.
+6. **Ältere Aufnahmen** (Einwilligung ohne Anthropic-Hinweis) werden erst nach einer gesonderten
+   Bestätigung übertragen: Tray „Zusammenfassung neu erstellen“ fragt nach, auf der Konsole
+   `callrec summarize <Ordner> --confirm-anthropic`.
 
 ---
 
@@ -326,6 +412,7 @@ Start über **Startmenü → CallRecorder**. Das Symbol erscheint im Infobereich
 - *Letzte Aufnahme: Sprecher zuordnen …*
 - *Letzte Aufnahme: Zusammenfassung neu erstellen*
 - *Letzte Aufnahme: komplett neu verarbeiten*
+- *Laufende Verarbeitung abbrechen* (Transkription bzw. Modell-Download)
 - *Aufnahmeordner öffnen*
 - *Stimmprofile verwalten …*
 - *Einstellungen …* (Mikrofon, Ausgabegerät, Name, Ordner, Sprache, Modelle, Tastenkürzel)
@@ -386,12 +473,38 @@ Alle Stellschrauben gibt es in **Einstellungen** (Reiter *Transkription*, *Sprec
 | `config.toml` | alle Einstellungen, siehe Abschnitt 13 |
 | `glossary.txt` | Glossar: ein Begriff pro Zeile (Namen, Firma, Produkte, Fachwörter) – wird Whisper als „Hotwords“ mitgegeben |
 | `replacements.txt` | Korrekturliste für wiederkehrende Fehler: `falsch => richtig` (ganzes Wort, Groß/Klein egal) oder `re: Ausdruck => Ersatz` |
-| `prompts\summary_system.txt`, `summary_final.txt`, `summary_chunk.txt` | Anweisungen für die Zusammenfassung; Platzhalter `{title}`, `{date}`, `{participants}`, `{material}` bzw. `{i}`, `{n}`, `{chunk}` |
+| `prompts\summary_system.txt`, `summary_final.txt`, `summary_chunk.txt` | Anweisungen für die Zusammenfassung; Platzhalter `{title}`, `{date}`, `{participants}`, `{material}` bzw. `{i}`, `{n}`, `{chunk}`. Daneben liegt jeweils `*.default.txt` = aktuelle Standardvorlage |
 | `presets\<Name>.toml` | benannte Presets |
+
+**Gliederung der Zusammenfassung** (Standardvorlage, für alle Anbieter gleich – damit ein
+Assistent daraus Aufgaben und Projektstände übernehmen kann):
+
+```
+## Kurzfassung
+## Entscheidungen
+## Aufgaben            Tabelle | Aufgabe | Verantwortlich | Frist | – „offen“, wenn nicht genannt
+## Projektstand und Updates   je Projekt/Thema ein Unterabschnitt (###)
+## Offene Fragen
+## Nächste Termine
+```
+
+Das Modell soll keine Verantwortlichen oder Fristen erfinden („offen“) und Fristen so übernehmen,
+wie sie genannt wurden. Fehlt einer dieser Abschnitte in einer erzeugten Zusammenfassung, wird sie
+trotzdem gespeichert; Protokoll und `meta.json` (`processing.summary.missing_sections`) nennen die
+fehlenden Abschnitte.
+
+**Neue Standardvorlage übernehmen:** Unveränderte Vorlagen früherer Versionen werden automatisch
+auf die neue Gliederung aktualisiert. **Selbst angepasste Vorlagen bleiben unverändert.** Die
+neue Standardvorlage liegt daneben als `summary_final.default.txt` (bzw. `summary_system…`,
+`summary_chunk…`). Übernehmen: eigene Datei löschen (wird beim nächsten Start aus der Standardvorlage
+neu angelegt) oder Inhalt der `.default.txt` hineinkopieren und eigene Ergänzungen wieder einfügen.
 
 **Was wirkt worauf?**
 
-- *Whisper-Modell, Sprache, Beam-Größe*: Genauigkeit vs. Geschwindigkeit.
+- *Whisper-Modell, Sprache, Beam-Größe*: Genauigkeit vs. Geschwindigkeit. Der Echtzeitfaktor
+  (Rechenzeit ÷ Audiodauer, < 1 = schneller als Echtzeit) jeder Transkription steht im Kopf von
+  `transcript.md`, im Protokoll und in `meta.json` (`processing.transcription.mic.timing`) – zum
+  Vergleich von Modellen. Die Einstellungen zeigen das effektiv verwendete Gerät und Modell.
 - *Zusatz-Prompt* (`initial_prompt`) und *Teilnehmernamen als Prompt*: Kontext für Whisper.
 - *Glossar*: richtige Schreibweise von Eigennamen und Fachbegriffen.
 - *VAD-Schwelle / Mindestpause / Polster*: wie Sprache und Stille erkannt werden (abgeschnittene
@@ -404,7 +517,8 @@ Alle Stellschrauben gibt es in **Einstellungen** (Reiter *Transkription*, *Sprec
 
 **Presets:** Einstellungen → „Als Preset speichern …“ (oder `callrec preset save Genau`).
 Ein Preset enthält nur diese Abstimmungs-Einstellungen (nie Geräte, Kalender oder
-SharePoint, nie Adresse/Schlüssel des KI-Servers oder die Freigabe entfernter Server). Aktivieren unter *Allgemein → Aktives Preset* oder einmalig:
+SharePoint, nie Adresse/Schlüssel des KI-Servers, die Freigabe entfernter Server oder den Anbieter
+Claude/Anthropic samt Freigabe). Aktivieren unter *Allgemein → Aktives Preset* oder einmalig:
 `callrec retranscribe <Ordner> --preset Genau`.
 
 **Vorher/Nachher vergleichen:** Wird eine Aufnahme mit geänderten Einstellungen neu verarbeitet
@@ -434,9 +548,28 @@ Zweck: Ihr Claude-Assistent (oder jede andere Anwendung) kann die Zusammenfassun
 Microsoft-365-Connector in SharePoint lesen.
 
 Übergeben wird **eine Markdown-Datei**, benannt wie die Aufnahme
-(`2026-11-19_1400_Projekt-Jour-fixe.md`), mit kurzem Kopf (Titel, Datum/Uhrzeit,
-Teilnehmende – Namen, E-Mails nur bei `include_participant_emails = true` –, Hinweis auf die
-bestätigte Einwilligung, Version und Modell) und dem Inhalt von `summary.md`. Technisch kann
+(`2026-11-19_1400_Projekt-Jour-fixe.md`), mit einem YAML-Block am Anfang, kurzem Kopf (Titel,
+Datum/Uhrzeit, Teilnehmende – Namen, E-Mails nur bei `include_participant_emails = true` –,
+Hinweis auf die bestätigte Einwilligung, Version und Modell) und dem Inhalt von `summary.md`.
+Der YAML-Block dient einem Assistenten zum Erkennen und Zusammenführen von Gesprächen (gleiche
+`recording_id` = dasselbe Gespräch, höhere `summary_version` = neuere Fassung):
+
+```yaml
+---
+callrec_summary: 1
+recording_id: "2026-11-19_1400_Projekt-Jour-fixe"
+title: "Projekt Jour fixe"
+date: "2026-11-19"
+start_time: "14:00"
+started_at: "2026-11-19T14:00:00+01:00"
+duration_min: 47
+participants:
+  - "Anna Beispiel"
+summary_provider: "anthropic"
+summary_model: "claude-opus-5-5"
+summary_version: 2
+---
+``` Technisch kann
 die Übergabefunktion nur ein „Zusammenfassungs-Dokument“ annehmen, das ausschließlich aus
 `summary.md` gebaut wird; das ist durch Tests abgesichert. Übertragen wird genau die Fassung,
 die die Vorschau zeigt – hat sich die Zusammenfassung inzwischen geändert (z. B. weil eine
@@ -473,7 +606,7 @@ wird in `meta.json` unter `handoffs` vermerkt.
 │   └── mix.flac          beide Spuren gemischt (zum Anhören)
 ├── transcript.md         Transkript mit Namen und Zeitstempeln (neueste Version)
 ├── transcript.v1.md …    alle Versionen (Abschnitt 9)
-├── summary.md            Kurzfassung, Entscheidungen, Aufgaben (mit Verantwortlichen), offene Punkte
+├── summary.md            Kurzfassung, Entscheidungen, Aufgaben, Projektstand, offene Fragen, nächste Termine
 ├── summary.v1.md …       alle Versionen
 ├── meta.json             Termin, Teilnehmende, Einwilligung, Geräte, Modelle, Versionen mit Einstellungen, Übergaben
 └── data\                 Zwischenergebnisse für die Nachbearbeitung
@@ -505,7 +638,9 @@ Umgebung):
 | `handoff <Ordner> [--yes]` | **nur** die Zusammenfassung an SharePoint übergeben (mit Vorschau/Rückfrage) |
 | `llm models \| version \| pull [Modell]` | Sprachmodelle anzeigen, Ollama-Version, Modell laden/aktualisieren |
 | `preset list \| save <Name> \| show <Name>` | Presets verwalten |
-| `summarize <Ordner>` | Zusammenfassung neu erstellen |
+| `summarize <Ordner> [--confirm-anthropic]` | Zusammenfassung neu erstellen (Fortschritt mit verstrichener Zeit); `--confirm-anthropic`: ältere Aufnahme nachträglich für Claude freigeben |
+| `anthropic set-key \| delete-key \| status \| test \| enable \| disable [--model M]` | Claude (Anthropic-API) einrichten, Abschnitt 6a |
+| `gpu [--recheck]` | ob eine NVIDIA-GPU nutzbar ist und welches Gerät/Modell die Transkription verwendet |
 | `repair <Ordner>` | unterbrochene Aufnahme reparieren und Audio abschließen |
 | `speakers <Ordner>` | erkannte Sprecher anzeigen |
 | `assign <Ordner> S1="Anna Beispiel" S2="Bernd" [--no-profile] [--resummarize]` | Sprecher zuordnen (ohne Dialog) |
@@ -515,7 +650,7 @@ Umgebung):
 | `login`, `logout`, `whoami` | Microsoft-Anmeldung |
 | `event [--ics F]` | zeigt den Termin, der jetzt gewählt würde |
 | `devices` | Audiogeräte und aktuelle Auswahl |
-| `models download [--whisper]` | Modelle vorab laden |
+| `models [download] [--whisper] [--model M]` | Modelle vorab laden; Whisper mit Fortschritt (MB/%), Abbruch mit Strg+C, erneuter Aufruf setzt fort |
 | `list` | Aufnahmen und Status |
 | `config path \| check \| files` | Konfigurationsdatei anzeigen/prüfen; `files` legt Glossar, Korrekturliste und Vorlagen an |
 
@@ -533,8 +668,8 @@ Wichtige Einstellungen:
 | `audio.mic_device` | `auto` | `auto` = Gerät, das Teams gerade nutzt, sonst Windows-Standard für Kommunikation; oder (Teil des) Gerätenamens |
 | `audio.loopback_device` | `auto` | dasselbe für das Ausgabegerät (Headset) |
 | `audio.format` | `flac` | `flac` oder `opus` |
-| `transcription.model` | `large-v3` | z. B. `large-v3-turbo`, `medium` |
-| `transcription.device` | `auto` | `auto`/`cuda` (mit CPU-Rückfall) oder `cpu` |
+| `transcription.model` | `auto` | `auto` = `large-v3` mit NVIDIA-GPU, sonst `large-v3-turbo`; oder fest z. B. `large-v3`, `medium` |
+| `transcription.device` | `auto` | `auto` (NVIDIA-GPU nur wenn nutzbar, sonst direkt CPU), `cuda` (mit CPU-Rückfall) oder `cpu` |
 | `transcription.language` | `de` | oder `auto` für automatische Erkennung |
 | `diarization.cluster_threshold` | `0.4` | kleiner = Stimmen werden feiner getrennt |
 | `diarization.num_speakers` | `0` | feste Sprecheranzahl der Gegenseite (0 = automatisch) |
@@ -547,8 +682,10 @@ Wichtige Einstellungen:
 | `transcript.timestamp_format` | `hh:mm:ss` | `hh:mm:ss`, `mm:ss`, `none` |
 | `transcript.merge_same_speaker` / `merge_max_gap_s` | `true` / `1.5` | Beiträge zusammenfassen |
 | `transcript.apply_replacements` | `true` | Korrekturliste anwenden |
-| `summary.provider` | `ollama` | `ollama` oder `openai` (OpenAI-kompatibel) |
-| `summary.model` | `gemma3:12b` | Modellname |
+| `summary.provider` | `ollama` | `ollama`, `openai` (OpenAI-kompatibel) oder `anthropic` (Claude, Cloud – Abschnitt 6a) |
+| `summary.model` | `gemma3:12b` | Modellname (Ollama/OpenAI-kompatibel) |
+| `summary.anthropic_model` / `anthropic_effort` | `claude-opus-5-5` / `medium` | Claude-Modell und Denktiefe |
+| `summary.anthropic_transcripts_leave_this_computer_confirmed` | `false` | wird durch die Bestätigung gesetzt; nie per Preset |
 | `summary.allow_remote_endpoint_data_leaves_this_computer` | `false` | nur `true`, wenn Inhalte den Rechner verlassen dürfen |
 | `handoff.mode` | `folder` | `folder` (OneDrive-Ordner) oder `graph` |
 | `handoff.folder` | leer | synchronisierter SharePoint-Ordner |
@@ -566,7 +703,9 @@ Einträge werden ignoriert und gemeldet.
 |---|---|
 | `%APPDATA%\CallRecorder\config.toml` | Konfiguration |
 | `%APPDATA%\CallRecorder\glossary.txt`, `replacements.txt`, `prompts\`, `presets\` | Abstimmungsdateien (Abschnitt 9) |
-| `%LOCALAPPDATA%\CallRecorder\logs\callrec.log` | Protokoll (rotierend, 5 × 5 MB) |
+| `%LOCALAPPDATA%\CallRecorder\logs\callrec.log` | Protokoll (rotierend, 5 × 5 MB; UTF-8 mit BOM, damit `Get-Content` Umlaute richtig zeigt) |
+| `%LOCALAPPDATA%\CallRecorder\anthropic_api_key.bin` | Anthropic-API-Schlüssel (DPAPI-verschlüsselt, nur bei Claude) |
+| `%LOCALAPPDATA%\CallRecorder\gpu_status.json` | Ergebnis der GPU-Prüfung (erneut: Einstellungen „GPU erneut prüfen“ / `callrec gpu --recheck`) |
 | `%LOCALAPPDATA%\CallRecorder\msal_token_cache.bin` | Microsoft-Anmeldung (DPAPI-verschlüsselt) |
 | `%LOCALAPPDATA%\CallRecorder\voiceprints.bin` | **Stimmprofile** (DPAPI-verschlüsselt) |
 | `%LOCALAPPDATA%\CallRecorder\models\` | Whisper- und Sprechertrennungsmodelle |
@@ -582,9 +721,13 @@ Einträge werden ignoriert und gemeldet.
 - **nur auf Ihren ausdrücklichen Klick:** die Zusammenfassung einer Aufnahme an SharePoint
   (Abschnitt 10),
 - nur wenn Sie es ausdrücklich erlauben (`allow_remote_endpoint_data_leaves_this_computer`):
-  Transkripttext an einen entfernten KI-Server.
+  Transkripttext an einen entfernten KI-Server,
+- nur wenn Sie Claude ausdrücklich gewählt und bestätigt haben (Abschnitt 6a): für jede
+  Zusammenfassung Transkripttext, Titel, Datum und Teilnehmernamen samt Anweisungstexten an
+  `api.anthropic.com` (beim Verbindungstest nur „Antworte nur mit: OK“).
 
-Audio, Transkripte und Stimmprofile werden nie übertragen.
+Audio, Stimmprofile, Sprecher-Embeddings, E-Mail-Adressen und `meta.json` werden nie an einen
+KI-Anbieter übertragen; Transkripte nur im zuvor genannten Fall.
 
 **Alles löschen:** CallRecorder beenden, die Ordner `%APPDATA%\CallRecorder`,
 `%LOCALAPPDATA%\CallRecorder` und den Aufnahmeordner löschen.
@@ -612,8 +755,30 @@ Gerät „exklusiv“ belegt ist: *Systemsteuerung → Sound → Gerät → Eige
 Aufnahme getrennt oder gewechselt. Die Aufnahme bis dahin bleibt erhalten; Aufnahme
 beenden und neu starten.
 
-**Transkription läuft nur auf der CPU / sehr langsam.** Im Protokoll steht dann
-„Transkription auf CUDA fehlgeschlagen“. Prüfen: `nvidia-smi` funktioniert, Setup wurde
+**Kein NVIDIA-Grafikchip (z. B. AMD Radeon).** Normal: CallRecorder prüft einmal und
+transkribiert dann direkt auf der CPU, mit `model = "auto"` mit `large-v3-turbo`. Der
+Echtzeitfaktor steht im Transkriptkopf; ist er deutlich > 1, ein kleineres Modell (`medium`)
+probieren. `callrec gpu` zeigt den Stand.
+
+**Modell-Download scheint zu hängen.** Der erste Start lädt das Whisper-Modell (1,5–3 GB). Tray
+und Konsole zeigen „Modell wird heruntergeladen: … MB von … GB (… %)“, danach „Modell wird
+geladen“. Vorab laden: `callrec models --whisper` (Abbruch mit Strg+C, im Tray „Laufende
+Verarbeitung abbrechen“). Ein erneuter Start lädt nur fehlende Dateien; eine abgebrochene große
+Datei beginnt neu, wobei der Xet-Zwischenspeicher von Hugging Face bereits geladene Teile
+wiederverwenden kann (`%USERPROFILE%\.cache\huggingface\xet`). Der Modellordner wächst erst,
+wenn eine Datei vollständig ist – das ist kein Zeichen für einen Stillstand.
+
+**Umlaute im Protokoll falsch.** Seit dieser Version ist `callrec.log` UTF-8 mit BOM; eine ältere
+Datei ohne BOM wird beim Start einmalig zu `callrec.log.1` rotiert.
+
+**Zusammenfassung mit Claude fehlt.** Meldung in Tray/`meta.json` lesen: Schlüssel ungültig
+→ neu eintragen; kein Guthaben / Ausgabenlimit → in der Anthropic-Konsole aufladen bzw. Limit
+erhöhen; keine Verbindung → Internet/Proxy/Firewall (`api.anthropic.com:443`). Danach
+„Zusammenfassung neu erstellen“. `callrec anthropic test` prüft alles mit einer Mini-Anfrage.
+
+**Transkription läuft nur auf der CPU, obwohl eine NVIDIA-GPU vorhanden ist.** Im Protokoll steht dann
+„Transkription auf CUDA fehlgeschlagen“; das Ergebnis wird gemerkt (danach direkt CPU), bis Sie
+`callrec gpu --recheck` ausführen oder in den Einstellungen „GPU erneut prüfen“ klicken. Prüfen: `nvidia-smi` funktioniert, Setup wurde
 ohne `-NoCuda` ausgeführt, Treiber aktuell. Test:
 `.venv\Scripts\python -m callrec retranscribe <Ordner>` und die Datei `data\asr_mic.log`
 lesen (z. B. „cudnn_ops64_9.dll not found“ → `setup.ps1` erneut ausführen).
@@ -665,6 +830,14 @@ OpenAI-kompatibel `/v1/models` (`data[].id`) und `/v1/chat/completions`
 nicht erreichbar (Port 1234 = bekannter Standard, nicht erneut geprüft). Graph
 `PUT …/root:/{pfad}:/content` (Content-Type `text/plain`, bis 250 MB) und das
 `Sites.Selected`-Modell – geprüft gegen die microsoft-graph-docs.
+Anthropic: Python-SDK `anthropic` 2.10.0 – `client.beta.messages.stream(...)` +
+`get_final_message()`, Modell-IDs, `output_config.effort`, adaptives Denken (Standard, daher
+kein `thinking`-Parameter), kein `temperature`, Refusal-Fallback (`server-side-fallback-2026-07-01`,
+`fallbacks="default"`), Fehlerklassen und Fehlercodes – geprüft gegen die claude-api-Referenz und
+den installierten SDK-Quelltext (dort u. a.: API-Schlüssel wird als `Authorization: Bearer`
+gesendet, `anthropic-version: 2026-10-21`, Standard-HTTP-Client folgt Weiterleitungen – daher
+eigener Client mit `follow_redirects=False`). Hugging Face: Fortschritt über `tqdm_class` von
+`snapshot_download` – geprüft gegen den Quelltext von huggingface_hub 2.4.0.
 
 Aufbau (`src/callrec/`):
 
@@ -676,9 +849,9 @@ Aufbau (`src/callrec/`):
 | `audio/finalize.py` | FLAC/Opus, Mix, Laden/Resampling |
 | `calendar/` | Graph (MSAL, DPAPI-Cache), `.ics`, Terminauswahl, Offline-Cache |
 | `consent.py` | Einwilligungs-Gate |
-| `asr/` | faster-whisper im Kindprozess, CUDA-DLL-Pfade, CPU-Rückfall |
+| `asr/` | faster-whisper im Kindprozess, CUDA-DLL-Pfade, GPU-Prüfung und Modellwahl (`gpu.py`), Download mit Fortschritt (`download.py`), CPU-Rückfall |
 | `speakers/` | sherpa-onnx-Diarisierung, Embeddings, Stimmprofile, Wort→Sprecher |
-| `transcript.py`, `summary.py`, `llm.py` | Zusammenführen/Markdown; Zusammenfassung über austauschbare Anbieter (Ollama, OpenAI-kompatibel) |
+| `transcript.py`, `summary.py`, `llm.py`, `llm_anthropic.py`, `apikey.py` | Zusammenführen/Markdown; Zusammenfassung über austauschbare Anbieter (Ollama, OpenAI-kompatibel, Claude); DPAPI-geschützter API-Schlüssel |
 | `userfiles.py`, `versions.py` | Glossar, Korrekturliste, Prompt-Vorlagen; versionierte Ausgaben |
 | `handoff.py` | Übergabe **nur** der Zusammenfassung (Ordner oder Graph) |
 | `pipeline.py`, `jobs.py` | Verarbeitungsschritte, Hintergrund-Warteschlange |

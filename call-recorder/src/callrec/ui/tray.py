@@ -59,6 +59,7 @@ class TrayIcon:
                 item("Letzte Aufnahme: mit aktuellen Einstellungen neu transkribieren", act("retranscribe_last")),
                 item("Letzte Aufnahme: Zusammenfassung an SharePoint übergeben \u2026", act("handoff_last")),
                 item("Letzte Aufnahme: komplett neu verarbeiten", act("reprocess_last")),
+                item("Laufende Verarbeitung abbrechen", act("cancel_processing")),
                 item("Aufnahmeordner öffnen", act("open_folder")),
                 pystray.Menu.SEPARATOR,
                 item("Stimmprofile verwalten …", act("profiles")),

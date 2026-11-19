@@ -148,6 +148,21 @@ def run_tray_app(cfg: Config | None = None) -> int:
         cfg, ui, lambda: WasapiBackend(cfg.detection.teams_processes), calendar, queue, me_provider
     )
     ui.on_stop_clicked = lambda: ui.post(controller.stop)
+    from callrec.consent import active_summary_provider, cloud_summary_covered
+
+    ui.summary_provider = lambda: active_summary_provider(cfg.summary)
+
+    def cloud_ok(rec: Recording, steps: frozenset[str]) -> bool:
+        """Older recording + Anthropic active: ask (Tk thread) before its transcript is sent."""
+        if "summarize" not in steps or cloud_summary_covered(rec.load_meta(), active_summary_provider(cfg.summary)):
+            return True
+        return dialogs.confirm_cloud_summary(ui.root, rec, me_provider())
+
+    def process_confirmed(rec: Recording, steps: frozenset[str]) -> None:
+        if cloud_ok(rec, steps):
+            controller.process(rec, steps)
+        else:
+            ui.notify("Keine Übertragung", "Ohne Bestätigung wird die Zusammenfassung nicht von Claude erstellt.")
 
     def last_recording() -> Recording | None:
         """Most recent recording that is not currently being recorded."""
@@ -167,7 +182,7 @@ def run_tray_app(cfg: Config | None = None) -> int:
         dialogs.review_speakers(
             ui.root, rec, profiles,
             rerender=lambda: pipeline.run(rec, {"render"}),
-            resummarize=lambda: controller.process(rec, frozenset({"summarize"})),
+            resummarize=lambda: process_confirmed(rec, frozenset({"summarize"})),
             handoff=lambda: handoff(rec),
         )
 
@@ -186,8 +201,18 @@ def run_tray_app(cfg: Config | None = None) -> int:
         if rec is None:
             ui.notify("Keine Aufnahme", "Keine abgeschlossene Aufnahme gefunden.")
             return
+        if not cloud_ok(rec, steps):
+            ui.notify("Keine Übertragung", "Ohne Bestätigung wird die Zusammenfassung nicht von Claude erstellt.")
+            return
         controller.process(rec, steps)
         ui.notify("Verarbeitung gestartet", rec.folder.name)
+
+    def cancel_processing() -> None:
+        if queue.cancel_current():
+            ui.notify("Verarbeitung abgebrochen", "Die laufende Transkription bzw. der Modell-Download wurde beendet. "
+                      "Ein erneuter Start setzt den Download fort.")
+        else:
+            ui.notify("Nichts abzubrechen", "Gerade läuft keine Transkription.")
 
     def settings() -> None:
         mics: list[str] = []
@@ -229,6 +254,9 @@ def run_tray_app(cfg: Config | None = None) -> int:
     def quit_app() -> None:
         if controller.is_recording:
             controller.stop()
+        from callrec.asr.transcriber import cancel_running_workers
+
+        cancel_running_workers()  # do not leave a Whisper worker / download running after exit
         stop_event.set()
         if hotkey:
             hotkey.stop()
@@ -243,6 +271,7 @@ def run_tray_app(cfg: Config | None = None) -> int:
         "handoff_last": lambda: handoff(None),
         "reprocess_last": lambda: with_last(frozenset({"finalize", "transcribe", "diarize", "identify", "render", "summarize"})),
         "open_folder": lambda: open_path(cfg.recordings_path()),
+        "cancel_processing": cancel_processing,
         "profiles": lambda: dialogs.manage_profiles(ui.root, profiles),
         "settings": settings,
         "login": login,

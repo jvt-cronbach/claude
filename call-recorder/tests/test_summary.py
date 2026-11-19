@@ -131,7 +131,8 @@ def test_summarize_single_chunk_prompt():
     assert payload["options"] == {"temperature": 0.2, "num_ctx": 16384}
     assert payload["messages"][0] == {"role": "system", "content": DEFAULT_PROMPTS.system}
     user = payload["messages"][1]["content"]
-    for section in ("## Kurzfassung", "## Entscheidungen", "## Aufgaben", "| Aufgabe | Verantwortlich | Frist |", "## Offene Punkte"):
+    for section in ("## Kurzfassung", "## Entscheidungen", "## Aufgaben", "| Aufgabe | Verantwortlich | Frist |",
+                    "## Projektstand und Updates", "## Offene Fragen", "## Nächste Termine"):
         assert section in user
     assert "Wir machen das bis Freitag." in user and "Teilnehmende: Ich, Anna" in user and "Datum: 19.11.2026 14:00" in user
 

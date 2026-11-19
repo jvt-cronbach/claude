@@ -6,7 +6,8 @@ and it only ever happens on an explicit user action.
 Structural guarantee: targets receive bytes that can only be produced from a
 :class:`SummaryDocument`. A SummaryDocument can only be created by
 :func:`build_summary_document`, which reads ``summary.md`` and a few header fields
-from meta.json (title, date, participant names, consent confirmation) - never the
+from meta.json (title, date, duration, participant names, consent confirmation, summary
+provider/model/version - also as a YAML front matter block) - never the
 transcript, audio, utterances, speaker data, voice profiles or meta.json itself.
 :func:`hand_over` rejects anything that is not exactly a SummaryDocument.
 """
@@ -14,6 +15,7 @@ transcript, audio, utterances, speaker data, voice profiles or meta.json itself.
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
 from dataclasses import dataclass, field
@@ -86,6 +88,39 @@ def _strip_own_header(summary_md: str) -> str:
     return "\n".join(lines).strip()
 
 
+FRONT_MATTER_SCHEMA = 1
+
+
+def _yaml_str(value: Any) -> str:
+    """Double-quoted YAML scalar (JSON string syntax is valid YAML)."""
+    return json.dumps(str(value), ensure_ascii=False)
+
+
+def front_matter(rec: Recording, names: list[str], meta: dict[str, Any], version: int | None) -> str:
+    """Small YAML block so an assistant can identify and de-duplicate calls (same recording_id = same call)."""
+    start = rec.started_at()
+    dur = rec.duration()
+    llm = (meta.get("processing") or {}).get("summary") or {}
+    lines = [
+        "---",
+        f"callrec_summary: {FRONT_MATTER_SCHEMA}",
+        f"recording_id: {_yaml_str(rec.folder.name)}",
+        f"title: {_yaml_str(rec.title())}",
+        f"date: {_yaml_str(f'{start:%Y-%m-%d}') if start else 'null'}",
+        f"start_time: {_yaml_str(f'{start:%H:%M}') if start else 'null'}",
+        f"started_at: {_yaml_str(start.isoformat(timespec='seconds')) if start else 'null'}",
+        f"duration_min: {round(dur / 60) if dur else 'null'}",
+        "participants:" + ("" if names else " []"),
+        *[f"  - {_yaml_str(n)}" for n in names],
+        f"summary_provider: {_yaml_str(llm['provider']) if llm.get('provider') else 'null'}",
+        f"summary_model: {_yaml_str(llm.get('served_model') or llm['model']) if llm.get('model') else 'null'}",
+        f"summary_version: {version if version else 'null'}",
+        "---",
+        "",
+    ]
+    return "\n".join(lines)
+
+
 def build_summary_document(rec: Recording, include_emails: bool = False) -> SummaryDocument:
     if not rec.summary_path.exists():
         raise HandoffError("Für diese Aufnahme gibt es noch keine Zusammenfassung.")
@@ -108,8 +143,11 @@ def build_summary_document(rec: Recording, include_emails: bool = False) -> Summ
     version = int(versions[-1]["version"]) if versions else None
     llm = (meta.get("processing") or {}).get("summary") or {}
     version_txt = f" v{version}" if version else ""
-    model_txt = f" (erstellt mit {llm['model']})" if llm.get("model") else ""
+    model = llm.get("served_model") or llm.get("model")
+    via = " über die Anthropic-API" if llm.get("provider") == "anthropic" else ""
+    model_txt = f" (erstellt mit {model}{via})" if model else ""
     header = [
+        front_matter(rec, names, meta, version),
         f"# {rec.title()}",
         "",
         f"- **Datum:** {_fmt_date(rec)}",

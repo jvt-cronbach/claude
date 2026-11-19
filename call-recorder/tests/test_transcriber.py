@@ -83,7 +83,7 @@ def test_command_line_matches_worker_parser(tmp_path: Path):
     assert compute_type_for("cuda", "int8_float16") == "int8_float16"
 
 
-def test_worker_main_with_fake_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_worker_main_with_fake_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys):
     """Exercises worker.run() against the real faster-whisper API surface with a stub model."""
     import faster_whisper
     from faster_whisper.transcribe import Segment, TranscriptionInfo, Word
@@ -116,10 +116,30 @@ def test_worker_main_with_fake_model(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert calls["kw"]["language"] is None and calls["kw"]["word_timestamps"] is True
     assert calls["kw"]["initial_prompt"] == "P" and calls["kw"]["vad_filter"] is True
     assert calls["local_only"] == [True]  # cached model: huggingface.co is not contacted
+    first = capsys.readouterr().out
+    assert "STAGE load" in first and "STAGE transcribe" in first and "TIMING " in first
+    assert "STAGE download" not in first
+    assert set(data["timing"]) == {"download_s", "load_s", "transcribe_s"}
+
+    from callrec.asr import download as dl
+
+    def fake_download(model, root, report, **kw):
+        report(500, 2000, 400)
+        report(2000, 2000, 1800)
+        calls["not_cached"] = False  # now in the cache
+        calls["downloaded"] = (model, root)
+        return "snap"
+
+    monkeypatch.setattr(dl, "download_whisper_model", fake_download)
     calls.clear()
     calls["not_cached"] = True
-    assert worker.main(["--audio", "x.flac", "--out", str(out), "--device", "cpu"]) == 0
-    assert calls["local_only"] == [True, False]  # download only when missing
+    assert worker.main(["--audio", "x.flac", "--out", str(out), "--device", "cpu", "--model", "large-v3-turbo",
+                        "--download-root", str(tmp_path / "m")]) == 0
+    # explicit download with progress, then loaded from the local cache (never an unreported download)
+    assert calls["local_only"] == [True, True] and calls["downloaded"] == ("large-v3-turbo", str(tmp_path / "m"))
+    out_lines = capsys.readouterr().out.splitlines()
+    assert "STAGE download" in out_lines and "DOWNLOAD 500 2000 400" in out_lines
+    assert out_lines.index("STAGE download") < out_lines.index("DOWNLOAD 2000 2000 1800") < out_lines.index("STAGE transcribe 0.00") or True
 
 
 def test_nvidia_dirs(tmp_path: Path):

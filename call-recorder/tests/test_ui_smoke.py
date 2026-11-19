@@ -254,3 +254,87 @@ def test_tkui_keeps_pumping_while_modal_dialog_open(tmp_path: Path):
     assert "AUFNAHME" in ui.overlay._label.cget("text")  # type: ignore[union-attr]
     ui.overlay.hide()
     ui.root.destroy()
+
+
+def test_start_dialog_names_anthropic_when_active(root, tmp_path: Path):
+    from callrec.consent import CONSENT_STATEMENT_ANTHROPIC
+
+    def drive():
+        win = toplevel(root)
+        texts = [str(w.cget("text")) for w in walk(win) if isinstance(w, ttk.Label)]
+        assert CONSENT_STATEMENT_ANTHROPIC in texts and any("verlässt" in t for t in texts)
+        find(win, ttk.Checkbutton, "Übertragung an Anthropic zugestimmt").invoke()
+        find(win, ttk.Button, "Aufnahme starten").invoke()
+
+    root.after(200, drive)
+    decision = dialogs.ask_start(root, Suggestion(None, [], ""), Person("Ich"), calendar(tmp_path), summary_provider="anthropic")
+    assert decision is not None and decision.consent.summary_provider == "anthropic"
+    require_consent(decision.consent, summary_provider="anthropic")
+
+
+def test_settings_anthropic_needs_confirmation_and_shows_effective_device(root, tmp_path: Path):
+    from callrec.asr.gpu import GpuStatus
+    from callrec.config import Config, load_config, save_config
+    from callrec.ui import settings as st
+
+    st.messagebox.showinfo = lambda *a, **k: None  # type: ignore[assignment]
+    asked: list[str] = []
+    answer = {"v": False}
+
+    def askyesno(title, message, **k):
+        asked.append(message)
+        return answer["v"]
+
+    st.messagebox.askyesno = askyesno  # type: ignore[assignment]
+    path = tmp_path / "c.toml"
+    tested: list[tuple[str, str]] = []
+
+    class FakeClaude:
+        def test_connection(self):
+            return "Verbindung zu Anthropic OK: Modell Claude Opus 5.5"
+
+    def factory(cfg, typed):
+        tested.append((cfg.summary.anthropic_model, typed))
+        return FakeClaude()
+
+    dlg = st.SettingsDialog(root, Config(), [], [], lambda c: save_config(c, path),
+                            gpu_status_fn=lambda force: GpuStatus(False, 0, "kein NVIDIA-Treiber (nvcuda.dll) gefunden"),
+                            anthropic_factory=factory)
+    assert dlg.vars[("summary", "anthropic_model")].get() == "claude-opus-5-5"
+    assert "Standard" in dlg.anthropic_model_info.get()
+
+    def wait_gpu():
+        if "Effektiv" not in dlg.effective_var.get() or "CPU" not in dlg.effective_var.get():
+            root.after(50, wait_gpu)
+            return
+        assert "large-v3-turbo (int8)" in dlg.effective_var.get()
+        dlg.vars[("transcription", "model")].set("large-v3")
+        assert "Modell large-v3 (int8)" in dlg.effective_var.get()
+        dlg.vars[("summary", "provider")].set("anthropic")
+        dlg.key_var.set("sk-ant-api03-typed-xxxxxxxxxxxxxxxxxxxx")
+        dlg.test_anthropic()
+        root.after(50, wait_test)
+
+    def wait_test():
+        if "OK" not in dlg.key_status.get():
+            root.after(50, wait_test)
+            return
+        find(dlg.win, ttk.Button, "Speichern").invoke()  # answer "Nein": nothing saved
+        assert not path.exists() and "an Anthropic" in asked[-1]
+        answer["v"] = True
+        find(dlg.win, ttk.Button, "Speichern").invoke()
+
+    root.after(50, wait_gpu)
+    assert dlg.run() is True
+    c = load_config(path)
+    assert c.summary.provider == "anthropic" and c.summary.anthropic_transcripts_leave_this_computer_confirmed
+    assert tested == [("claude-opus-5-5", "sk-ant-api03-typed-xxxxxxxxxxxxxxxxxxxx")]
+    assert "sk-ant" not in path.read_text(encoding="utf-8")
+
+    # switching back to a local provider revokes the confirmation
+    dlg2 = st.SettingsDialog(root, c, [], [], lambda x: save_config(x, path),
+                             gpu_status_fn=lambda force: GpuStatus(True, 1))
+    dlg2.vars[("summary", "provider")].set("ollama")
+    root.after(100, lambda: find(dlg2.win, ttk.Button, "Speichern").invoke())
+    assert dlg2.run() is True
+    assert not load_config(path).summary.anthropic_transcripts_leave_this_computer_confirmed

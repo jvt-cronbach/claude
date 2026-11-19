@@ -18,13 +18,14 @@ import numpy as np
 
 from callrec.audio.finalize import finalize_recording, find_audio, has_unfinished_parts
 from callrec.config import Config
+from callrec.consent import cloud_summary_covered
 from callrec.models import SELF_SPEAKER_ID, AsrResult, Person, SpeakerInfo, SpeakerTurn
 from callrec.recording import Recording
 from callrec.review import carry_over_assignments, load_turns
 from callrec.speakers.assign import UNKNOWN, assign_remote, assign_single
 from callrec.speakers.diarize import Diarizer, Embedder, speaker_embeddings
 from callrec.speakers.profiles import ProfileStore
-from callrec.summary import Summarizer, SummaryUnavailable, render_summary_md
+from callrec.summary import Summarizer, SummaryUnavailable, missing_sections, render_summary_md
 from callrec.transcript import merge_utterances, render_lines, render_markdown
 from callrec.userfiles import Rule, apply_replacements
 from callrec.versions import adopt_legacy, fingerprint, latest, write_version
@@ -182,20 +183,37 @@ class Pipeline:
                 p.replace(archive / f"asr_{track}.{old.get('run_id', 'alt')}.json")
         run_id = _run_id()
         asr_meta: dict[str, Any] = {}
+        selection = str(getattr(transcriber, "selection_note", "") or "")
+        if selection:
+            result.messages.append(selection)
+            log.info("Transkription: %s", selection)
         for i, (track, path) in enumerate((("mic", fa.mic), ("remote", fa.remote))):
+
+            def track_progress(f: float, msg: str = "", i: int = i, track: str = track) -> None:
+                # f < 0: indeterminate phase (model download/loading) - report the message, not "0 %"
+                label = f"Spur {track}: {msg}" if msg else f"Spur {track}"
+                progress(-1.0 if f < 0 else (i + f) / 2, label)
+
             asr: AsrResult = transcriber.transcribe(
                 path,
                 rec.asr_path(track),
                 initial_prompt=prompt,
                 hotwords=hotwords,
-                progress=lambda f, i=i, track=track: progress((i + f) / 2, f"Spur {track}"),
+                progress=track_progress,
             )
             rec.save_asr(track, asr)
             asr_meta[track] = {"model": asr.model, "device": asr.device, "compute_type": asr.compute_type, "language": asr.language}
-        rec.update_meta(
-            ["processing", "transcription"],
-            {**asr_meta, "run_id": run_id, "settings": self.asr_settings(rec), "finished_at": _now_iso()},
-        )
+            stats = getattr(transcriber, "last_stats", None)
+            if isinstance(stats, dict) and stats:
+                asr_meta[track]["timing"] = dict(stats)
+                if stats.get("rtf") is not None:
+                    log.info("Transkription Spur %s: %.1f s Audio in %.1f s (Echtzeitfaktor %.2f, Modell %s, %s/%s, Laden %.1f s)",
+                             track, stats.get("audio_s", 0.0), stats.get("transcribe_s", 0.0), stats["rtf"],
+                             asr.model, asr.device, asr.compute_type, stats.get("load_s", 0.0))
+        tmeta: dict[str, Any] = {**asr_meta, "run_id": run_id, "settings": self.asr_settings(rec), "finished_at": _now_iso()}
+        if selection:
+            tmeta["selection_note"] = selection
+        rec.update_meta(["processing", "transcription"], tmeta)
 
     def _step_diarize(self, rec: Recording, result: ProcessResult, progress: Callable[..., None]) -> None:
         import json
@@ -306,7 +324,14 @@ class Pipeline:
         dmeta = proc.get("diarization") or {}
         note = ""
         if tmeta.get("mic"):
-            note = f"faster-whisper {tmeta['mic'].get('model', '')} ({tmeta['mic'].get('device', '')})"
+            m = tmeta["mic"]
+            note = f"faster-whisper {m.get('model', '')} ({m.get('device', '')}"
+            note += f", {m['compute_type']})" if m.get("compute_type") and m.get("device") == "cpu" else ")"
+            rtf = (m.get("timing") or {}).get("rtf")
+            if rtf is not None:
+                note += f", Echtzeitfaktor {rtf:.2f}"
+            if tmeta.get("selection_note"):
+                note += f" – {tmeta['selection_note']}"
         settings = {
             "transcription": tmeta.get("settings", {}),
             "diarization": dmeta.get("settings", {}),
@@ -342,8 +367,21 @@ class Pipeline:
         names = list(dict.fromkeys(s.display for s in speakers.values() if s.id != UNKNOWN))
         start = rec.started_at()
         date = f"{start:%d.%m.%Y %H:%M}" if start else ""
+        provider_name = self.cfg.summary.provider
+        if not cloud_summary_covered(rec.load_meta(), provider_name):
+            result.summary_skipped = (
+                "Die Einwilligung dieser Aufnahme erwähnt die Übertragung an Anthropic nicht - Zusammenfassung "
+                "nicht erstellt. Nachholen mit Bestätigung: Tray „Zusammenfassung neu erstellen“ oder "
+                "'callrec summarize <Ordner> --confirm-anthropic'."
+            )
+            result.messages.append(result.summary_skipped)
+            rec.update_meta(["processing", "summary"], {"skipped": result.summary_skipped, "at": _now_iso()})
+            log.warning("Zusammenfassung übersprungen: Einwilligung deckt Anthropic nicht ab (%s)", rec.folder.name)
+            return
         try:
             summarizer = self.c.summarizer_factory()
+            if hasattr(summarizer, "progress"):
+                summarizer.progress = lambda f, m="": progress(f, m)
             body = summarizer.summarize(rec.title(), names, lines, date=date)
         except SummaryUnavailable as exc:
             result.summary_skipped = str(exc)
@@ -358,8 +396,16 @@ class Pipeline:
         settings = {"llm": llm, "transcript_version": tv["version"] if tv else None}
         fp = fingerprint({**settings, "input": fingerprint(lines)})
         adopt_legacy(rec, "summary")
+        missing = missing_sections(body)
+        if missing:
+            msg = "Zusammenfassung ohne erwartete Abschnitte: " + ", ".join(missing)
+            log.warning("%s (%s)", msg, rec.folder.name)
+            result.messages.append(msg)
+        served = str(llm.get("served_model") or summarizer.model_name)
         n, _new = write_version(rec, "summary", render_summary_md(
-            rec.title(), body, summarizer.model_name, created,
+            rec.title(), body, served, created,
             local=bool(getattr(getattr(summarizer, "provider", None), "is_local", True)),
+            provider=str(llm.get("provider", "")),
         ), fp, settings)
-        rec.update_meta(["processing", "summary"], {**llm, "version": n, "finished_at": _now_iso()})
+        rec.update_meta(["processing", "summary"], {**llm, "version": n, "missing_sections": missing, "finished_at": _now_iso()})
+        log.info("Zusammenfassung v%d erstellt (%s, Modell %s)", n, llm.get("provider", "?"), served)

@@ -35,6 +35,13 @@ STEP_LABELS = {
 }
 
 
+def status_text(step: str, frac: float, msg: str, title: str = "") -> str:
+    """Tray/console status: a percentage, or the phase text while the fraction is unknown (< 0)."""
+    label = STEP_LABELS.get(step, step)
+    text = f"{label}: {msg}" if frac < 0 else f"{label} {int(frac * 100)} %" + (f" ({msg})" if msg else "")
+    return f"{text} – {title}" if title else text
+
+
 class ProcessingQueue:
     def __init__(self, pipeline_factory: Callable[[], Pipeline], status: StatusFn = lambda s: None) -> None:
         self._pipeline_factory = pipeline_factory
@@ -64,6 +71,12 @@ class ProcessingQueue:
     def pending(self) -> int:
         return self._q.qsize()
 
+    def cancel_current(self) -> bool:
+        """Abort the running job's transcription worker (model download included)."""
+        from callrec.asr.transcriber import cancel_running_workers
+
+        return bool(self.busy) and cancel_running_workers() > 0
+
     def _run(self) -> None:
         while True:
             job = self._q.get()
@@ -73,7 +86,7 @@ class ProcessingQueue:
             title = job.recording.folder.name
 
             def progress(step: str, frac: float, msg: str, title: str = title) -> None:
-                self._status(f"{STEP_LABELS.get(step, step)} {int(frac * 100)} % – {title}")
+                self._status(status_text(step, frac, msg, title))
 
             try:
                 job.result = self._pipeline_factory().run(job.recording, job.steps, progress)

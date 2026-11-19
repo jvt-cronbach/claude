@@ -10,7 +10,14 @@ from collections.abc import Callable
 from typing import Any, Protocol
 
 from callrec.config import SummaryConfig
-from callrec.llm import LlmProvider, LlmUnavailable, check_endpoint, make_provider, model_available, summary_model
+from callrec.llm import (
+    LlmProvider,
+    LlmUnavailable,
+    check_endpoint,
+    make_provider,
+    model_available,
+    summary_model,
+)
 from callrec.userfiles import DEFAULT_PROMPTS, PromptTemplates, render_template
 
 log = logging.getLogger(__name__)
@@ -208,3 +215,25 @@ def render_summary_md(title: str, body: str, model: str, created: str, local: bo
         via = f" (Anbieter: {provider})" if provider else ""
         note = f"_Automatisch {where} erstellt mit {model}{via} am {created}. Bitte vor Weitergabe prüfen._"
     return f"# Zusammenfassung: {title}\n\n{note}\n\n{body}\n"
+
+
+def missing_sections(body: str) -> list[str]:
+    """Expected headings absent from a generated summary (tolerant: level, case, trailing text).
+
+    Used to warn in the log and meta.json - a summary with a different structure is still saved.
+    """
+    from callrec.userfiles import SUMMARY_SECTIONS
+
+    headings = [
+        re.sub(r"[*_:]+", "", m.group(1)).strip().lower()
+        for m in re.finditer(r"^\s{0,3}#{1,4}\s*(.+?)\s*#*\s*$", body, re.MULTILINE)
+    ]
+    missing = [s for s in SUMMARY_SECTIONS if not any(h.startswith(s.lower()) for h in headings)]
+    if "Aufgaben" not in missing:
+        m = re.search(r"^\s{0,3}#{1,4}\s*\**Aufgaben.*?$(.*?)(?=^\s{0,3}#{1,2}\s|\Z)", body, re.MULTILINE | re.DOTALL | re.IGNORECASE)
+        part = m.group(1) if m else ""
+        if not re.search(r"keine", part, re.IGNORECASE) and not (
+            re.search(r"verantwortlich", part, re.IGNORECASE) and re.search(r"frist", part, re.IGNORECASE)
+        ):
+            missing.append("Aufgaben (Verantwortlich/Frist)")
+    return missing

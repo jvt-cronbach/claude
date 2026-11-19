@@ -11,7 +11,13 @@ from tkinter import filedialog, messagebox, ttk
 from typing import Any
 
 from callrec.calendar.service import CalendarService, Suggestion
-from callrec.consent import CONSENT_STATEMENT, ConsentError, confirm_consent
+from callrec.consent import (
+    ConsentError,
+    confirm_consent,
+    consent_statement,
+    later_confirmation,
+    record_later_confirmation,
+)
 from callrec.controller import StartDecision
 from callrec.detect import Prompt
 from callrec.models import Person
@@ -45,7 +51,8 @@ def _modal(win: tk.Toplevel) -> None:
 # ---------------------------------------------------------------------------
 # Start + consent
 # ---------------------------------------------------------------------------
-def ask_start(root: tk.Tk, suggestion: Suggestion, me: Person, calendar: CalendarService) -> StartDecision | None:
+def ask_start(root: tk.Tk, suggestion: Suggestion, me: Person, calendar: CalendarService,
+              summary_provider: str = "") -> StartDecision | None:
     win = tk.Toplevel(root)
     win.title("Aufnahme vorbereiten")
     win.resizable(True, False)
@@ -87,7 +94,11 @@ def ask_start(root: tk.Tk, suggestion: Suggestion, me: Person, calendar: Calenda
 
     frame = ttk.LabelFrame(win, text="Einwilligung aller Teilnehmenden (§ 201 StGB)")
     frame.grid(row=4, column=0, columnspan=2, sticky="we", padx=8, pady=8)
-    ttk.Label(frame, text=CONSENT_STATEMENT, wraplength=520).pack(anchor="w", padx=8, pady=4)
+    ttk.Label(frame, text=consent_statement(summary_provider), wraplength=520).pack(anchor="w", padx=8, pady=4)
+    cloud = summary_provider == "anthropic"
+    if cloud:
+        ttk.Label(frame, text="Achtung: Die Zusammenfassung erstellt Claude (Anthropic). Das Transkript verlässt "
+                  "dafür diesen Rechner.", wraplength=520, foreground="#b00020").pack(anchor="w", padx=8, pady=2)
     consent_var = tk.BooleanVar(value=False)  # never pre-checked
     start_btn: ttk.Button
 
@@ -95,7 +106,8 @@ def ask_start(root: tk.Tk, suggestion: Suggestion, me: Person, calendar: Calenda
         start_btn.state(["!disabled"] if consent_var.get() else ["disabled"])
 
     ttk.Checkbutton(
-        frame, text="Ja, alle Teilnehmenden haben der Aufnahme zugestimmt.", variable=consent_var, command=on_check
+        frame, text="Ja, alle Teilnehmenden haben der Aufnahme und der Übertragung an Anthropic zugestimmt." if cloud
+        else "Ja, alle Teilnehmenden haben der Aufnahme zugestimmt.", variable=consent_var, command=on_check
     ).pack(anchor="w", padx=8, pady=4)
 
     buttons = ttk.Frame(win)
@@ -110,6 +122,7 @@ def ask_start(root: tk.Tk, suggestion: Suggestion, me: Person, calendar: Calenda
                 confirmed_by=me.display or "Benutzer",
                 participants=participants,
                 method="dialog",
+                summary_provider=summary_provider,
             )
         except ConsentError as exc:
             messagebox.showwarning("Einwilligung fehlt", str(exc), parent=win)
@@ -413,3 +426,19 @@ def ask_handoff(root: tk.Misc, rec: Recording, cfg: Any, perform: Callable[[str]
     _modal(win)
     root.wait_window(win)
     return done["v"]
+
+
+def confirm_cloud_summary(root: tk.Misc, rec: Recording, me: Person) -> bool:
+    """Ask before an OLDER recording (consent without the Anthropic notice) is sent to Anthropic."""
+    from callrec.consent import LATER_STATEMENT_ANTHROPIC
+
+    ok = messagebox.askyesno(
+        "Übertragung an Anthropic bestätigen",
+        f"Die Einwilligung für „{rec.title()}“ wurde ohne Hinweis auf Anthropic erteilt.\n\n"
+        f"{LATER_STATEMENT_ANTHROPIC}\n\nNur mit „Ja“ wird das Transkript an Anthropic gesendet.",
+        icon="warning", parent=root,
+    )
+    if not ok:
+        return False
+    record_later_confirmation(rec, later_confirmation(me.display or "Benutzer", "dialog", True))
+    return True

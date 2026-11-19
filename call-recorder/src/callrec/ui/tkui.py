@@ -90,6 +90,8 @@ class TkUi:
         self.tray: Any = None  # set by the app (TrayIcon)
         self.on_stop_clicked: Callable[[], None] = lambda: None
         self.review_handler: Callable[[Recording], None] = lambda rec: None
+        # provider that will receive the transcript (decides the consent text), set by the app
+        self.summary_provider: Callable[[], str] = lambda: ""
         self.root.after(100, self._pump)
 
     # -- threading helpers ---------------------------------------------
@@ -140,7 +142,8 @@ class TkUi:
 
     # -- UiPort ----------------------------------------------------------
     def ask_start(self, suggestion: Suggestion, me: Person) -> StartDecision | None:
-        return self.call(lambda: dialogs.ask_start(self.root, suggestion, me, self.calendar))
+        provider = self.summary_provider()
+        return self.call(lambda: dialogs.ask_start(self.root, suggestion, me, self.calendar, summary_provider=provider))
 
     def ask_record_prompt(self, prompt: Prompt) -> bool:
         if self.tray is not None:

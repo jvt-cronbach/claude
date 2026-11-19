@@ -115,7 +115,7 @@ def test_versioned_outputs_and_settings_in_meta(tmp_path: Path):
     pipeline.run(rec)
     v = list_versions(rec, "transcript")
     assert [x["version"] for x in v] == [1] and (rec.folder / "transcript.v1.md").exists()
-    assert v[0]["settings"]["transcription"]["model"] == "large-v3"
+    assert v[0]["settings"]["transcription"]["model"] == "auto"  # configured value; the model used is in processing
     assert v[0]["settings"]["rendering"]["timestamp_format"] == "hh:mm:ss"
     assert "**Version:** v1" in rec.transcript_path.read_text(encoding="utf-8")
     assert [x["version"] for x in list_versions(rec, "summary")] == [1]

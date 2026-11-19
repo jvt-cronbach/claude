@@ -42,7 +42,25 @@ def test_document_contains_only_summary_and_header(tmp_path: Path):
     doc = build_summary_document(rec)
     md = doc.markdown
     assert doc.filename == "2026-11-19_1400_Projekt-Jour-fixe.md" and doc.source_file == "summary.md"
-    assert md.startswith("# Projekt Jour fixe\n")
+    assert md.startswith("---\ncallrec_summary: 1\n")
+    front, body = md[4:].split("\n---\n", 1)
+    assert body.lstrip("\n").startswith("# Projekt Jour fixe\n")
+    yaml = pytest.importorskip("yaml")
+
+    fm = yaml.safe_load(front)
+    assert fm == {
+        "callrec_summary": 1,
+        "recording_id": "2026-11-19_1400_Projekt-Jour-fixe",
+        "title": "Projekt Jour fixe",
+        "date": "2026-11-19",
+        "start_time": "14:00",
+        "started_at": "2026-11-19T14:00:00+01:00",
+        "duration_min": fm["duration_min"],
+        "participants": ["Olga Organisatorin", "Anna Beispiel", "Bernd Muster", "Ich Selbst"],
+        "summary_provider": None,
+        "summary_model": "gemma3:12b",
+        "summary_version": 2,
+    }
     assert "Donnerstag, 19.11.2026, 14:00" in md
     assert "Olga Organisatorin, Anna Beispiel" in md and "anna@firma.de" not in md
     assert "Einwilligung aller Teilnehmenden (bestätigt am" in md
@@ -141,7 +159,7 @@ def test_graph_target_upload(tmp_path: Path):
         "2026-11-19_1400_Projekt-Jour-fixe.md:/content"
     )
     assert headers == {"Authorization": "Bearer TOKEN", "Content-Type": "text/plain"}
-    assert SECRET.encode() not in data and data.startswith(b"# Projekt Jour fixe")
+    assert SECRET.encode() not in data and data.startswith(b"---\ncallrec_summary: 1\n") and b"\n# Projekt Jour fixe\n" in data
     assert entry["location"].startswith("https://firma.sharepoint.com/")
     with pytest.raises(HandoffError, match="403"):
         GraphTarget("d", "", lambda: "t", session=FakeGraphSession(403)).put("a.md", b"x")
@@ -184,3 +202,17 @@ def test_build_target_from_config(tmp_path: Path):
     cfg.handoff.graph_drive_id = "b!x"
     assert isinstance(build_target(cfg, lambda: "t"), GraphTarget)
     json.dumps(cfg.handoff.__dict__)
+
+
+def test_front_matter_for_cloud_summary_and_awkward_titles(tmp_path: Path):
+    yaml = pytest.importorskip("yaml")
+    rec = processed_recording(tmp_path / "recs")
+    rec.update_meta(["title"], 'Review: "Portal" #2 – Ärger?')
+    rec.update_meta(["processing", "summary"], {"provider": "anthropic", "model": "claude-opus-5-5",
+                                                "served_model": "claude-opus-5-5"})
+    md = build_summary_document(rec).markdown
+    fm = yaml.safe_load(md[4:].split("\n---\n", 1)[0])
+    assert fm["title"] == 'Review: "Portal" #2 – Ärger?' and fm["summary_provider"] == "anthropic"
+    assert fm["summary_model"] == "claude-opus-5-5" and fm["summary_version"] == 2
+    assert "(erstellt mit claude-opus-5-5 über die Anthropic-API)" in md
+    assert SECRET not in md

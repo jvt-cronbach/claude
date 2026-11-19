@@ -39,30 +39,43 @@ REPLACEMENTS_TEMPLATE = """\
 """
 
 SUMMARY_SYSTEM_TEMPLATE = """\
-Du bist ein sorgfältiger Protokollführer. Du erstellst aus dem Transkript eines Gesprächs ein kurzes, sachliches Ergebnisprotokoll auf Deutsch.
+Du bist ein sorgfältiger Protokollführer. Du erstellst aus dem Transkript eines Gesprächs ein sachliches Ergebnisprotokoll auf Deutsch.
+Das Protokoll wird später automatisch weiterverarbeitet (Aufgabenlisten, Projektstände). Halte deshalb die vorgegebene Gliederung exakt ein.
 Regeln:
 - Verwende ausschließlich Informationen aus dem Transkript. Erfinde nichts.
 - Nenne Personen mit den Namen aus dem Transkript. "Sprecher N" bleibt "Sprecher N".
-- Wenn für eine Aufgabe niemand verantwortlich ist, schreibe "offen". Wenn keine Frist genannt wurde, schreibe "-".
+- Verantwortliche und Fristen nur, wenn sie im Gespräch ausdrücklich genannt wurden. Sonst schreibe genau "offen". Rate keine Namen und keine Daten.
+- Übernimm Fristen und Termine so, wie sie genannt wurden (z. B. "bis Freitag"); rechne sie nicht in Kalenderdaten um.
+- Verwende genau die vorgegebenen Überschriften in der vorgegebenen Reihenfolge, auch wenn ein Abschnitt leer bleibt (dann "Keine").
 - Das Transkript wurde automatisch erstellt und kann Erkennungsfehler enthalten.
-- Antworte nur mit dem Protokoll in Markdown, ohne Vorrede.
+- Antworte nur mit dem Protokoll in Markdown, ohne Vorrede und ohne Schlussbemerkung.
 """
 
 SUMMARY_FINAL_TEMPLATE = """\
-Erstelle das Ergebnisprotokoll mit genau diesen Abschnitten:
+Erstelle das Ergebnisprotokoll mit genau diesen sechs Abschnitten, in dieser Reihenfolge und mit genau diesen Überschriften:
 
 ## Kurzfassung
-(3-6 Sätze)
+(3-6 Sätze: Anlass des Gesprächs und wichtigste Ergebnisse)
 
 ## Entscheidungen
-(Aufzählung; "Keine" wenn es keine gab)
+- (eine Entscheidung pro Zeile; "Keine" wenn es keine gab)
 
 ## Aufgaben
 | Aufgabe | Verantwortlich | Frist |
 |---|---|---|
+| (konkrete Aufgabe) | (Name aus dem Transkript oder "offen") | (Frist wie genannt oder "offen") |
+(Gab es keine Aufgaben, genau eine Zeile: | Keine | - | - |)
 
-## Offene Punkte
-(Aufzählung; "Keine" wenn es keine gab)
+## Projektstand und Updates
+### (Name des Projekts oder Themas, wie im Gespräch genannt)
+- (Stand, Fortschritt, Probleme, Änderungen)
+(Ein Unterabschnitt pro Projekt/Thema; "Keine" wenn keine Projekte besprochen wurden)
+
+## Offene Fragen
+- (eine Frage pro Zeile; "Keine" wenn es keine gab)
+
+## Nächste Termine
+- (Termin wie genannt: wann, was, mit wem; "Keine genannt" wenn keine)
 
 Gespräch: {title}
 Datum: {date}
@@ -74,10 +87,39 @@ Teilnehmende: {participants}
 
 SUMMARY_CHUNK_TEMPLATE = """\
 Das folgende ist Teil {i} von {n} eines Gesprächstranskripts.
-Fasse diesen Teil in Stichpunkten zusammen: besprochene Themen, Entscheidungen, Aufgaben (mit verantwortlicher Person und Frist, falls genannt) und offene Fragen. Nur Inhalte aus diesem Teil.
+Fasse diesen Teil in Stichpunkten zusammen, gegliedert nach: besprochene Themen, Entscheidungen, Aufgaben (mit verantwortlicher Person und Frist nur, wenn genannt, sonst "offen"), Projektstand und Updates (je Projekt/Thema), offene Fragen, genannte nächste Termine. Nur Inhalte aus diesem Teil, nichts erfinden.
 
 {chunk}
 """
+
+# Earlier shipped defaults: an unchanged copy on disk is upgraded to the new default automatically;
+# a customised file is never touched (the new default is written next to it as *.default.txt).
+_PREVIOUS_DEFAULTS = {
+    "summary_system.txt": [
+        "Du bist ein sorgfältiger Protokollführer. Du erstellst aus dem Transkript eines Gesprächs ein kurzes, sachliches Ergebnisprotokoll auf Deutsch.\n"
+        "Regeln:\n"
+        "- Verwende ausschließlich Informationen aus dem Transkript. Erfinde nichts.\n"
+        "- Nenne Personen mit den Namen aus dem Transkript. \"Sprecher N\" bleibt \"Sprecher N\".\n"
+        "- Wenn für eine Aufgabe niemand verantwortlich ist, schreibe \"offen\". Wenn keine Frist genannt wurde, schreibe \"-\".\n"
+        "- Das Transkript wurde automatisch erstellt und kann Erkennungsfehler enthalten.\n"
+        "- Antworte nur mit dem Protokoll in Markdown, ohne Vorrede.\n",
+    ],
+    "summary_final.txt": [
+        "Erstelle das Ergebnisprotokoll mit genau diesen Abschnitten:\n\n## Kurzfassung\n(3-6 Sätze)\n\n"
+        "## Entscheidungen\n(Aufzählung; \"Keine\" wenn es keine gab)\n\n## Aufgaben\n"
+        "| Aufgabe | Verantwortlich | Frist |\n|---|---|---|\n\n## Offene Punkte\n"
+        "(Aufzählung; \"Keine\" wenn es keine gab)\n\nGespräch: {title}\nDatum: {date}\n"
+        "Teilnehmende: {participants}\n\n{material_label}:\n{material}\n",
+    ],
+    "summary_chunk.txt": [
+        "Das folgende ist Teil {i} von {n} eines Gesprächstranskripts.\n"
+        "Fasse diesen Teil in Stichpunkten zusammen: besprochene Themen, Entscheidungen, Aufgaben (mit verantwortlicher "
+        "Person und Frist, falls genannt) und offene Fragen. Nur Inhalte aus diesem Teil.\n\n{chunk}\n",
+    ],
+}
+
+# Section headings the summary is expected to contain (checked tolerantly, see summary.missing_sections)
+SUMMARY_SECTIONS = ("Kurzfassung", "Entscheidungen", "Aufgaben", "Projektstand und Updates", "Offene Fragen", "Nächste Termine")
 
 PROMPT_FILES = {
     "system": ("summary_system.txt", SUMMARY_SYSTEM_TEMPLATE),
@@ -95,11 +137,45 @@ def _ensure(path: Path, template: str) -> Path:
     return path
 
 
+def _norm(text: str) -> str:
+    return text.replace("\r\n", "\n").strip()
+
+
+def _ensure_prompt(directory: Path, name: str, template: str) -> Path:
+    """Create a prompt file; upgrade it only if it is an unchanged earlier default.
+
+    A customised file is never modified. The current default is always available next to it as
+    ``<name>.default.txt`` (to compare or adopt: copy it over the customised file, or delete the
+    customised file and it is recreated from the new default).
+    """
+    path = directory / name
+    directory.mkdir(parents=True, exist_ok=True)
+    default_copy = path.with_name(path.stem + ".default.txt")
+    if not default_copy.exists() or default_copy.read_text(encoding="utf-8") != template:
+        default_copy.write_text(template, encoding="utf-8")
+    if not path.exists():
+        path.write_text(template, encoding="utf-8")
+        return path
+    current = _norm(path.read_text(encoding="utf-8"))
+    if current != _norm(template) and current in {_norm(t) for t in _PREVIOUS_DEFAULTS.get(name, [])}:
+        path.write_text(template, encoding="utf-8")
+        log.info("Vorlage %s war unverändert und wurde auf die neue Standardvorlage aktualisiert", path)
+    elif current != _norm(template) and name in _PREVIOUS_DEFAULTS:
+        log.info("Vorlage %s ist angepasst und bleibt unverändert (neue Standardvorlage: %s)", path, default_copy)
+    return path
+
+
+def prompt_is_customised(name: str, directory: Path | None = None) -> bool:
+    path = (directory or paths.prompts_dir()) / name
+    template = dict(PROMPT_FILES.values()).get(name, "")
+    return path.exists() and _norm(path.read_text(encoding="utf-8")) != _norm(template)
+
+
 def ensure_user_files() -> list[Path]:
-    """Create the editable files with commented defaults (never overwrites)."""
+    """Create the editable files with commented defaults (never overwrites customised files)."""
     out = [_ensure(paths.glossary_file(), GLOSSARY_TEMPLATE), _ensure(paths.replacements_file(), REPLACEMENTS_TEMPLATE)]
     for name, template in PROMPT_FILES.values():
-        out.append(_ensure(paths.prompts_dir() / name, template))
+        out.append(_ensure_prompt(paths.prompts_dir(), name, template))
     paths.presets_dir().mkdir(parents=True, exist_ok=True)
     return out
 

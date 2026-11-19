@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from callrec import __version__, paths
@@ -42,13 +43,20 @@ def _recording(path: str):  # type: ignore[no-untyped-def]
     return rec
 
 
-def _print_progress(step: str, frac: float, msg: str) -> None:
-    from callrec.jobs import STEP_LABELS
+_last_line = {"len": 0}
 
-    sys.stdout.write(f"\r{STEP_LABELS.get(step, step):<22} {int(frac * 100):3d} % {msg:<20}")
+
+def _print_progress(step: str, frac: float, msg: str) -> None:
+    from callrec.jobs import status_text
+
+    text = status_text(step, frac, msg)
+    pad = max(0, _last_line["len"] - len(text))
+    sys.stdout.write("\r" + text + " " * pad)
+    _last_line["len"] = len(text)
     sys.stdout.flush()
     if frac >= 1.0:
         sys.stdout.write("\n")
+        _last_line["len"] = 0
 
 
 def cmd_process(args: argparse.Namespace) -> int:
@@ -62,7 +70,15 @@ def cmd_process(args: argparse.Namespace) -> int:
     if args.language:
         cfg.transcription.language = args.language
     rec = _recording(args.folder)
-    result = build_pipeline(cfg).run(rec, args.steps, _print_progress)
+    if "summarize" in args.steps and not _cloud_consent_ok(cfg, rec, getattr(args, "confirm_anthropic", False)):
+        return 1
+    from callrec.asr.transcriber import TranscriptionCancelled
+
+    try:
+        result = build_pipeline(cfg).run(rec, args.steps, _print_progress)
+    except (KeyboardInterrupt, TranscriptionCancelled):
+        print("\nAbgebrochen. Ein erneuter Aufruf setzt fort (bereits geladene Modelldateien bleiben erhalten).")
+        return 130
     for m in result.messages:
         print(m)
     if result.unassigned_speakers:
@@ -71,6 +87,37 @@ def cmd_process(args: argparse.Namespace) -> int:
     if cfg.active_preset:
         print(f"(Preset: {cfg.active_preset})")
     return 0
+
+
+def _cloud_consent_ok(cfg, rec, confirm: bool) -> bool:  # type: ignore[no-untyped-def]
+    """Recording made before Anthropic was selected: send its transcript only after a typed 'ja'."""
+    from callrec.consent import (
+        LATER_STATEMENT_ANTHROPIC,
+        ConsentError,
+        cloud_summary_covered,
+        later_confirmation,
+        record_later_confirmation,
+    )
+
+    provider = cfg.summary.provider if cfg.summary.enabled else ""
+    if cloud_summary_covered(rec.load_meta(), provider):
+        return True
+    if not confirm:
+        print("Die Einwilligung dieser Aufnahme erwähnt die Übertragung an Anthropic nicht. Mit "
+              "--confirm-anthropic können Sie die Zustimmung aller Teilnehmenden nachträglich bestätigen.")
+        return False
+    if sys.stdin is None or not sys.stdin.isatty():
+        print("Die Bestätigung muss in einem Konsolenfenster eingetippt werden.")
+        return False
+    print(LATER_STATEMENT_ANTHROPIC)
+    answer = input("Bitte 'ja' eingeben, um zu bestätigen: ").strip().lower()
+    me = (rec.load_meta().get("self") or {}).get("name") or "Benutzer"
+    try:
+        record_later_confirmation(rec, later_confirmation(str(me), "cli", answer == "ja"))
+    except ConsentError as exc:
+        print(exc)
+        return False
+    return True
 
 
 def cmd_speakers(args: argparse.Namespace) -> int:
@@ -350,8 +397,11 @@ def cmd_record(args: argparse.Namespace) -> int:
             if suggestion.message:
                 print(suggestion.message)
             try:
+                from callrec.consent import active_summary_provider
+
                 tty = sys.stdin is not None and sys.stdin.isatty()
-                consent = cli_confirm(input, print, me.display, people, interactive=tty)
+                consent = cli_confirm(input, print, me.display, people, interactive=tty,
+                                      summary_provider=active_summary_provider(cfg.summary))
             except ConsentError as exc:
                 print(exc)
                 return None
@@ -395,6 +445,41 @@ def cmd_record(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_whisper_download(model: str, download_root: Path, out: Callable[[str], None] = print,
+                         command_prefix: Sequence[str] | None = None) -> int:
+    """Download a Whisper model in a child process with progress; Ctrl+C stops it."""
+    import subprocess
+
+    from callrec.asr.download import describe_progress
+    from callrec.asr.transcriber import console_python
+
+    cmd = [*(command_prefix or [console_python(), "-m", "callrec.asr.worker"]),
+           "--download-only", "--model", model, "--download-root", str(download_root)]
+    env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1")
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True, encoding="utf-8", errors="replace", env=env)  # noqa: S603
+    assert proc.stdout is not None
+    width = 0
+    try:
+        for line in proc.stdout:
+            parts = line.split()
+            if parts[:1] == ["DOWNLOAD"] and len(parts) >= 4:
+                _f, text = describe_progress(int(parts[1]), int(parts[2]), int(parts[3]))
+                sys.stdout.write("\r" + text.ljust(width))
+                width = max(width, len(text))
+                sys.stdout.flush()
+            elif parts[:2] == ["STAGE", "download"]:
+                out("Download läuft (Abbrechen mit Strg+C; ein erneuter Aufruf setzt fort) ...")
+        rc = proc.wait()
+    except KeyboardInterrupt:
+        proc.kill()
+        proc.wait()
+        out("\nDownload abgebrochen. Erneut starten mit: callrec models --whisper")
+        return 130
+    if width:
+        sys.stdout.write("\n")
+    return rc
+
+
 def cmd_models(args: argparse.Namespace) -> int:
     from callrec.speakers.modelstore import SEGMENTATION, embedding_model, ensure_model
 
@@ -403,13 +488,106 @@ def cmd_models(args: argparse.Namespace) -> int:
     print(" ", ensure_model(SEGMENTATION, paths.models_dir()))
     print(" ", ensure_model(embedding_model(cfg.diarization.embedding_model), paths.models_dir()))
     if args.whisper:
-        from faster_whisper import WhisperModel
+        from callrec.asr.gpu import gpu_status, plan_asr
 
-        print(f"Lade Whisper-Modell {cfg.transcription.model} (einige GB) ...")
-        WhisperModel(cfg.transcription.model, device="cpu", compute_type="int8",
-                     download_root=str(paths.models_dir() / "whisper"))
+        model = args.model
+        if not model:
+            usable = gpu_status().usable if cfg.transcription.device == "auto" else None
+            plan = plan_asr(cfg.transcription, usable)
+            model = plan.model_for(plan.devices[0])
+            if plan.note:
+                print(plan.note)
+        print(f"Lade Whisper-Modell {model} (je nach Modell 1,5-3 GB) ...")
+        rc = run_whisper_download(model, paths.models_dir() / "whisper")
+        if rc != 0:
+            if rc != 130:
+                print(f"Download fehlgeschlagen (Exit-Code {rc}). Details mit: callrec -v models --whisper")
+            return rc
     print("Fertig.")
     return 0
+
+
+def cmd_gpu(args: argparse.Namespace) -> int:
+    """Show (and with --recheck re-test) whether an NVIDIA GPU is usable, and what transcription will use."""
+    from callrec.asr.gpu import describe_effective, gpu_status
+
+    cfg = load_config()
+    status = gpu_status(force=args.recheck)
+    print(status.describe() + (f" – geprüft {status.checked_at}" if status.checked_at else ""))
+    print(describe_effective(cfg.transcription, status))
+    return 0
+
+
+def cmd_anthropic(args: argparse.Namespace) -> int:
+    """Claude (Anthropic API) as summary provider: key, opt-in, connection test."""
+    import getpass
+
+    from callrec import apikey
+    from callrec.config import save_config
+    from callrec.llm_anthropic import ANTHROPIC_SETTINGS_WARNING, AnthropicError
+
+    if args.action == "set-key":
+        if sys.stdin is not None and sys.stdin.isatty():
+            key = getpass.getpass("Anthropic-API-Schlüssel (Eingabe unsichtbar): ")
+        else:
+            key = sys.stdin.readline() if sys.stdin is not None else ""
+        try:
+            apikey.store_key(key)
+        except apikey.ApiKeyError as exc:
+            print(exc)
+            return 1
+        print(f"Schlüssel gespeichert ({apikey.mask(key.strip())}) in {apikey.key_file()} (Windows-DPAPI-verschlüsselt).")
+        return 0
+    if args.action == "delete-key":
+        print("Schlüssel gelöscht." if apikey.delete_key() else "Kein gespeicherter Schlüssel vorhanden.")
+        return 0
+    base = load_config(preset="")
+    if args.action == "status":
+        key, source = apikey.load_key()
+        s = base.summary
+        print(f"Anbieter: {s.provider}" + (" (Claude über die Anthropic-API)" if s.provider == "anthropic" else ""))
+        print(f"Übertragung an Anthropic bestätigt: {'ja' if s.anthropic_transcripts_leave_this_computer_confirmed else 'nein'}")
+        print(f"Modell: {s.anthropic_model}, Denktiefe (effort): {s.anthropic_effort or '-'}")
+        print(f"API-Schlüssel: {apikey.mask(key) + ' – ' + source if key else 'nicht hinterlegt'}")
+        return 0
+    if args.action == "enable":
+        print(ANTHROPIC_SETTINGS_WARNING)
+        if sys.stdin is None or not sys.stdin.isatty():
+            print("Die Bestätigung muss in einem Konsolenfenster eingetippt werden.")
+            return 1
+        if input("Bitte 'ja' eingeben, um Claude (Anthropic) zu aktivieren: ").strip().lower() != "ja":
+            print("Abgebrochen - nichts geändert.")
+            return 1
+        base.summary.provider = "anthropic"
+        base.summary.anthropic_transcripts_leave_this_computer_confirmed = True
+        if args.model:
+            base.summary.anthropic_model = args.model
+        save_config(base)
+        print(f"Aktiviert (Modell {base.summary.anthropic_model}). Gilt für neue Aufnahmen; die Einwilligungsabfrage "
+              "nennt jetzt die Übertragung an Anthropic.")
+        if not apikey.load_key()[0]:
+            print("Noch kein API-Schlüssel: callrec anthropic set-key")
+        return 0
+    if args.action == "disable":
+        base.summary.provider = "ollama" if base.summary.provider == "anthropic" else base.summary.provider
+        base.summary.anthropic_transcripts_leave_this_computer_confirmed = False
+        save_config(base)
+        print(f"Claude (Anthropic) deaktiviert. Anbieter jetzt: {base.summary.provider}.")
+        return 0
+    if args.action == "test":
+        from callrec.llm import make_provider
+
+        cfg = base.summary
+        cfg.provider, cfg.anthropic_transcripts_leave_this_computer_confirmed = "anthropic", True  # test only, not saved
+        if args.model:
+            cfg.anthropic_model = args.model
+        try:
+            print(make_provider(cfg).test_connection())  # type: ignore[attr-defined]
+        except AnthropicError as exc:
+            print(exc)
+            return 1
+        return 0
+    return 2
 
 
 def cmd_list(args: argparse.Namespace) -> int:
@@ -467,6 +645,7 @@ def build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--preset", help="Preset für diese Verarbeitung (überschreibt general.preset)")
     pr.set_defaults(func=cmd_process)
 
+    pr.add_argument("--confirm-anthropic", action="store_true", help=argparse.SUPPRESS)
     for name, preset, helptext in (
         ("summarize", "resummarize", "Zusammenfassung neu erstellen"),
         ("retranscribe", "retranscribe", "Neu transkribieren"),
@@ -475,6 +654,8 @@ def build_parser() -> argparse.ArgumentParser:
         sp = sub.add_parser(name, help=helptext)
         sp.add_argument("folder")
         sp.add_argument("--preset")
+        sp.add_argument("--confirm-anthropic", action="store_true",
+                        help="ältere Aufnahme: Zustimmung zur Übertragung an Anthropic nachträglich bestätigen")
         sp.set_defaults(func=cmd_process, steps=_steps(preset), model=None, device=None, language=None)
 
     s = sub.add_parser("speakers", help="Sprecher einer Aufnahme anzeigen")
@@ -533,9 +714,20 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("devices", help="Audiogeräte anzeigen").set_defaults(func=cmd_devices)
 
     m = sub.add_parser("models", help="Modelle vorab herunterladen")
-    m.add_argument("action", choices=["download"])
+    m.add_argument("action", choices=["download"], nargs="?", default="download")
     m.add_argument("--whisper", action="store_true", help="auch das Whisper-Modell laden")
+    m.add_argument("--model", help="Whisper-Modell (Standard: das für diesen Rechner gewählte)")
     m.set_defaults(func=cmd_models)
+
+    gp = sub.add_parser("gpu", help="Ist eine NVIDIA-GPU nutzbar? Effektives Gerät/Modell anzeigen")
+    gp.add_argument("--recheck", action="store_true", help="erneut prüfen (sonst gespeichertes Ergebnis)")
+    gp.set_defaults(func=cmd_gpu)
+
+    an = sub.add_parser("anthropic", help="Claude (Anthropic-API) für die Zusammenfassung: "
+                        "set-key | delete-key | status | test | enable | disable")
+    an.add_argument("action", choices=["set-key", "delete-key", "status", "test", "enable", "disable"])
+    an.add_argument("--model", help=f"Claude-Modell (Standard {'claude-opus-5-5'})")
+    an.set_defaults(func=cmd_anthropic)
 
     sub.add_parser("list", help="Aufnahmen auflisten").set_defaults(func=cmd_list)
 

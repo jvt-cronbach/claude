@@ -12,7 +12,7 @@ from typing import Any, Protocol
 from callrec.audio.capture import CaptureBackend, DualTrackRecorder
 from callrec.calendar.service import CalendarService, Suggestion
 from callrec.config import Config
-from callrec.consent import ConsentError, ConsentRecord, require_consent
+from callrec.consent import ConsentError, ConsentRecord, active_summary_provider, require_consent
 from callrec.detect import Prompt
 from callrec.jobs import ProcessingQueue
 from callrec.models import CalendarEvent, Person
@@ -103,7 +103,7 @@ class Controller:
             log.info("Aufnahme abgebrochen (keine Einwilligungsbestätigung)")
             return False
         try:
-            consent = require_consent(decision.consent, self.clock())
+            consent = require_consent(decision.consent, self.clock(), active_summary_provider(self.cfg.summary))
         except ConsentError as exc:
             self.ui.notify("Keine Aufnahme", str(exc))
             return False

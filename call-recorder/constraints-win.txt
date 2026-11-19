@@ -1,6 +1,9 @@
 # Transitive Versionen, aufgelöst für Windows x64 / CPython 3.12 (pip --platform win_amd64).
 # Wird von setup.ps1 als Constraints-Datei (-c) verwendet: fixiert Versionen, erzwingt aber keine Installation.
 # Pakete, die nur unter Windows per Umgebungsmarker hinzukommen (z.B. colorama), sind hier nicht enthalten.
+# anthropic und seine Abhängigkeiten: mit pip download --platform win_amd64 --python-version 3.12 gegen diese Datei geprüft.
+annotated-types==0.8.0
+anthropic==2.10.0
 anyio==4.16.0
 av==18.1.0
 certifi==2026.10.23
@@ -10,6 +13,7 @@ click==8.5.1
 comtypes==1.5.0
 cryptography==50.0.2
 ctranslate2==4.9.0
+docstring-parser==0.18.0
 faster-whisper==1.2.1
 filelock==4.2.12
 flatbuffers==25.12.19
@@ -21,13 +25,15 @@ httpx2==2.16.2
 huggingface_hub==2.4.0
 icalendar==7.3.0
 idna==3.20
-msal==1.39.0
+jiter==0.19.0
 msal-extensions==1.3.1
+msal==1.39.0
 numpy==2.5.5
 nvidia-cublas-cu12==12.9.1.4
 nvidia-cuda-runtime-cu12==12.9.79
 nvidia-cudnn-cu12==9.10.2.21
 onnxruntime==1.32.0
+opentelemetry-api==1.45.2
 packaging==26.3
 pillow==13.0.0
 protobuf==7.36.2
@@ -35,6 +41,8 @@ psutil==7.2.2
 PyAudioWPatch==0.2.12.9
 pycaw==20260927
 pycparser==3.12
+pydantic==2.14.4
+pydantic_core==2.50.5
 PyJWT==2.15.1
 pystray==0.19.5
 python-dateutil==2.9.0.post0
@@ -44,12 +52,14 @@ requests==2.34.2
 sherpa-onnx-core==2.0.1
 sherpa_onnx==2.0.1
 six==1.17.0
+sniffio==1.3.1
 soundfile==0.14.0
 soxr==1.1.0
 tokenizers==0.23.3
 tomli_w==1.2.0
 tqdm==4.70.1
 truststore==0.10.5
+typing-inspection==0.4.5
 typing_extensions==4.16.0
 tzdata==2026.6
 urllib3==2.8.0
