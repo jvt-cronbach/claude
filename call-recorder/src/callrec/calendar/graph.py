@@ -102,6 +102,28 @@ class GraphAuth:
             )
         return str(result["access_token"])
 
+    def token_for_scopes(self, scopes: list[str], interactive: bool = True) -> str:
+        """Incremental consent: request an additional scope (e.g. Sites.Selected) only when needed.
+
+        Used for the optional SharePoint upload; the calendar login keeps requesting
+        only Calendars.Read + User.Read.
+        """
+        app = self._get_app()
+        accounts = app.get_accounts()
+        if accounts:
+            result = app.acquire_token_silent(scopes, account=accounts[0])
+            if result and "access_token" in result:
+                return str(result["access_token"])
+        if not interactive:
+            raise NotSignedIn("Für den Upload ist eine zusätzliche Zustimmung nötig.")
+        hint = str(accounts[0].get("username")) if accounts else None
+        result = app.acquire_token_interactive(scopes, login_hint=hint, timeout=300)
+        if "access_token" not in result:
+            raise GraphError(
+                "Zustimmung/Anmeldung fehlgeschlagen: " + str(result.get("error_description") or result.get("error"))
+            )
+        return str(result["access_token"])
+
     def account_username(self) -> str | None:
         accounts = self._get_app().get_accounts()
         return str(accounts[0].get("username")) if accounts else None

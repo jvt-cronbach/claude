@@ -18,7 +18,7 @@ p.add_argument("--audio"); p.add_argument("--out"); p.add_argument("--model"); p
 p.add_argument("--compute-type"); p.add_argument("--language"); p.add_argument("--beam-size")
 p.add_argument("--vad", action=argparse.BooleanOptionalAction); p.add_argument("--condition-on-previous-text", action=argparse.BooleanOptionalAction)
 p.add_argument("--initial-prompt", default=""); p.add_argument("--download-root")
-a = p.parse_args()
+a, _rest = p.parse_known_args()
 if a.device == "cuda" and os.environ.get("FAKE_CUDA_BROKEN"):
     sys.stderr.write("Could not load library cudnn_ops64_9.dll\n")
     os._exit(3)  # like a hard native crash

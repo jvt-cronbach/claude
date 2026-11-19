@@ -47,16 +47,22 @@ def build_components(cfg: Config, profiles: ProfileStore | None = None) -> Compo
         return SherpaEmbedder(ensure_model(m, models), m.key, cfg.diarization.num_threads)
 
     def summarizer():  # type: ignore[no-untyped-def]
-        from callrec.summary import OllamaSummarizer
+        from callrec.summary import LlmSummarizer
+        from callrec.userfiles import load_prompts
 
-        return OllamaSummarizer(cfg.summary)
+        return LlmSummarizer(cfg.summary, prompts=load_prompts())
 
     def loader(path: Path, rate: int):  # type: ignore[no-untyped-def]
         from callrec.audio.finalize import load_mono
 
         return load_mono(path, rate)
 
+    from callrec.userfiles import ensure_user_files, load_glossary, load_replacements
+
+    ensure_user_files()
     return Components(
+        glossary=load_glossary(),
+        replacements=load_replacements(),
         transcriber_factory=transcriber,
         diarizer_factory=diarizer if cfg.diarization.enabled else None,
         embedder_factory=embedder if cfg.diarization.enabled else None,
@@ -89,3 +95,26 @@ def graph_auth(cfg: Config):  # type: ignore[no-untyped-def]
     from callrec.calendar.graph import GraphAuth
 
     return GraphAuth(cfg.calendar.client_id.strip(), cfg.calendar.tenant_id.strip(), paths.token_cache_file())
+
+
+def perform_handoff(cfg: Config, rec):  # type: ignore[no-untyped-def]
+    """Hand over the summary of ``rec`` with the configured backend (explicit user action only)."""
+    from callrec.handoff import build_target, handoff_summary
+
+    token = None
+    if cfg.handoff.mode == "graph":
+        auth = graph_auth(cfg)
+        scope = cfg.handoff.graph_scope
+
+        def token():  # type: ignore[no-untyped-def]
+            return auth.token_for_scopes([scope])
+
+    return handoff_summary(rec, build_target(cfg, token), cfg.handoff.include_participant_emails)
+
+
+def reload_config_in_place(cfg: Config) -> None:
+    """Apply saved settings to the running app (shared Config object)."""
+    from callrec.config import load_config
+
+    fresh = load_config()
+    cfg.__dict__.update(fresh.__dict__)

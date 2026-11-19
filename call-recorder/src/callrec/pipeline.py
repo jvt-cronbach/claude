@@ -19,13 +19,15 @@ import numpy as np
 from callrec.audio.finalize import finalize_recording, find_audio, has_unfinished_parts
 from callrec.config import Config
 from callrec.models import SELF_SPEAKER_ID, AsrResult, Person, SpeakerInfo, SpeakerTurn
-from callrec.recording import Recording, write_text_atomic
-from callrec.review import load_turns
+from callrec.recording import Recording
+from callrec.review import carry_over_assignments, load_turns
 from callrec.speakers.assign import UNKNOWN, assign_remote, assign_single
 from callrec.speakers.diarize import Diarizer, Embedder, speaker_embeddings
 from callrec.speakers.profiles import ProfileStore
 from callrec.summary import Summarizer, SummaryUnavailable, render_summary_md
 from callrec.transcript import merge_utterances, render_lines, render_markdown
+from callrec.userfiles import Rule, apply_replacements
+from callrec.versions import adopt_legacy, fingerprint, latest, write_version
 
 log = logging.getLogger(__name__)
 
@@ -48,6 +50,8 @@ class Components:
     profiles: ProfileStore
     summarizer_factory: Callable[[], Summarizer] | None
     audio_loader: AudioLoader
+    glossary: list[str] = field(default_factory=list)
+    replacements: list[Rule] = field(default_factory=list)
 
 
 @dataclass
@@ -66,10 +70,51 @@ def initial_prompt_for(participants: list[Person], self_person: Person) -> str:
     return "Gespräch mit " + ", ".join(names) + "."
 
 
+def _run_id() -> str:
+    return datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+
+
 class Pipeline:
     def __init__(self, cfg: Config, components: Components) -> None:
         self.cfg = cfg
         self.c = components
+
+    # -- settings snapshots (recorded in meta.json for before/after comparison) --
+    def effective_prompt(self, rec: Recording) -> str:
+        parts = []
+        if self.cfg.transcription.initial_prompt.strip():
+            parts.append(self.cfg.transcription.initial_prompt.strip())
+        if self.cfg.transcription.use_participant_names_as_prompt:
+            names = initial_prompt_for(rec.participants(), rec.self_person())
+            if names:
+                parts.append(names)
+        return " ".join(parts)
+
+    def hotwords(self) -> str:
+        return ", ".join(self.c.glossary) if self.cfg.transcription.use_glossary else ""
+
+    def asr_settings(self, rec: Recording) -> dict[str, Any]:
+        import dataclasses
+
+        return {
+            **dataclasses.asdict(self.cfg.transcription),
+            "effective_initial_prompt": self.effective_prompt(rec),
+            "hotwords": self.hotwords(),
+            "preset": self.cfg.active_preset,
+        }
+
+    def render_settings(self) -> dict[str, Any]:
+        import dataclasses
+
+        return {
+            **dataclasses.asdict(self.cfg.transcript),
+            "replacements": [r.source for r in self.c.replacements] if self.cfg.transcript.apply_replacements else [],
+        }
+
+    def diarization_settings(self) -> dict[str, Any]:
+        import dataclasses
+
+        return {"diarization": dataclasses.asdict(self.cfg.diarization), "speakers": dataclasses.asdict(self.cfg.speakers)}
 
     def run(
         self,
@@ -125,24 +170,38 @@ class Pipeline:
     def _step_transcribe(self, rec: Recording, result: ProcessResult, progress: Callable[..., None]) -> None:
         fa = self._audio(rec)
         transcriber = self.c.transcriber_factory()
-        prompt = ""
-        if self.cfg.transcription.use_participant_names_as_prompt:
-            prompt = initial_prompt_for(rec.participants(), rec.self_person())
+        prompt = self.effective_prompt(rec)
+        hotwords = self.hotwords()
+        old = (rec.load_meta().get("processing") or {}).get("transcription") or {}
+        # keep the previous ASR result for before/after comparison
+        archive = rec.data_dir / "archive"
+        for track in ("mic", "remote"):
+            p = rec.asr_path(track)
+            if p.exists():
+                archive.mkdir(parents=True, exist_ok=True)
+                p.replace(archive / f"asr_{track}.{old.get('run_id', 'alt')}.json")
+        run_id = _run_id()
         asr_meta: dict[str, Any] = {}
         for i, (track, path) in enumerate((("mic", fa.mic), ("remote", fa.remote))):
             asr: AsrResult = transcriber.transcribe(
                 path,
                 rec.asr_path(track),
                 initial_prompt=prompt,
+                hotwords=hotwords,
                 progress=lambda f, i=i, track=track: progress((i + f) / 2, f"Spur {track}"),
             )
             rec.save_asr(track, asr)
             asr_meta[track] = {"model": asr.model, "device": asr.device, "compute_type": asr.compute_type, "language": asr.language}
-        rec.update_meta(["processing", "transcription"], {**asr_meta, "finished_at": _now_iso()})
+        rec.update_meta(
+            ["processing", "transcription"],
+            {**asr_meta, "run_id": run_id, "settings": self.asr_settings(rec), "finished_at": _now_iso()},
+        )
 
     def _step_diarize(self, rec: Recording, result: ProcessResult, progress: Callable[..., None]) -> None:
         import json
 
+        old_turns = load_turns(rec)
+        old_speakers = rec.load_speakers()
         turns: list[SpeakerTurn] = []
         embeddings: dict[str, np.ndarray] = {}
         model_id = ""
@@ -163,15 +222,22 @@ class Pipeline:
             json.dumps([t.__dict__ for t in turns], ensure_ascii=False), encoding="utf-8"
         )
         rec.save_embeddings(embeddings, model_id)
-        # speaker ids of an earlier diarization (and assignments to them) are no longer valid
+        # Speaker ids of the earlier diarization are no longer valid; manual assignments are
+        # carried over to the new clusters where the speaking times clearly overlap.
+        carried = carry_over_assignments(old_turns, old_speakers, turns)
         if rec.speakers_path.exists():
             rec.speakers_path.unlink()
+        if carried:
+            rec.save_speakers(carried)
+            result.messages.append(f"{len(carried)} manuelle Sprecherzuordnung(en) übernommen.")
         rec.update_meta(
             ["processing", "diarization"],
             {
                 "backend": "sherpa-onnx" if turns else "none",
                 "embedding_model": model_id,
                 "speakers": len({t.speaker for t in turns}),
+                "run_id": _run_id(),
+                "settings": self.diarization_settings(),
                 "finished_at": _now_iso(),
             },
         )
@@ -190,6 +256,7 @@ class Pipeline:
         # keep manual assignments from an earlier review if the diarization is unchanged
         for sid, info in old.items():
             if sid in speakers and info.source == "manual":
+                info.label = speakers[sid].label
                 speakers[sid] = info
         to_match = {sid: e for sid, e in embeddings.items() if sid in speakers and speakers[sid].source != "manual"}
         if to_match and model_id:
@@ -216,24 +283,48 @@ class Pipeline:
         if not speakers:
             self._step_identify(rec, result, progress)
             speakers = rec.load_speakers()
-        mic_u = assign_single(mic, SELF_SPEAKER_ID, "mic")
+        tc = self.cfg.transcript
+        gap, max_len = tc.split_pause_s, tc.max_paragraph_s
+        join_gap = tc.merge_max_gap_s if tc.merge_same_speaker else None
+        mic_u = assign_single(mic, SELF_SPEAKER_ID, "mic", max_gap=gap, max_len=max_len)
         if turns:
-            remote_u = assign_remote(remote, turns)
+            remote_u = assign_remote(remote, turns, max_gap=gap, max_len=max_len)
         else:
-            remote_u = assign_single(remote, "S1", "remote")
+            remote_u = assign_single(remote, "S1", "remote", max_gap=gap, max_len=max_len)
             speakers.setdefault("S1", SpeakerInfo(id="S1", label="Gegenseite"))
         if any(u.speaker == UNKNOWN for u in remote_u):
             speakers.setdefault(UNKNOWN, SpeakerInfo(id=UNKNOWN, label="Unbekannt"))
         rec.save_speakers(speakers)
-        utterances = merge_utterances(mic_u, remote_u)
+        utterances = merge_utterances(mic_u, remote_u, join_gap=join_gap)
+        if tc.apply_replacements and self.c.replacements:
+            for u in utterances:
+                u.text = apply_replacements(u.text, self.c.replacements)
         rec.save_utterances(utterances)
         meta = rec.load_meta()
-        tmeta = (meta.get("processing") or {}).get("transcription") or {}
+        proc = meta.get("processing") or {}
+        tmeta = proc.get("transcription") or {}
+        dmeta = proc.get("diarization") or {}
         note = ""
         if tmeta.get("mic"):
             note = f"faster-whisper {tmeta['mic'].get('model', '')} ({tmeta['mic'].get('device', '')})"
-        md = render_markdown(rec.title(), rec.started_at(), rec.duration() or mic.duration, rec.participants(), utterances, speakers, note)
-        write_text_atomic(rec.transcript_path, md)
+        settings = {
+            "transcription": tmeta.get("settings", {}),
+            "diarization": dmeta.get("settings", {}),
+            "rendering": self.render_settings(),
+            "preset": self.cfg.active_preset,
+        }
+        fp = fingerprint({"asr": tmeta.get("run_id"), "diar": dmeta.get("run_id"), "render": settings["rendering"]})
+        adopt_legacy(rec, "transcript")
+        prev = latest(rec, "transcript")
+        n = int(prev["version"]) + (0 if prev and prev.get("fingerprint") == fp else 1) if prev else 1
+        preset = f", Preset {self.cfg.active_preset}" if self.cfg.active_preset else ""
+        md = render_markdown(
+            rec.title(), rec.started_at(), rec.duration() or mic.duration, rec.participants(), utterances, speakers, note,
+            ts_format=tc.timestamp_format, join_gap=join_gap, version_note=f"v{n}{preset}",
+        )
+        n2, new = write_version(rec, "transcript", md, fp, settings)
+        if new and n2 > 1:
+            result.messages.append(f"Neue Transkript-Version v{n2} erstellt (vorherige bleibt als transcript.v{n2 - 1}.md erhalten).")
 
     def _step_summarize(self, rec: Recording, result: ProcessResult, progress: Callable[..., None]) -> None:
         if not self.cfg.summary.enabled or self.c.summarizer_factory is None:
@@ -246,11 +337,14 @@ class Pipeline:
             rec.update_meta(["processing", "summary"], {"skipped": result.summary_skipped})
             return
         speakers = rec.load_speakers()
-        lines = render_lines(utterances, speakers)
+        tc = self.cfg.transcript
+        lines = render_lines(utterances, speakers, "hh:mm:ss", tc.merge_max_gap_s if tc.merge_same_speaker else None)
         names = list(dict.fromkeys(s.display for s in speakers.values() if s.id != UNKNOWN))
+        start = rec.started_at()
+        date = f"{start:%d.%m.%Y %H:%M}" if start else ""
         try:
             summarizer = self.c.summarizer_factory()
-            body = summarizer.summarize(rec.title(), names, lines)
+            body = summarizer.summarize(rec.title(), names, lines, date=date)
         except SummaryUnavailable as exc:
             result.summary_skipped = str(exc)
             result.messages.append(f"Zusammenfassung übersprungen: {exc}")
@@ -258,5 +352,11 @@ class Pipeline:
             log.warning("Zusammenfassung übersprungen: %s", exc)
             return
         created = datetime.now().strftime("%d.%m.%Y %H:%M")
-        write_text_atomic(rec.summary_path, render_summary_md(rec.title(), body, summarizer.model_name, created))
-        rec.update_meta(["processing", "summary"], {"model": summarizer.model_name, "finished_at": _now_iso()})
+        describe = getattr(summarizer, "describe", None)
+        llm = describe() if callable(describe) else {"model": summarizer.model_name}
+        tv = latest(rec, "transcript")
+        settings = {"llm": llm, "transcript_version": tv["version"] if tv else None}
+        fp = fingerprint({**settings, "input": fingerprint(lines)})
+        adopt_legacy(rec, "summary")
+        n, _new = write_version(rec, "summary", render_summary_md(rec.title(), body, summarizer.model_name, created), fp, settings)
+        rec.update_meta(["processing", "summary"], {**llm, "version": n, "finished_at": _now_iso()})

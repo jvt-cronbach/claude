@@ -89,7 +89,7 @@ def group_words(
     return utterances
 
 
-def assign_remote(asr: AsrResult, turns: list[SpeakerTurn], max_gap: float = 2.0) -> list[Utterance]:
+def assign_remote(asr: AsrResult, turns: list[SpeakerTurn], max_gap: float = 2.0, max_len: float = 60.0) -> list[Utterance]:
     index = TurnIndex(turns)
     words = words_of(asr)
     last = [UNKNOWN]
@@ -101,8 +101,8 @@ def assign_remote(asr: AsrResult, turns: list[SpeakerTurn], max_gap: float = 2.0
         last[0] = spk
         return spk
 
-    return group_words(words, speaker_of, "remote", max_gap=max_gap)
+    return group_words(words, speaker_of, "remote", max_gap=max_gap, max_len=max_len)
 
 
-def assign_single(asr: AsrResult, speaker: str, track: str, max_gap: float = 2.0) -> list[Utterance]:
-    return group_words(words_of(asr), lambda w: speaker, track, max_gap=max_gap)
+def assign_single(asr: AsrResult, speaker: str, track: str, max_gap: float = 2.0, max_len: float = 60.0) -> list[Utterance]:
+    return group_words(words_of(asr), lambda w: speaker, track, max_gap=max_gap, max_len=max_len)

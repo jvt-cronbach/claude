@@ -40,9 +40,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         language=language,
         beam_size=args.beam_size,
         vad_filter=args.vad,
+        vad_parameters={
+            "threshold": args.vad_threshold,
+            "min_silence_duration_ms": args.vad_min_silence_ms,
+            "speech_pad_ms": args.vad_speech_pad_ms,
+        },
         word_timestamps=True,
         condition_on_previous_text=args.condition_on_previous_text,
         initial_prompt=args.initial_prompt or None,
+        hotwords=args.hotwords or None,
+        hallucination_silence_threshold=args.hallucination_silence_threshold or None,
     )
     out_segments = []
     duration = float(info.duration or 0.0)
@@ -77,6 +84,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--vad", action=argparse.BooleanOptionalAction, default=True)
     p.add_argument("--condition-on-previous-text", action=argparse.BooleanOptionalAction, default=False)
     p.add_argument("--initial-prompt", default="")
+    p.add_argument("--hotwords", default="")
+    p.add_argument("--vad-threshold", type=float, default=0.5)
+    p.add_argument("--vad-min-silence-ms", type=int, default=2000)
+    p.add_argument("--vad-speech-pad-ms", type=int, default=400)
+    p.add_argument("--hallucination-silence-threshold", type=float, default=0.0)
     p.add_argument("--download-root", default="")
     return p
 

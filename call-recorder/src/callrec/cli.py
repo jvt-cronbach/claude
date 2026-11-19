@@ -54,7 +54,7 @@ def _print_progress(step: str, frac: float, msg: str) -> None:
 def cmd_process(args: argparse.Namespace) -> int:
     from callrec.factory import build_pipeline
 
-    cfg = load_config()
+    cfg = load_config(preset=getattr(args, "preset", None))
     if args.model:
         cfg.transcription.model = args.model
     if args.device:
@@ -68,6 +68,8 @@ def cmd_process(args: argparse.Namespace) -> int:
     if result.unassigned_speakers:
         print(f"{result.unassigned_speakers} Sprecher noch nicht zugeordnet: callrec speakers \"{rec.folder}\"")
     print(f"Fertig: {rec.folder}")
+    if cfg.active_preset:
+        print(f"(Preset: {cfg.active_preset})")
     return 0
 
 
@@ -167,6 +169,100 @@ def cmd_purge_voiceprints(args: argparse.Namespace) -> int:
         raise SystemExit("Ordner oder --all angeben")
     n = sum(1 for r in recs if r.delete_embeddings())
     print(f"Stimm-Embeddings in {n} Aufnahme(n) gelöscht. (Neue Sprecherzuordnung danach nur nach 'callrec process <Ordner> --steps rediarize'.)")
+    return 0
+
+
+def cmd_handoff(args: argparse.Namespace) -> int:
+    """Hand over the SUMMARY (only) of one recording to SharePoint - explicit action."""
+    from callrec.factory import perform_handoff
+    from callrec.handoff import HANDOFF_WARNING, HandoffError, build_summary_document, last_handoff
+
+    cfg = load_config()
+    rec = _recording(args.folder)
+    try:
+        doc = build_summary_document(rec, cfg.handoff.include_participant_emails)
+    except HandoffError as exc:
+        print(exc)
+        return 1
+    target = cfg.handoff.folder if cfg.handoff.mode == "folder" else f"Graph-Upload ({cfg.handoff.graph_folder or '/'})"
+    print(HANDOFF_WARNING)
+    print(f"\nZiel: {target}\nDatei: {doc.filename}\n" + "-" * 60)
+    print(doc.markdown)
+    print("-" * 60)
+    prev = last_handoff(rec)
+    if prev:
+        print(f"Zuletzt übergeben: {prev.get('at')} -> {prev.get('location')}"
+              + (" (identischer Inhalt)" if prev.get("sha256") == doc.sha256 else ""))
+    if not args.yes and input("Jetzt übergeben? (ja/nein) ").strip().lower() != "ja":
+        print("Abgebrochen.")
+        return 1
+    try:
+        entry = perform_handoff(cfg, rec)
+    except Exception as exc:
+        print(f"Übergabe fehlgeschlagen: {exc}")
+        return 1
+    print(f"Übergeben: {entry['location']}")
+    return 0
+
+
+def cmd_llm(args: argparse.Namespace) -> int:
+    from callrec.llm import OLLAMA_UPDATE_HINT, LlmUnavailable, make_provider
+
+    cfg = load_config()
+    try:
+        p = make_provider(cfg.summary)
+        if args.action == "models":
+            for m in p.list_models():
+                print(("* " if m == cfg.summary.model else "  ") + m)
+        elif args.action == "version":
+            v = p.version()
+            print(f"{p.name} {v or '(Version nicht abfragbar)'} unter {p.base_url}")
+            print(OLLAMA_UPDATE_HINT)
+        elif args.action == "pull":
+            model = args.model or cfg.summary.model
+
+            def progress(status: str, frac: float | None) -> None:
+                sys.stdout.write(f"\r{status:<50} {'' if frac is None else f'{frac * 100:5.1f} %'}")
+                sys.stdout.flush()
+
+            p.pull(model, progress)
+            print(f"\nModell {model} ist aktuell.")
+    except (LlmUnavailable, ValueError) as exc:
+        print(exc)
+        return 1
+    return 0
+
+
+def cmd_preset(args: argparse.Namespace) -> int:
+    from callrec.config import list_presets, save_preset
+
+    if args.action == "list":
+        active = load_config(preset="").general.preset
+        for n in list_presets():
+            print(("* " if n == active else "  ") + n)
+        return 0
+    if not args.name:
+        raise SystemExit("Bitte Preset-Namen angeben")
+    if args.action == "save":
+        print(save_preset(load_config(), args.name))
+        return 0
+    path = paths.presets_dir() / f"{args.name}.toml"
+    print(path.read_text(encoding="utf-8") if path.exists() else f"Preset {args.name!r} nicht gefunden")
+    return 0
+
+
+def cmd_versions(args: argparse.Namespace) -> int:
+    from callrec.versions import list_versions
+
+    rec = _recording(args.folder)
+    for kind in ("transcript", "summary"):
+        print(f"{kind}:")
+        for v in list_versions(rec, kind):
+            st = v.get("settings") or {}
+            t = st.get("transcription") or {}
+            extra = f"Modell {t.get('model', '?')}, Preset {st.get('preset') or '-'}" if kind == "transcript" else \
+                f"LLM {(st.get('llm') or {}).get('model', '?')}, aus Transkript v{st.get('transcript_version')}"
+            print(f"  v{v['version']}  {v.get('created', '')}  {v.get('file', '')}  ({extra})")
     return 0
 
 
@@ -328,8 +424,14 @@ def cmd_list(args: argparse.Namespace) -> int:
 
 
 def cmd_config(args: argparse.Namespace) -> int:
+    from callrec.userfiles import ensure_user_files
+
     path = write_default_config()
     print(path)
+    if args.action == "files":
+        for f in ensure_user_files():
+            print(f)
+        print(paths.presets_dir())
     if args.action == "check":
         cfg = load_config()
         for w in cfg.warnings:
@@ -361,6 +463,7 @@ def build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--model")
     pr.add_argument("--device", choices=["auto", "cuda", "cpu"])
     pr.add_argument("--language")
+    pr.add_argument("--preset", help="Preset für diese Verarbeitung (überschreibt general.preset)")
     pr.set_defaults(func=cmd_process)
 
     for name, preset, helptext in (
@@ -370,6 +473,7 @@ def build_parser() -> argparse.ArgumentParser:
     ):
         sp = sub.add_parser(name, help=helptext)
         sp.add_argument("folder")
+        sp.add_argument("--preset")
         sp.set_defaults(func=cmd_process, steps=_steps(preset), model=None, device=None, language=None)
 
     s = sub.add_parser("speakers", help="Sprecher einer Aufnahme anzeigen")
@@ -392,6 +496,25 @@ def build_parser() -> argparse.ArgumentParser:
     pf.add_argument("key", nargs="?")
     pf.add_argument("--yes", action="store_true")
     pf.set_defaults(func=cmd_profiles)
+
+    ho = sub.add_parser("handoff", help="Zusammenfassung (nur diese!) an SharePoint übergeben")
+    ho.add_argument("folder")
+    ho.add_argument("--yes", action="store_true", help="ohne Rückfrage")
+    ho.set_defaults(func=cmd_handoff)
+
+    lm = sub.add_parser("llm", help="KI-Modelle für die Zusammenfassung: models | version | pull [Modell]")
+    lm.add_argument("action", choices=["models", "version", "pull"])
+    lm.add_argument("model", nargs="?")
+    lm.set_defaults(func=cmd_llm)
+
+    ps = sub.add_parser("preset", help="Presets: list | save <Name> | show <Name>")
+    ps.add_argument("action", choices=["list", "save", "show"])
+    ps.add_argument("name", nargs="?")
+    ps.set_defaults(func=cmd_preset)
+
+    vs = sub.add_parser("versions", help="Transkript-/Zusammenfassungs-Versionen einer Aufnahme")
+    vs.add_argument("folder")
+    vs.set_defaults(func=cmd_versions)
 
     pv = sub.add_parser("purge-voiceprints", help="Stimm-Embeddings in Aufnahmeordnern löschen")
     pv.add_argument("folder", nargs="?")
@@ -416,7 +539,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("list", help="Aufnahmen auflisten").set_defaults(func=cmd_list)
 
     c = sub.add_parser("config", help="Pfad der Konfigurationsdatei / Prüfung")
-    c.add_argument("action", choices=["path", "check"], nargs="?", default="path")
+    c.add_argument("action", choices=["path", "check", "files"], nargs="?", default="path")
     c.set_defaults(func=cmd_config)
     return p
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 from callrec.models import SELF_SPEAKER_ID, Person, SpeakerTurn
 from callrec.recording import Recording
@@ -138,4 +139,39 @@ def parse_cli_assignments(items: list[str], no_profile: bool = False) -> list[As
             num = key.split()[-1]
             key = f"S{int(num)}"
         out.append(Assignment(speaker_id=key, name=name.strip(), save_profile=not no_profile))
+    return out
+
+
+def carry_over_assignments(
+    old_turns: list[SpeakerTurn],
+    old_speakers: dict[str, Any],
+    new_turns: list[SpeakerTurn],
+    min_fraction: float = 0.5,
+) -> dict[str, Any]:
+    """Map manual assignments of an earlier diarization onto new speaker ids by time overlap.
+
+    A new speaker inherits a manual name if at least ``min_fraction`` of its speaking
+    time overlaps with turns of one old, manually assigned speaker.
+    """
+    import dataclasses
+
+    out: dict[str, Any] = {}
+    new_ids = list(dict.fromkeys(t.speaker for t in new_turns))
+    for nid in new_ids:
+        mine = [t for t in new_turns if t.speaker == nid]
+        total = sum(t.end - t.start for t in mine)
+        if total <= 0:
+            continue
+        overlap: dict[str, float] = {}
+        for a in mine:
+            for b in old_turns:
+                ov = min(a.end, b.end) - max(a.start, b.start)
+                if ov > 0:
+                    overlap[b.speaker] = overlap.get(b.speaker, 0.0) + ov
+        if not overlap:
+            continue
+        best, ov = max(overlap.items(), key=lambda kv: kv[1])
+        info = old_speakers.get(best)
+        if info is not None and info.source == "manual" and info.name and ov / total >= min_fraction:
+            out[nid] = dataclasses.replace(info, id=nid)
     return out

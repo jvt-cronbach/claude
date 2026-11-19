@@ -200,6 +200,7 @@ def review_speakers(
     profiles: ProfileStore,
     rerender: Callable[[], object],
     resummarize: Callable[[], object],
+    handoff: Callable[[], object] | None = None,
 ) -> bool:
     from callrec.audio.finalize import find_audio, write_clip
 
@@ -278,6 +279,8 @@ def review_speakers(
         win.destroy()
 
     ttk.Button(bottom, text="Übernehmen", command=apply).pack(side="right", padx=4)
+    if handoff is not None:
+        ttk.Button(bottom, text="Zusammenfassung an SharePoint übergeben \u2026", command=handoff).pack(side="left", padx=8)
     ttk.Button(bottom, text="Abbrechen", command=win.destroy).pack(side="right", padx=4)
     win.protocol("WM_DELETE_WINDOW", win.destroy)
     _modal(win)
@@ -338,81 +341,74 @@ def manage_profiles(root: tk.Tk, profiles: ProfileStore) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Settings
+# SharePoint hand-over (summary only)
 # ---------------------------------------------------------------------------
-WHISPER_MODELS = ["large-v3", "large-v3-turbo", "medium", "small", "base"]
 
 
-def edit_settings(root: tk.Tk, cfg: Any, mic_names: list[str], render_names: list[str], save: Callable[[Any], None]) -> bool:
-    from callrec.hotkey import HotkeyError, parse_hotkey
+def ask_handoff(root: tk.Misc, rec: Recording, cfg: Any, perform: Callable[[], dict[str, Any]]) -> bool:
+    """Preview + explicit confirmation; ``perform`` does the actual hand-over (may open a browser)."""
+    import threading
 
+    from callrec.handoff import HANDOFF_WARNING, HandoffError, build_summary_document, last_handoff
+
+    try:
+        doc = build_summary_document(rec, cfg.handoff.include_participant_emails)
+    except HandoffError as exc:
+        messagebox.showinfo("Keine Übergabe möglich", str(exc), parent=root)
+        return False
     win = tk.Toplevel(root)
-    win.title("Einstellungen")
-    saved = {"value": False}
-    auto_mic = "auto (Windows-Standard für Kommunikation)"
-    auto_out = "auto (Windows-Standard für Kommunikation)"
-    fields: list[tuple[str, tk.StringVar]] = []
-
-    def row(label: str, var: tk.StringVar, values: list[str] | None = None, r: list[int] = [0]) -> None:  # noqa: B006
-        ttk.Label(win, text=label).grid(row=r[0], column=0, sticky="w", **PAD)
-        if values is not None:
-            ttk.Combobox(win, textvariable=var, values=values, width=55).grid(row=r[0], column=1, sticky="we", **PAD)
-        else:
-            ttk.Entry(win, textvariable=var, width=58).grid(row=r[0], column=1, sticky="we", **PAD)
-        fields.append((label, var))
-        r[0] += 1
-
-    mic_var = tk.StringVar(value=auto_mic if cfg.audio.mic_device == "auto" else cfg.audio.mic_device)
-    out_var = tk.StringVar(value=auto_out if cfg.audio.loopback_device == "auto" else cfg.audio.loopback_device)
-    name_var = tk.StringVar(value=cfg.general.user_name)
-    dir_var = tk.StringVar(value=cfg.general.recordings_dir)
-    lang_var = tk.StringVar(value=cfg.transcription.language)
-    model_var = tk.StringVar(value=cfg.transcription.model)
-    llm_var = tk.StringVar(value=cfg.summary.model)
-    hk_var = tk.StringVar(value=cfg.hotkey.toggle)
-    row("Mikrofon:", mic_var, [auto_mic, *mic_names])
-    row("Ausgabegerät (Gegenseite):", out_var, [auto_out, *render_names])
-    row("Ihr Name (leer = aus Microsoft-Konto):", name_var)
-    row("Aufnahmeordner (leer = Standard):", dir_var)
-    row("Sprache (de / auto / en …):", lang_var, ["de", "auto", "en"])
-    row("Whisper-Modell:", model_var, WHISPER_MODELS)
-    row("Ollama-Modell:", llm_var)
-    row("Tastenkürzel Start/Stopp:", hk_var)
-
-    def browse() -> None:
-        d = filedialog.askdirectory(parent=win, title="Aufnahmeordner wählen")
-        if d:
-            dir_var.set(d)
-
-    ttk.Button(win, text="Ordner wählen …", command=browse).grid(row=3, column=2, **PAD)
-
-    def do_save() -> None:
-        try:
-            parse_hotkey(hk_var.get())
-        except HotkeyError as exc:
-            messagebox.showerror("Tastenkürzel", str(exc), parent=win)
-            return
-        cfg.audio.mic_device = "auto" if mic_var.get() == auto_mic else mic_var.get().strip()
-        cfg.audio.loopback_device = "auto" if out_var.get() == auto_out else out_var.get().strip()
-        cfg.general.user_name = name_var.get().strip()
-        cfg.general.recordings_dir = dir_var.get().strip()
-        cfg.transcription.language = lang_var.get().strip() or "de"
-        cfg.transcription.model = model_var.get().strip() or "large-v3"
-        cfg.summary.model = llm_var.get().strip() or cfg.summary.model
-        cfg.hotkey.toggle = hk_var.get().strip()
-        save(cfg)
-        saved["value"] = True
-        messagebox.showinfo(
-            "Gespeichert", "Einstellungen gespeichert. Tastenkürzel und Geräte gelten ab der nächsten Aufnahme "
-            "bzw. nach einem Neustart des Programms.", parent=win,
-        )
-        win.destroy()
-
+    win.title(f"Zusammenfassung an SharePoint übergeben \u2013 {rec.title()}")
+    ttk.Label(win, text=HANDOFF_WARNING, wraplength=640, foreground="#b00020").pack(anchor="w", **PAD)
+    target = cfg.handoff.folder if cfg.handoff.mode == "folder" else f"Graph-Upload: {cfg.handoff.graph_folder or '/'}"
+    ttk.Label(win, text=f"Ziel: {target}\nDatei: {doc.filename}", wraplength=640).pack(anchor="w", **PAD)
+    prev = last_handoff(rec)
+    if prev:
+        same = prev.get("sha256") == doc.sha256
+        ttk.Label(win, text=f"Zuletzt übergeben am {prev.get('at', '?')}"
+                  + (" (identischer Inhalt)." if same else " - die Zusammenfassung hat sich seitdem geändert."),
+                  foreground="#555").pack(anchor="w", **PAD)
+    preview = tk.Text(win, width=90, height=22, wrap="word")
+    preview.insert("1.0", doc.markdown)
+    preview.configure(state="disabled")
+    preview.pack(fill="both", expand=True, **PAD)
+    status = tk.StringVar(value="")
+    ttk.Label(win, textvariable=status).pack(anchor="w", **PAD)
+    done = {"v": False}
     bar = ttk.Frame(win)
-    bar.grid(row=20, column=0, columnspan=3, sticky="e", **PAD)
-    ttk.Button(bar, text="Speichern", command=do_save).pack(side="right", padx=4)
+    bar.pack(fill="x", **PAD)
+
+    def go() -> None:
+        btn.state(["disabled"])
+        status.set("Übergabe läuft …")
+        box: dict[str, Any] = {}
+
+        def work() -> None:
+            try:
+                box["entry"] = perform()
+            except Exception as exc:  # shown to the user
+                box["error"] = exc
+
+        th = threading.Thread(target=work, name="handoff", daemon=True)
+        th.start()
+
+        def poll() -> None:
+            if th.is_alive():
+                win.after(200, poll)
+                return
+            if "error" in box:
+                btn.state(["!disabled"])
+                status.set("")
+                messagebox.showerror("Übergabe fehlgeschlagen", str(box["error"]), parent=win)
+                return
+            done["v"] = True
+            messagebox.showinfo("Übergeben", f"Gespeichert unter:\n{box['entry']['location']}", parent=win)
+            win.destroy()
+
+        poll()
+
+    btn = ttk.Button(bar, text="An SharePoint übergeben", command=go)
+    btn.pack(side="right", padx=4)
     ttk.Button(bar, text="Abbrechen", command=win.destroy).pack(side="right", padx=4)
-    win.columnconfigure(1, weight=1)
     _modal(win)
     root.wait_window(win)
-    return saved["value"]
+    return done["v"]

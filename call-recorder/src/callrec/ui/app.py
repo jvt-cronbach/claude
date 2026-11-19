@@ -14,7 +14,14 @@ from callrec import paths
 from callrec.config import Config, load_config, save_config
 from callrec.controller import Controller
 from callrec.detect import CallDetector
-from callrec.factory import build_calendar_service, build_pipeline, graph_auth, profile_store
+from callrec.factory import (
+    build_calendar_service,
+    build_pipeline,
+    graph_auth,
+    perform_handoff,
+    profile_store,
+    reload_config_in_place,
+)
 from callrec.hotkey import GlobalHotkey, HotkeyError, parse_hotkey
 from callrec.jobs import ProcessingQueue
 from callrec.logging_setup import setup_logging
@@ -156,9 +163,18 @@ def run_tray_app(cfg: Config | None = None) -> int:
             ui.root, rec, profiles,
             rerender=lambda: pipeline.run(rec, {"render"}),
             resummarize=lambda: controller.process(rec, frozenset({"summarize"})),
+            handoff=lambda: handoff(rec),
         )
 
     ui.review_handler = review
+
+    def handoff(rec: Recording | None = None) -> None:
+        """Explicit user action: preview + confirm, then hand over the summary only."""
+        rec = rec or last_recording()
+        if rec is None:
+            ui.notify("Keine Aufnahme", "Keine abgeschlossene Aufnahme gefunden.")
+            return
+        dialogs.ask_handoff(ui.root, rec, cfg, lambda: perform_handoff(cfg, rec))
 
     def with_last(steps: frozenset[str]) -> None:
         rec = last_recording()
@@ -178,7 +194,14 @@ def run_tray_app(cfg: Config | None = None) -> int:
             b.close()
         except Exception:
             log.exception("Geräteliste nicht verfügbar")
-        dialogs.edit_settings(ui.root, cfg, mics, outs, save_config)
+        from callrec.ui.settings import edit_settings
+
+        base = load_config(preset="")  # edit config.toml itself, not the preset overlay
+        if edit_settings(ui.root, base, mics, outs, save_config):
+            try:
+                reload_config_in_place(cfg)
+            except Exception as exc:
+                ui.notify("Konfiguration", str(exc))
 
     def login() -> None:
         if not cfg.calendar.client_id.strip():
@@ -211,6 +234,8 @@ def run_tray_app(cfg: Config | None = None) -> int:
         "toggle": controller.toggle,
         "review_last": lambda: review(None),
         "resummarize_last": lambda: with_last(frozenset({"summarize"})),
+        "retranscribe_last": lambda: with_last(frozenset({"transcribe", "identify", "render", "summarize"})),
+        "handoff_last": lambda: handoff(None),
         "reprocess_last": lambda: with_last(frozenset({"finalize", "transcribe", "diarize", "identify", "render", "summarize"})),
         "open_folder": lambda: open_path(cfg.recordings_path()),
         "profiles": lambda: dialogs.manage_profiles(ui.root, profiles),

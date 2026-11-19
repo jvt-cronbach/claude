@@ -25,7 +25,9 @@ class TranscriptionError(RuntimeError):
 
 
 class Transcriber(Protocol):
-    def transcribe(self, audio: Path, out_json: Path, *, initial_prompt: str, progress: ProgressFn) -> AsrResult: ...
+    def transcribe(
+        self, audio: Path, out_json: Path, *, initial_prompt: str, hotwords: str, progress: ProgressFn
+    ) -> AsrResult: ...
 
 
 def console_python(executable: str | None = None) -> str:
@@ -72,7 +74,7 @@ class WhisperSubprocessTranscriber:
         # "cuda" and "auto" both fall back to CPU rather than produce nothing
         return ["cuda", "cpu"]
 
-    def build_command(self, audio: Path, out_json: Path, device: str, initial_prompt: str) -> list[str]:
+    def build_command(self, audio: Path, out_json: Path, device: str, initial_prompt: str, hotwords: str = "") -> list[str]:
         cmd = self.command_prefix + [
             "--audio", str(audio),
             "--out", str(out_json),
@@ -84,9 +86,15 @@ class WhisperSubprocessTranscriber:
             "--vad" if self.cfg.vad_filter else "--no-vad",
             "--condition-on-previous-text" if self.cfg.condition_on_previous_text else "--no-condition-on-previous-text",
             "--download-root", str(self.download_root),
+            "--vad-threshold", str(self.cfg.vad_threshold),
+            "--vad-min-silence-ms", str(self.cfg.vad_min_silence_ms),
+            "--vad-speech-pad-ms", str(self.cfg.vad_speech_pad_ms),
+            "--hallucination-silence-threshold", str(self.cfg.hallucination_silence_threshold),
         ]
         if initial_prompt:
             cmd += ["--initial-prompt", initial_prompt]
+        if hotwords:
+            cmd += ["--hotwords", hotwords]
         return cmd
 
     def _run(self, cmd: list[str], progress: ProgressFn, log_path: Path) -> int:
@@ -115,13 +123,15 @@ class WhisperSubprocessTranscriber:
                         pass
             return proc.wait()
 
-    def transcribe(self, audio: Path, out_json: Path, *, initial_prompt: str = "", progress: ProgressFn = lambda f: None) -> AsrResult:
+    def transcribe(
+        self, audio: Path, out_json: Path, *, initial_prompt: str = "", hotwords: str = "", progress: ProgressFn = lambda f: None
+    ) -> AsrResult:
         errors: list[str] = []
         log_path = out_json.with_suffix(".log")
         for device in self.devices_to_try():
             if out_json.exists():
                 out_json.unlink()
-            cmd = self.build_command(audio, out_json, device, initial_prompt)
+            cmd = self.build_command(audio, out_json, device, initial_prompt, hotwords)
             log.info("Starte Transkription (%s) von %s", device, audio.name)
             rc = self._run(cmd, progress, log_path)
             if rc == 0 and out_json.exists():

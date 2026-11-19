@@ -37,8 +37,9 @@ class FakeTranscriber:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str]] = []
 
-    def transcribe(self, audio: Path, out_json: Path, *, initial_prompt: str = "", progress=lambda f: None) -> AsrResult:
+    def transcribe(self, audio: Path, out_json: Path, *, initial_prompt: str = "", hotwords: str = "", progress=lambda f: None) -> AsrResult:
         self.calls.append((audio.name, initial_prompt))
+        self.hotwords = hotwords
         progress(0.5)
         progress(1.0)
         if audio.name.startswith("mic"):
@@ -77,7 +78,7 @@ class FakeSummarizer:
         self.fail = fail
         self.seen: list[list[str]] = []
 
-    def summarize(self, title, participants, lines):
+    def summarize(self, title, participants, lines, date=""):
         if self.fail:
             raise SummaryUnavailable("Ollama ist nicht erreichbar unter http://127.0.0.1:11434")
         self.seen.append(lines)
@@ -206,16 +207,20 @@ def test_silent_remote_track(tmp_path: Path, profiles: ProfileStore):
     assert "Gegenseite" in rec.transcript_path.read_text(encoding="utf-8")
 
 
-def test_rediarize_invalidates_manual_assignments(tmp_path: Path, profiles: ProfileStore):
+def test_manual_assignments_survive_retranscribe_and_rediarize(tmp_path: Path, profiles: ProfileStore):
     rec = recording_with_voices(tmp_path / "r", 330, 550)
     pipeline, _, _ = make_pipeline(profiles)
     pipeline.run(rec)
     apply_assignments(rec, [Assignment("S1", "Anna Beispiel", save_profile=False)], profiles, lambda: pipeline.run(rec, {"render"}))
     assert rec.load_speakers()["S1"].name == "Anna Beispiel"
-    pipeline.run(rec, {"identify", "render"})  # manual assignment survives re-identification
+    pipeline.run(rec, {"transcribe", "identify", "render"})  # re-transcription keeps the diarization
     assert rec.load_speakers()["S1"].source == "manual"
-    pipeline.run(rec, {"diarize", "identify", "render"})
-    assert rec.load_speakers()["S1"].name == ""
+    result = pipeline.run(rec, {"diarize", "identify", "render"})  # same clusters again -> carried over
+    sp = rec.load_speakers()
+    assert sp["S1"].name == "Anna Beispiel" and sp["S1"].source == "manual" and sp["S1"].label == "Sprecher 1"
+    assert sp["S2"].name == ""
+    assert any("übernommen" in m for m in result.messages)
+    assert "Anna Beispiel:** Hallo, erste Stimme." in rec.transcript_path.read_text(encoding="utf-8")
 
 
 def test_crash_recovery_detection(tmp_path: Path, profiles: ProfileStore):

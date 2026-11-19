@@ -54,6 +54,8 @@ class TrayIcon:
                 pystray.Menu.SEPARATOR,
                 item("Letzte Aufnahme: Sprecher zuordnen …", act("review_last")),
                 item("Letzte Aufnahme: Zusammenfassung neu erstellen", act("resummarize_last")),
+                item("Letzte Aufnahme: mit aktuellen Einstellungen neu transkribieren", act("retranscribe_last")),
+                item("Letzte Aufnahme: Zusammenfassung an SharePoint übergeben \u2026", act("handoff_last")),
                 item("Letzte Aufnahme: komplett neu verarbeiten", act("reprocess_last")),
                 item("Aufnahmeordner öffnen", act("open_folder")),
                 pystray.Menu.SEPARATOR,

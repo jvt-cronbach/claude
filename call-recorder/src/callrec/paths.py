@@ -97,3 +97,19 @@ def cloud_sync_root_for(path: Path, environ: dict[str, str] | None = None) -> Pa
     if any(part.lower().startswith("onedrive") for part in resolved.parts):
         return resolved
     return None
+
+
+def presets_dir() -> Path:
+    return config_dir() / "presets"
+
+
+def glossary_file() -> Path:
+    return config_dir() / "glossary.txt"
+
+
+def replacements_file() -> Path:
+    return config_dir() / "replacements.txt"
+
+
+def prompts_dir() -> Path:
+    return config_dir() / "prompts"
