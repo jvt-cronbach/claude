@@ -211,6 +211,64 @@ def test_network_error_message():
         provider(FakeApi(boom), max_attempts=2).chat("claude-opus-5-5", [{"role": "user", "content": "x"}], {})
 
 
+def _stream_with_error(etype: str) -> Any:
+    head = sse(["Teil"]).split(b"event: message_delta")[0]
+    err = json.dumps({"type": "error", "error": {"type": etype, "message": "Overloaded"}})
+    return httpx2.Response(200, content=head + f"event: error\ndata: {err}\n\n".encode(),
+                           headers={"content-type": "text/event-stream"})
+
+
+def test_mid_stream_overload_is_retried():
+    """The API reports overload inside a 200 stream; the SDK raises a plain APIStatusError(200) for it."""
+    api = FakeApi(_stream_with_error("overloaded_error"), ok_stream("fertig"))
+    p = provider(api)
+    assert p.chat("claude-opus-5-5", [{"role": "user", "content": "x"}], {}) == "fertig"
+    assert len(api.requests) == 2 and len(p.sleeps) == 1  # type: ignore[attr-defined]
+    with pytest.raises(AnthropicError, match="überlastet"):
+        provider(FakeApi(_stream_with_error("overloaded_error")), max_attempts=2).chat(
+            "claude-opus-5-5", [{"role": "user", "content": "x"}], {})
+    api3 = FakeApi(_stream_with_error("invalid_request_error"))
+    with pytest.raises(AnthropicError):
+        provider(api3).chat("claude-opus-5-5", [{"role": "user", "content": "x"}], {})
+    assert len(api3.requests) == 1
+
+
+def test_connection_drop_during_stream_is_retried():
+    class Broken(httpx2.SyncByteStream):
+        def __iter__(self):  # type: ignore[no-untyped-def]
+            yield sse(["Teil"]).split(b"event: content_block_stop")[0]
+            raise httpx2.ReadError("connection reset")
+
+    def broken(request: Any) -> Any:
+        return httpx2.Response(200, stream=Broken(), headers={"content-type": "text/event-stream"})
+
+    api = FakeApi(broken, ok_stream("fertig"))
+    assert provider(api).chat("claude-opus-5-5", [{"role": "user", "content": "x"}], {}) == "fertig"
+    assert len(api.requests) == 2
+    with pytest.raises(AnthropicError, match="unterbrochen"):
+        provider(FakeApi(broken), max_attempts=1).chat("claude-opus-5-5", [{"role": "user", "content": "x"}], {})
+
+
+def test_sdk_debug_logging_cannot_put_transcripts_into_the_log():
+    from callrec.llm_anthropic import _sdk
+
+    logging.getLogger("anthropic").setLevel(logging.DEBUG)  # what ANTHROPIC_LOG=debug does on SDK import
+    logging.getLogger("httpx2").setLevel(logging.DEBUG)
+    _sdk()
+    assert logging.getLogger("anthropic").level >= logging.INFO
+    assert logging.getLogger("httpx2").level >= logging.INFO
+
+
+def test_fallback_detected_from_usage_iterations():
+    body = sse(["ok"]).replace(b'"usage": {"output_tokens": 345}',
+                               b'"usage": {"output_tokens": 345, "iterations": [{"type": "fallback_message", '
+                               b'"input_tokens": 1, "output_tokens": 2}]}')
+    api = FakeApi(httpx2.Response(200, content=body, headers={"content-type": "text/event-stream"}))
+    p = provider(api)
+    assert p.chat("claude-opus-5-5", [{"role": "user", "content": "x"}], {}) == "ok"
+    assert p.used_fallback
+
+
 def test_missing_key():
     with pytest.raises(AnthropicError, match="Kein Anthropic-API-Schlüssel"):
         AnthropicProvider("").chat("claude-opus-5-5", [{"role": "user", "content": "x"}], {})

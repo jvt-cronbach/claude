@@ -30,6 +30,15 @@ class RedactingFilter(logging.Filter):
         return True
 
 
+class RedactingFormatter(logging.Formatter):
+    """Redacts keys in the *formatted* record, i.e. also in tracebacks (``exc_info``) that the filter cannot see."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        from callrec.apikey import redact
+
+        return redact(super().format(record))
+
+
 def has_bom(path: Path) -> bool:
     try:
         with path.open("rb") as fh:
@@ -48,10 +57,16 @@ def setup_logging(level: int = logging.INFO, log_dir: Path | None = None, consol
         return log_file
     root = logging.getLogger()
     root.setLevel(level)
-    fmt = logging.Formatter("%(asctime)s %(levelname)-7s [%(threadName)s] %(name)s: %(message)s")
+    fmt = RedactingFormatter("%(asctime)s %(levelname)-7s [%(threadName)s] %(name)s: %(message)s")
     fh = logging.handlers.RotatingFileHandler(log_file, maxBytes=5_000_000, backupCount=5, encoding=LOG_ENCODING)
     if log_file.exists() and log_file.stat().st_size > 0 and not has_bom(log_file):
-        fh.doRollover()  # an older log without BOM becomes callrec.log.1; the new file starts with a BOM
+        try:
+            fh.doRollover()  # an older log without BOM becomes callrec.log.1; the new file starts with a BOM
+        except OSError:
+            # e.g. Windows: another CallRecorder process (old tray app, worker) still has the file open -
+            # keep appending to the old file instead of failing to start (BOM follows on the next rollover)
+            if fh.stream is None:
+                fh.stream = fh._open()
     fh.setFormatter(fmt)
     redacting = RedactingFilter()
     fh.addFilter(redacting)

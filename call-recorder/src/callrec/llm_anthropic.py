@@ -72,7 +72,27 @@ def _sdk() -> Any:
         import anthropic
     except ImportError as exc:  # pragma: no cover - dependency is pinned in requirements.txt
         raise AnthropicError("Das Paket 'anthropic' ist nicht installiert (setup.ps1 erneut ausführen).") from exc
+    # The SDK raises its own loggers to DEBUG on import when ANTHROPIC_LOG=debug is set; at DEBUG it
+    # logs the full request options (i.e. the transcript) - keep them at INFO or above.
+    for name in ("anthropic", "httpx2", "httpcore2"):
+        lg = logging.getLogger(name)
+        if lg.level < logging.INFO:
+            lg.setLevel(logging.INFO)
     return anthropic
+
+
+# Error types the API sends inside a 200 stream (SSE "error" event); the SDK raises them as a plain
+# APIStatusError with status 200, so they are recognised by ``type`` (see _streaming.py / make_status_error).
+_RETRYABLE_STREAM_ERROR_TYPES = ("overloaded_error", "api_error")
+
+
+def _transport_error(exc: BaseException) -> bool:
+    """Network failure *during* a stream: the SDK re-raises the raw httpx2 exception there."""
+    try:
+        import httpx2
+    except ImportError:  # pragma: no cover
+        return False
+    return isinstance(exc, httpx2.TransportError)
 
 
 def _guard_request(request: Any) -> None:
@@ -235,8 +255,18 @@ class AnthropicProvider:
                 "Keine Verbindung zu api.anthropic.com (Internet, Proxy oder Firewall prüfen). "
                 "Die Zusammenfassung kann später neu erstellt werden."
             )
+        if isinstance(exc, anthropic.APIStatusError) and getattr(exc, "type", None) in _RETRYABLE_STREAM_ERROR_TYPES:
+            return AnthropicError(
+                f"Anthropic ist gerade überlastet oder gestört ({exc.type}). "
+                "Bitte später erneut versuchen (Zusammenfassung neu erstellen)."
+            )
         if isinstance(exc, anthropic.APIStatusError):
             return AnthropicError(f"Fehler der Anthropic-API ({exc.status_code}): {getattr(exc, 'api_message', '') or exc}")
+        if _transport_error(exc):
+            return AnthropicError(
+                "Die Verbindung zu api.anthropic.com wurde während der Antwort unterbrochen "
+                f"({exc.__class__.__name__}). Die Zusammenfassung kann später neu erstellt werden."
+            )
         if isinstance(exc, RemoteEndpointRefused):
             return AnthropicError(str(exc))
         return AnthropicError(f"Unerwarteter Fehler bei der Anthropic-API: {exc.__class__.__name__}: {exc}")
@@ -246,7 +276,11 @@ class AnthropicProvider:
         if isinstance(exc, anthropic.RateLimitError):
             code = str(getattr(exc, "error_code", "") or "")
             return not any(c in code for c in _NON_RETRYABLE_429)
-        return isinstance(exc, (anthropic.InternalServerError, anthropic.APIConnectionError))
+        if isinstance(exc, (anthropic.InternalServerError, anthropic.APIConnectionError)):
+            return True
+        if isinstance(exc, anthropic.APIStatusError) and getattr(exc, "type", None) in _RETRYABLE_STREAM_ERROR_TYPES:
+            return True  # overloaded/api error sent mid-stream (HTTP 200)
+        return _transport_error(exc)
 
     # -- LlmProvider -------------------------------------------------------
     def list_models(self) -> list[str]:
@@ -320,7 +354,12 @@ class AnthropicProvider:
             self.usage["input_tokens"] += int(getattr(usage, "input_tokens", 0) or 0)
             self.usage["output_tokens"] += int(getattr(usage, "output_tokens", 0) or 0)
         self.last_served_model = str(getattr(final, "model", "") or model)
-        if any(getattr(b, "type", "") == "fallback" for b in (final.content or [])):
+        # served-by signal per the claude-api skill: a "fallback_message" entry in usage.iterations
+        # (the fallback content block is absent on sticky-served turns)
+        iterations = getattr(usage, "iterations", None) or []
+        if any(getattr(it, "type", "") == "fallback_message" for it in iterations) or any(
+            getattr(b, "type", "") == "fallback" for b in (final.content or [])
+        ):
             self.used_fallback = True
         stop = getattr(final, "stop_reason", None)
         if stop == "refusal":

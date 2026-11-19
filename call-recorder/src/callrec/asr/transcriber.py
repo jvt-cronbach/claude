@@ -84,6 +84,7 @@ class WorkerOutput:
     def __init__(self, progress: Callable[..., None]) -> None:
         self.progress = progress
         self.timing: dict[str, float] = {}
+        self.stage = ""  # last STAGE reported by the worker ("download" = failed while downloading)
 
     def _report(self, frac: float, msg: str = "") -> None:
         try:
@@ -103,6 +104,7 @@ class WorkerOutput:
             if kind == "PROGRESS":
                 self._report(float(parts[1]))
             elif kind == "STAGE" and len(parts) > 1:
+                self.stage = parts[1]
                 if parts[1] == "load":
                     self._report(-1.0, "Modell wird geladen")
                 elif parts[1] == "download":
@@ -234,7 +236,8 @@ class WhisperSubprocessTranscriber:
             msg = f"Transkription auf {device.upper()} fehlgeschlagen (Exit-Code {rc}), Details: {log_path}"
             log.warning(msg)
             errors.append(msg)
-            if device == "cuda":
+            if device == "cuda" and output.stage != "download":
+                # a failed model download (offline, Hub unreachable) says nothing about the GPU
                 WhisperSubprocessTranscriber._cuda_failed = True
                 self._on_cuda_failed(f"Transkription auf CUDA fehlgeschlagen (Exit-Code {rc})")
         raise TranscriptionError("; ".join(errors))

@@ -154,6 +154,21 @@ def test_cuda_failure_is_remembered_for_later_runs(tmp_path: Path):
     assert t.devices_to_try() == ["cpu"]
 
 
+def test_failed_model_download_on_cuda_does_not_mark_the_gpu_unusable(tmp_path: Path):
+    """Offline / Hub unreachable during the download must not disable the GPU permanently."""
+    script = tmp_path / "w.py"
+    script.write_text(
+        "import sys\nprint('STAGE load', flush=True)\nprint('STAGE download', flush=True)\nsys.exit(1)\n",
+        encoding="utf-8")
+    failed: list[str] = []
+    t = WhisperSubprocessTranscriber(TranscriptionConfig(), tmp_path / "m", [sys.executable, str(script)],
+                                     gpu_usable=lambda: True, on_cuda_failed=failed.append)
+    with pytest.raises(Exception, match="CUDA fehlgeschlagen.*CPU fehlgeschlagen"):
+        t.transcribe(tmp_path / "a.flac", tmp_path / "o.json")
+    assert failed == [] and not WhisperSubprocessTranscriber._cuda_failed
+    assert t.devices_to_try() == ["cuda", "cpu"]
+
+
 def test_worker_output_with_old_style_progress_callback():
     got: list[float] = []
     out = WorkerOutput(got.append)
@@ -234,6 +249,33 @@ def test_download_uses_same_files_and_cache_as_faster_whisper(tmp_path: Path):
     for pattern in seen["allow_patterns"]:
         assert f'"{pattern}"' in src  # identical file selection as faster_whisper.utils.download_model
     assert reports[-1][0] == 100
+
+
+def test_partial_files_of_a_killed_download_are_removed(tmp_path: Path):
+    """A killed worker cannot run huggingface_hub's cleanup; its unique *.incomplete file is never reused."""
+    import os
+
+    from huggingface_hub.file_download import repo_folder_name
+
+    from callrec.asr.download import remove_stale_partials, repo_for
+
+    repo = repo_for("large-v3-turbo")
+    blobs = tmp_path / "whisper" / repo_folder_name(repo_id=repo, repo_type="model") / "blobs"
+    blobs.mkdir(parents=True)
+    stale = blobs / "abc123.1a2b3c4d.incomplete"
+    stale.write_bytes(b"x" * 10)
+    os.utime(stale, (1_000, 1_000))
+    fresh = blobs / "abc123.9f8e7d6c.incomplete"  # possibly still written by another process
+    fresh.write_bytes(b"y")
+    done = blobs / "abc123"
+    done.write_bytes(b"model")
+
+    def fake_snapshot(repo, **kw):
+        return str(tmp_path / "snap")
+
+    download_whisper_model("large-v3-turbo", tmp_path / "whisper", lambda *r: None, snapshot_download=fake_snapshot)
+    assert not stale.exists() and fresh.exists() and done.exists()
+    assert remove_stale_partials(tmp_path / "nothing", repo) == 0
 
 
 def test_models_command_defaults_to_download():
@@ -334,6 +376,49 @@ def test_log_file_has_bom_and_old_log_is_rotated(tmp_path: Path):
             h.close()
             root.removeHandler(h)
         logging_setup._CONFIGURED = False
+
+
+def test_log_rotation_failure_does_not_prevent_start(tmp_path: Path, monkeypatch):
+    """Windows: another process still holds the old log open -> rename fails; logging must still work."""
+    import logging.handlers
+
+    from callrec import logging_setup
+
+    old = tmp_path / "callrec.log"
+    old.write_text("alter Eintrag ohne BOM\n", encoding="utf-8")
+
+    def locked(self, source, dest):  # type: ignore[no-untyped-def]
+        raise PermissionError(32, "Der Prozess kann nicht auf die Datei zugreifen")
+
+    monkeypatch.setattr(logging.handlers.RotatingFileHandler, "rotate", locked)
+    root = logging.getLogger()
+    before = list(root.handlers)
+    logging_setup._CONFIGURED = False
+    try:
+        path = logging_setup.setup_logging(log_dir=tmp_path, console=False)
+        logging.getLogger("callrec.test").warning("läuft trotzdem")
+        for h in root.handlers:
+            h.flush()
+        text = path.read_text(encoding="utf-8")
+        assert text.startswith("alter Eintrag") and "läuft trotzdem" in text
+    finally:
+        for h in [h for h in root.handlers if h not in before]:
+            h.close()
+            root.removeHandler(h)
+        logging_setup._CONFIGURED = False
+
+
+def test_log_redacts_keys_in_tracebacks(tmp_path: Path):
+    from callrec.logging_setup import RedactingFilter, RedactingFormatter
+
+    key = "sk-ant-api03-SECRET-0123456789abcdef"
+    try:
+        raise RuntimeError(f"kaputt mit {key}")
+    except RuntimeError:
+        rec = logging.LogRecord("x", logging.ERROR, "f", 1, "Fehler", None, sys.exc_info())
+    RedactingFilter().filter(rec)
+    out = RedactingFormatter("%(message)s").format(rec)
+    assert "RuntimeError" in out and key not in out and "sk-ant-***" in out
 
 
 # --- prompt templates (structured summary) ------------------------------------------------------

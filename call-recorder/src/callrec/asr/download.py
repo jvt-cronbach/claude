@@ -113,11 +113,40 @@ def is_local_path(model: str) -> bool:
     return Path(model).is_dir()
 
 
+STALE_PARTIAL_AGE_S = 600.0
+
+
+def remove_stale_partials(download_root: str | Path, repo: str, max_age_s: float = STALE_PARTIAL_AGE_S,
+                          now: float | None = None) -> int:
+    """Delete partial files left behind by a *killed* download.
+
+    huggingface_hub 2.4 writes each file to a process-unique ``<etag>.<random>.incomplete`` and only
+    removes it in a ``finally`` block. "Verarbeitung abbrechen" / app exit kill the worker
+    (TerminateProcess), so that cleanup never runs and every cancelled attempt would leave up to
+    ~3 GB that is never reused. Files still being written by another process are recent (or locked
+    on Windows) and are left alone.
+    """
+    blobs = Path(download_root) / ("models--" + repo.replace("/", "--")) / "blobs"
+    if not blobs.is_dir():
+        return 0
+    now = time.time() if now is None else now
+    removed = 0
+    for f in blobs.glob("*.incomplete"):
+        try:
+            if now - f.stat().st_mtime >= max_age_s:
+                f.unlink()
+                removed += 1
+        except OSError:  # in use by another download (Windows) or already gone
+            continue
+    return removed
+
+
 def download_whisper_model(model: str, download_root: str | Path, report: DownloadReport,
                            snapshot_download: Callable[..., str] | None = None) -> str:
     """Download (or complete) the model into ``download_root``; returns the snapshot folder."""
     if is_local_path(model):
         return model
+    remove_stale_partials(download_root, repo_for(model))
     if snapshot_download is None:
         from huggingface_hub import snapshot_download as hf_snapshot_download
 
