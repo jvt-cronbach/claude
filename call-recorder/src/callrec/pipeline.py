@@ -358,5 +358,8 @@ class Pipeline:
         settings = {"llm": llm, "transcript_version": tv["version"] if tv else None}
         fp = fingerprint({**settings, "input": fingerprint(lines)})
         adopt_legacy(rec, "summary")
-        n, _new = write_version(rec, "summary", render_summary_md(rec.title(), body, summarizer.model_name, created), fp, settings)
+        n, _new = write_version(rec, "summary", render_summary_md(
+            rec.title(), body, summarizer.model_name, created,
+            local=bool(getattr(getattr(summarizer, "provider", None), "is_local", True)),
+        ), fp, settings)
         rec.update_meta(["processing", "summary"], {**llm, "version": n, "finished_at": _now_iso()})

@@ -136,9 +136,10 @@ class LlmSummarizer:
 OllamaSummarizer = LlmSummarizer
 
 
-def render_summary_md(title: str, body: str, model: str, created: str) -> str:
+def render_summary_md(title: str, body: str, model: str, created: str, local: bool = True) -> str:
+    where = "lokal" if local else "auf einem entfernten, vom Nutzer freigegebenen Server"
     return (
         f"# Zusammenfassung: {title}\n\n"
-        f"_Automatisch lokal erstellt mit {model} am {created}. Bitte vor Weitergabe prüfen._\n\n"
+        f"_Automatisch {where} erstellt mit {model} am {created}. Bitte vor Weitergabe prüfen._\n\n"
         f"{body}\n"
     )

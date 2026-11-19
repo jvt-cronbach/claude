@@ -144,23 +144,92 @@ def test_review_and_profiles_dialogs(root, tmp_path: Path):
     assert store.all_profiles() == []
 
 
-def test_settings_dialog(root, tmp_path: Path):
+def test_settings_dialog_all_tabs_and_llm(root, tmp_path: Path):
     from callrec.config import Config, load_config, save_config
+    from callrec.ui import settings as st
 
     cfg = Config()
     path = tmp_path / "c.toml"
+    st.messagebox.showinfo = lambda *a, **k: None  # type: ignore[assignment]
+    st.messagebox.askyesno = lambda *a, **k: True  # type: ignore[assignment]
+    pulled = []
+
+    class FakeProvider:
+        can_pull = True
+
+        def list_models(self):
+            return ["gemma3:12b", "gemma3:4b"]
+
+        def version(self):
+            return "0.13.1"
+
+        def pull(self, model, progress):
+            progress("pulling manifest", None)
+            progress("pulling abc", 0.5)
+            progress("success", 1.0)
+            pulled.append(model)
+
+    dlg = st.SettingsDialog(root, cfg, ["Headset Mikrofon (Jabra)"], ["Kopfhörer (Jabra)"],
+                            lambda c: save_config(c, path), provider_factory=lambda c: FakeProvider())
+    tabs = [dlg.nb.tab(t, "text") for t in dlg.nb.tabs()]
+    assert tabs == ["Allgemein", "Transkription", "Sprecher", "Darstellung", "Zusammenfassung", "SharePoint"]
+    dlg.vars[("audio", "mic_device")].set("Headset Mikrofon (Jabra)")
+    dlg.vars[("transcription", "beam_size")].set("7")
+    dlg.vars[("transcription", "vad_threshold")].set("0,35")  # German decimal comma accepted
+    dlg.vars[("transcript", "timestamp_format")].set("mm:ss")
+    dlg.vars[("handoff", "folder")].set(str(tmp_path))
+    dlg.refresh_models()
+    dlg.model_var.set("gemma3:4b")
+    dlg.pull_model()
+
+    def wait_then_save():
+        if not pulled or "Ollama-Version 0.13.1" not in dlg.status_var.get():
+            root.after(100, wait_then_save)
+            return
+        assert "gemma3:4b" in dlg.model_combo.cget("values")
+        find(dlg.win, ttk.Button, "Speichern").invoke()
+
+    root.after(100, wait_then_save)
+    assert dlg.run() is True
+    c = load_config(path)
+    assert c.audio.mic_device == "Headset Mikrofon (Jabra)" and c.audio.loopback_device == "auto"
+    assert c.transcription.beam_size == 7 and c.transcription.vad_threshold == 0.35
+    assert c.transcript.timestamp_format == "mm:ss" and c.summary.model == "gemma3:4b"
+    assert c.handoff.folder == str(tmp_path) and c.general.preset == ""
+    assert pulled == ["gemma3:4b"]
+
+    bad = st.SettingsDialog(root, Config(), [], [], lambda c: None)
+    bad.vars[("transcription", "beam_size")].set("viele")
+    import pytest as _pytest
+
+    from callrec.config import ConfigError
+    with _pytest.raises(ConfigError):
+        bad.collect()
+    bad.win.destroy()
+
+
+def test_handoff_dialog(root, tmp_path: Path):
+    from tests.test_handoff import SECRET, processed_recording
+
+    rec = processed_recording(tmp_path / "recs")
+    from callrec.config import Config
+
+    cfg = Config()
+    cfg.handoff.folder = str(tmp_path)
     dialogs.messagebox.showinfo = lambda *a, **k: None  # type: ignore[assignment]
+    calls = []
 
     def drive():
         win = toplevel(root)
-        combos = [w for w in walk(win) if isinstance(w, ttk.Combobox)]
-        combos[0].set("Headset Mikrofon (Jabra)")
-        find(win, ttk.Button, "Speichern").invoke()
+        preview = find(win, tk.Text)
+        text = preview.get("1.0", "end")
+        assert "## Kurzfassung" in text and SECRET not in text
+        assert any("verlässt bewusst" in str(w.cget("text")) for w in walk(win) if isinstance(w, ttk.Label))
+        find(win, ttk.Button, "An SharePoint übergeben").invoke()
 
     root.after(200, drive)
-    assert dialogs.edit_settings(root, cfg, ["Headset Mikrofon (Jabra)"], ["Kopfhörer (Jabra)"], lambda c: save_config(c, path))
-    assert load_config(path).audio.mic_device == "Headset Mikrofon (Jabra)"
-    assert load_config(path).audio.loopback_device == "auto"
+    ok = dialogs.ask_handoff(root, rec, cfg, lambda: calls.append(1) or {"location": "X"})
+    assert ok and calls == [1]
 
 
 def test_tkui_keeps_pumping_while_modal_dialog_open(tmp_path: Path):

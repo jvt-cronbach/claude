@@ -99,3 +99,30 @@ def test_cli_config_and_event(tmp_path: Path, capsys):
     assert cli.main(["event", "--ics", str(ics)]) == 0
     out = capsys.readouterr().out
     assert "Projekt Jour fixe" in out and "_Projekt-Jour-fixe" in out
+
+
+def test_cli_handoff_preset_versions_llm(tmp_path: Path, capsys):
+    from callrec.config import Config, save_config
+    from tests.test_handoff import SECRET, processed_recording
+
+    share = tmp_path / "share"
+    share.mkdir()
+    cfg = Config()
+    cfg.handoff.folder = str(share)
+    save_config(cfg)
+    rec = processed_recording(tmp_path / "recs")
+    assert cli.main(["handoff", str(rec.folder), "--yes"]) == 0
+    out = capsys.readouterr().out
+    assert "verlässt bewusst" in out and SECRET not in out
+    assert (share / f"{rec.folder.name}.md").exists() and rec.load_meta()["handoffs"]
+
+    assert cli.main(["preset", "save", "Genau"]) == 0
+    assert cli.main(["preset", "list"]) == 0
+    assert "Genau" in capsys.readouterr().out
+    assert cli.main(["versions", str(rec.folder)]) == 0
+    assert "summary:" in capsys.readouterr().out
+    # nothing listens on 127.0.0.1:11434 here -> graceful message, no crash
+    assert cli.main(["llm", "models"]) == 1
+    assert "nicht erreichbar" in capsys.readouterr().out
+    assert cli.main(["config", "files"]) == 0
+    assert "glossary.txt" in capsys.readouterr().out

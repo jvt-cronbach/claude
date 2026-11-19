@@ -10,9 +10,12 @@ anschließend **vollständig lokal**:
 - Metadaten inkl. Einwilligungsbestätigung (`meta.json`),
 - die Audiospuren (FLAC oder Opus).
 
-Audio, Transkripte und Zusammenfassungen verlassen den Rechner nicht. Netzwerkzugriffe gibt
-es nur für den Kalender (Microsoft Graph, nur Termin-Metadaten) und für das einmalige
-Herunterladen der Modelle.
+Audio, Transkripte und Stimmprofile verlassen den Rechner nicht. Netzwerkzugriffe gibt
+es nur für den Kalender (Microsoft Graph, nur Termin-Metadaten), für das Herunterladen der
+Modelle – und für **einen einzigen, bewusst ausgelösten Schritt**: Auf Klick kann die
+**Zusammenfassung** (nur sie) an einen SharePoint-Ordner übergeben werden, damit z. B. ein
+Microsoft-365-Assistent sie lesen kann (Abschnitt 10). Dieser Schritt verlässt den rein
+lokalen Bereich absichtlich und geschieht nie automatisch.
 
 ---
 
@@ -22,16 +25,18 @@ Herunterladen der Modelle.
 2. [So funktioniert es](#2-so-funktioniert-es)
 3. [Voraussetzungen](#3-voraussetzungen)
 4. [Installation](#4-installation)
-5. [Entra-App-Registrierung (Kalender)](#5-entra-app-registrierung-kalender)
-6. [Ollama für die Zusammenfassung](#6-ollama-für-die-zusammenfassung)
+5. [Entra-App-Registrierung (Kalender, optional SharePoint-Upload)](#5-entra-app-registrierung-kalender-optional-sharepoint-upload)
+6. [Sprachmodell für die Zusammenfassung](#6-sprachmodell-für-die-zusammenfassung)
 7. [Erster Start und Bedienung](#7-erster-start-und-bedienung)
 8. [Sprecher zuordnen und Stimmprofile](#8-sprecher-zuordnen-und-stimmprofile)
-9. [Ergebnisse einer Aufnahme](#9-ergebnisse-einer-aufnahme)
-10. [Kommandozeile](#10-kommandozeile)
-11. [Konfiguration](#11-konfiguration)
-12. [Wo liegen welche Daten?](#12-wo-liegen-welche-daten)
-13. [Fehlerbehebung](#13-fehlerbehebung)
-14. [Für Entwickler](#14-für-entwickler)
+9. [Transkript schrittweise verbessern](#9-transkript-schrittweise-verbessern)
+10. [Zusammenfassung an SharePoint übergeben](#10-zusammenfassung-an-sharepoint-übergeben)
+11. [Ergebnisse einer Aufnahme](#11-ergebnisse-einer-aufnahme)
+12. [Kommandozeile](#12-kommandozeile)
+13. [Konfiguration](#13-konfiguration)
+14. [Wo liegen welche Daten?](#14-wo-liegen-welche-daten)
+15. [Fehlerbehebung](#15-fehlerbehebung)
+16. [Für Entwickler](#16-für-entwickler)
 
 ---
 
@@ -40,7 +45,9 @@ Herunterladen der Modelle.
 **Einwilligung (§ 201 StGB).** Wer das nichtöffentlich gesprochene Wort eines anderen
 unbefugt aufnimmt, macht sich strafbar. Nehmen Sie deshalb nur auf, wenn **alle**
 Teilnehmenden vorher informiert wurden und **ausdrücklich zugestimmt** haben – am besten
-zu Beginn des Gesprächs, sodass die Zustimmung auch in der Aufnahme enthalten ist.
+zu Beginn des Gesprächs, sodass die Zustimmung auch in der Aufnahme enthalten ist. Wenn Sie
+Zusammenfassungen an SharePoint übergeben (Abschnitt 10), sollten die Teilnehmenden auch
+darüber informiert sein.
 CallRecorder fragt vor **jeder** Aufnahme nach dieser Bestätigung. Ohne Häkchen startet
 keine Aufnahme; die Abfrage lässt sich bewusst nicht per Konfiguration abschalten.
 Die Bestätigung wird mit Zeitstempel, Ihrem Namen und der Teilnehmerliste in `meta.json`
@@ -152,7 +159,7 @@ Die Mikrofonspur ist immer **Sie** (Name aus dem Microsoft-Konto bzw. den Einste
 
 ---
 
-## 5. Entra-App-Registrierung (Kalender)
+## 5. Entra-App-Registrierung (Kalender, optional SharePoint-Upload)
 
 CallRecorder liest Ihren Kalender mit **delegierten** Rechten (nur Ihr eigener Kalender,
 nur lesend). Es wird **kein** geheimer Schlüssel benötigt („öffentlicher Client“).
@@ -193,6 +200,52 @@ nur lesend). Es wird **kein** geheimer Schlüssel benötigt („öffentlicher Cl
 
    Alternativ Tray-Menü → **Bei Microsoft anmelden …**
 
+### Optional: Berechtigung für den direkten SharePoint-Upload
+
+Nur nötig, wenn Sie die Zusammenfassung **per Graph-Upload** übergeben wollen
+(`[handoff] mode = "graph"`). Für das empfohlene Standardverfahren – Kopieren in einen von
+OneDrive synchronisierten Ordner – braucht die App **keine** zusätzliche Berechtigung.
+
+CallRecorder fordert die Datei-Berechtigung **erst beim ersten Upload** an (inkrementelle
+Zustimmung); die normale Anmeldung fragt weiterhin nur `Calendars.Read` und `User.Read` an.
+
+Empfohlen (am engsten): **`Sites.Selected` (delegiert)**. Damit darf die App nur in
+SharePoint-Websites schreiben, die ihr ein Administrator ausdrücklich freigegeben hat – und
+auch dort nur, soweit Ihr eigenes Benutzerkonto Zugriff hat.
+
+1. App-Registrierung → **API-Berechtigungen → Berechtigung hinzufügen → Microsoft Graph →
+   Delegierte Berechtigungen** → `Sites.Selected` → Administratorzustimmung erteilen.
+2. Website-ID und Bibliotheks-(Laufwerks-)ID ermitteln, z. B. im
+   [Graph Explorer](https://developer.microsoft.com/graph/graph-explorer) (als Administrator angemeldet):
+   - `GET https://graph.microsoft.com/v1.0/sites/firma.sharepoint.com:/sites/Team` → `id`
+   - `GET https://graph.microsoft.com/v1.0/sites/{site-id}/drives` → `id` der Bibliothek
+     (z. B. „Dokumente“; beginnt meist mit `b!`)
+3. Der App Schreibrecht **auf genau diese Website** geben (benötigt im Graph Explorer
+   `Sites.FullControl.All` und eine SharePoint-Administratorrolle):
+
+   ```http
+   POST https://graph.microsoft.com/v1.0/sites/{site-id}/permissions
+   Content-Type: application/json
+
+   { "roles": ["write"],
+     "grantedToIdentities": [{ "application": { "id": "<client_id>", "displayName": "CallRecorder (lokal)" } }] }
+   ```
+
+4. In `config.toml`:
+
+   ```toml
+   [handoff]
+   mode = "graph"
+   graph_drive_id = "b!...."
+   graph_folder = "Gesprächsprotokolle"
+   graph_scope = "Sites.Selected"
+   ```
+
+Einfachere, aber **breitere** Alternative: `graph_scope = "Files.ReadWrite.All"` (delegiert;
+die App kann dann alle Dateien lesen und schreiben, auf die Sie Zugriff haben). Schritt 3
+entfällt. Hochgeladen wird mit `PUT /drives/{drive-id}/root:/{Ordner}/{Datei}:/content`
+(eine vorhandene Datei gleichen Namens wird ersetzt).
+
 **Terminauswahl:** Berücksichtigt werden Termine, die gerade laufen, in den nächsten
 10 Minuten beginnen oder vor höchstens 10 Minuten endeten (einstellbar). Abgesagte,
 abgelehnte, ganztägige und „frei“-Termine werden ignoriert. Bei Überschneidungen gewinnt:
@@ -202,29 +255,50 @@ sonst Eingabe von Hand oder `.ics`-Import.
 
 ---
 
-## 6. Ollama für die Zusammenfassung
+## 6. Sprachmodell für die Zusammenfassung
 
-1. Ollama für Windows installieren: <https://ollama.com/download> (oder
-   `winget install Ollama.Ollama`). Ollama läuft danach im Hintergrund auf
-   `http://127.0.0.1:11434`.
-2. Modell laden (Standard in der Konfiguration: `gemma3:12b`, ca. 8 GB):
+Die Zusammenfassung erzeugt ein **lokal laufendes** Sprachmodell. Zwei Anbieter sind möglich
+(`[summary] provider`):
+
+| Anbieter | Typische Adresse | Hinweis |
+|---|---|---|
+| `ollama` (Standard) | `http://127.0.0.1:11434` | Modelle direkt aus CallRecorder laden/aktualisieren |
+| `openai` – beliebiger OpenAI-kompatibler Server | LM Studio: `http://127.0.0.1:1234/v1`, llama.cpp `llama-server`: `http://127.0.0.1:9931/v1` (Standardport laut aktueller llama.cpp-Doku) | Modelle in der Oberfläche des Servers laden |
+
+**Ollama einrichten**
+
+1. Installieren: <https://ollama.com/download> oder `winget install Ollama.Ollama`.
+2. Modell wählen und laden – entweder in CallRecorder unter **Einstellungen →
+   Zusammenfassung** („Installierte Modelle abfragen“, Modell eintragen, „Modell laden /
+   aktualisieren“ mit Fortschrittsanzeige) oder in PowerShell:
 
    ```powershell
-   ollama pull gemma3:12b
+   ollama pull gemma3:12b          # Standard, ca. 8 GB
+   .venv\Scripts\python -m callrec llm models
+   .venv\Scripts\python -m callrec llm pull gemma3:4b   # kleiner, für wenig Grafikspeicher
    ```
 
-   Bei weniger Grafikspeicher z. B. `gemma3:4b` oder `qwen2.5:7b` laden und in
-   `config.toml` unter `[summary] model = "..."` eintragen.
-3. Läuft Ollama nicht oder fehlt das Modell, wird die Zusammenfassung **übersprungen** (mit
-   Hinweis im Tray und Vermerk in `meta.json`). Später nachholen:
-   Tray-Menü **„Letzte Aufnahme: Zusammenfassung neu erstellen“** oder
+   Ein erneutes „Laden“ eines vorhandenen Modells aktualisiert es auf den neuesten Stand.
+3. **Ollama selbst aktualisieren:** CallRecorder zeigt die installierte Version an
+   (`callrec llm version`), aktualisiert aber keine Software von sich aus. Update:
 
    ```powershell
-   .venv\Scripts\python -m callrec summarize "C:\Users\<Sie>\Anrufaufnahmen\2026-11-19_1400_Projekt-Jour-fixe"
+   winget upgrade Ollama.Ollama
    ```
 
-Aus Datenschutzgründen akzeptiert CallRecorder nur Ollama-Adressen auf diesem Rechner
-(`localhost`, `127.0.0.1`, `::1`); Proxy-Einstellungen werden dafür ignoriert.
+Läuft der Server nicht oder fehlt das Modell, wird die Zusammenfassung **übersprungen** (mit
+Hinweis im Tray und Vermerk in `meta.json`). Später nachholen: Tray-Menü
+**„Letzte Aufnahme: Zusammenfassung neu erstellen“** oder `callrec summarize <Ordner>`.
+
+**Nur lokal:** CallRecorder akzeptiert nur Adressen auf diesem Rechner (`localhost`,
+`127.x.x.x`, `::1`) und ignoriert dafür Proxy-Einstellungen. Ein Server auf einem anderen
+Rechner lässt sich nur mit der absichtlich deutlich benannten Einstellung
+`allow_remote_endpoint_data_leaves_this_computer = true` nutzen – dann **verlassen
+Gesprächsinhalte diesen Rechner**; das Protokoll und die Einstellungen weisen darauf hin, und
+`summary.md` vermerkt es.
+
+**Anweisungen anpassen:** Die Texte, die das Modell bekommt, liegen als bearbeitbare Dateien in
+`%APPDATA%\CallRecorder\prompts\` (siehe Abschnitt 9).
 
 ---
 
@@ -298,7 +372,91 @@ Profile ansehen/löschen: Tray-Menü **„Stimmprofile verwalten …“** oder
 
 ---
 
-## 9. Ergebnisse einer Aufnahme
+## 9. Transkript schrittweise verbessern
+
+Alle Stellschrauben gibt es in **Einstellungen** (Reiter *Transkription*, *Sprecher*,
+*Darstellung*, *Zusammenfassung*) und als einfache Textdateien:
+
+| Datei (`%APPDATA%\CallRecorder\…`) | Inhalt |
+|---|---|
+| `config.toml` | alle Einstellungen, siehe Abschnitt 13 |
+| `glossary.txt` | Glossar: ein Begriff pro Zeile (Namen, Firma, Produkte, Fachwörter) – wird Whisper als „Hotwords“ mitgegeben |
+| `replacements.txt` | Korrekturliste für wiederkehrende Fehler: `falsch => richtig` (ganzes Wort, Groß/Klein egal) oder `re: Ausdruck => Ersatz` |
+| `prompts\summary_system.txt`, `summary_final.txt`, `summary_chunk.txt` | Anweisungen für die Zusammenfassung; Platzhalter `{title}`, `{date}`, `{participants}`, `{material}` bzw. `{i}`, `{n}`, `{chunk}` |
+| `presets\<Name>.toml` | benannte Presets |
+
+**Was wirkt worauf?**
+
+- *Whisper-Modell, Sprache, Beam-Größe*: Genauigkeit vs. Geschwindigkeit.
+- *Zusatz-Prompt* (`initial_prompt`) und *Teilnehmernamen als Prompt*: Kontext für Whisper.
+- *Glossar*: richtige Schreibweise von Eigennamen und Fachbegriffen.
+- *VAD-Schwelle / Mindestpause / Polster*: wie Sprache und Stille erkannt werden (abgeschnittene
+  Satzanfänge → Polster erhöhen; Störgeräusche als Text → Schwelle erhöhen).
+- *Halluzinationsschutz*: unterdrückt erfundene Sätze in langen Pausen.
+- *Clusterschwelle / feste Sprecheranzahl*: Sprechertrennung der Gegenseite;
+  *Schwelle Wiedererkennung / Bonus*: Abgleich mit Stimmprofilen.
+- *Darstellung*: Zeitstempel (`hh:mm:ss`, `mm:ss`, `none`), Zusammenfassen aufeinanderfolgender
+  Beiträge und maximale Pause, Absatzlänge, Korrekturliste an/aus.
+
+**Presets:** Einstellungen → „Als Preset speichern …“ (oder `callrec preset save Genau`).
+Ein Preset enthält nur diese Abstimmungs-Einstellungen (nie Geräte, Kalender oder
+SharePoint). Aktivieren unter *Allgemein → Aktives Preset* oder einmalig:
+`callrec retranscribe <Ordner> --preset Genau`.
+
+**Vorher/Nachher vergleichen:** Wird eine Aufnahme mit geänderten Einstellungen neu verarbeitet
+(Tray: „Letzte Aufnahme: mit aktuellen Einstellungen neu transkribieren“ oder
+`callrec retranscribe <Ordner>`), entsteht eine **neue Version**: `transcript.v2.md`,
+`summary.v2.md` … Die bisherigen Versionen bleiben erhalten, `transcript.md`/`summary.md`
+zeigen immer die neueste. In `meta.json` → `versions` steht zu jeder Version, mit welchen
+Einstellungen (Modell, Prompt, Glossar, VAD, Korrekturen, Preset, Sprachmodell …) sie erstellt
+wurde; `callrec versions <Ordner>` listet sie auf. Das vorherige Whisper-Rohergebnis wird in
+`data\archive\` aufbewahrt. Ein reines Neu-Zeichnen nach einer Sprecherzuordnung erzeugt
+keine neue Version.
+
+**Sprecherzuordnungen bleiben erhalten:** Beim Neu-Transkribieren bleibt die Sprechertrennung
+unverändert, manuelle Zuordnungen gelten weiter. Wird die Sprechertrennung neu berechnet
+(`--steps rediarize`), werden manuelle Zuordnungen auf die neuen Sprecher übertragen, wenn
+deren Redezeiten überwiegend übereinstimmen; sonst erscheinen sie wieder als „Sprecher N“.
+
+---
+
+## 10. Zusammenfassung an SharePoint übergeben
+
+> **Bewusste Ausnahme von „nur lokal“.** Dieser Schritt überträgt Daten vom Rechner nach
+> Microsoft 365. Er geschieht **nur auf Ihren Klick** und überträgt **ausschließlich die
+> Zusammenfassung** – nie Transkript, Audio, Stimmprofile, Sprecherdaten oder `meta.json`.
+
+Zweck: Ihr Claude-Assistent (oder jede andere Anwendung) kann die Zusammenfassungen über den
+Microsoft-365-Connector in SharePoint lesen.
+
+Übergeben wird **eine Markdown-Datei**, benannt wie die Aufnahme
+(`2026-11-19_1400_Projekt-Jour-fixe.md`), mit kurzem Kopf (Titel, Datum/Uhrzeit,
+Teilnehmende – Namen, E-Mails nur bei `include_participant_emails = true` –, Hinweis auf die
+bestätigte Einwilligung, Version und Modell) und dem Inhalt von `summary.md`. Technisch kann
+die Übergabefunktion nur ein „Zusammenfassungs-Dokument“ annehmen, das ausschließlich aus
+`summary.md` gebaut wird; das ist durch Tests abgesichert.
+
+**Auslösen:** Tray-Menü **„Letzte Aufnahme: Zusammenfassung an SharePoint übergeben …“**,
+Schaltfläche im Sprecher-Zuordnungsdialog oder `callrec handoff <Ordner>`. Es erscheint
+immer eine Vorschau der Datei; erst „An SharePoint übergeben“ (bzw. Eingabe von `ja`) startet
+die Übertragung. Wurde die Zusammenfassung neu erstellt, kann sie erneut übergeben werden –
+die Datei in SharePoint wird dann ersetzt. Jede Übergabe (Zeit, Ziel, Version, Prüfsumme)
+wird in `meta.json` unter `handoffs` vermerkt.
+
+**Verfahren (Einstellungen → SharePoint):**
+
+1. **`folder` (Standard, empfohlen):** Die Datei wird in einen lokalen Ordner kopiert, den
+   OneDrive mit einer SharePoint-Bibliothek synchronisiert. Einrichtung: In SharePoint die
+   Bibliothek/den Ordner öffnen → **Synchronisieren** → im Explorer erscheint z. B. `C:\Users\<Sie>\Firma\Team - Dokumente\Protokolle`.
+   Diesen Pfad als *OneDrive-synchronisierter Ordner* eintragen. Keine zusätzliche
+   App-Berechtigung nötig. (Den **Aufnahme**ordner bitte weiterhin nicht in OneDrive legen.)
+2. **`graph`:** direkter Upload über Microsoft Graph – siehe Abschnitt 5 „Optional:
+   Berechtigung für den direkten SharePoint-Upload“. Beim ersten Upload öffnet sich einmalig
+   der Browser für die zusätzliche Zustimmung.
+
+---
+
+## 11. Ergebnisse einer Aufnahme
 
 ```
 %USERPROFILE%\Anrufaufnahmen\2026-11-19_1400_Projekt-Jour-fixe\
@@ -306,14 +464,17 @@ Profile ansehen/löschen: Tray-Menü **„Stimmprofile verwalten …“** oder
 │   ├── mic.flac          Ihre Spur
 │   ├── remote.flac       Gegenseite (Loopback)
 │   └── mix.flac          beide Spuren gemischt (zum Anhören)
-├── transcript.md         Transkript mit Namen und Zeitstempeln
+├── transcript.md         Transkript mit Namen und Zeitstempeln (neueste Version)
+├── transcript.v1.md …    alle Versionen (Abschnitt 9)
 ├── summary.md            Kurzfassung, Entscheidungen, Aufgaben (mit Verantwortlichen), offene Punkte
-├── meta.json             Termin, Teilnehmende, Einwilligung, Geräte, Modelle, Verarbeitungsstatus
+├── summary.v1.md …       alle Versionen
+├── meta.json             Termin, Teilnehmende, Einwilligung, Geräte, Modelle, Versionen mit Einstellungen, Übergaben
 └── data\                 Zwischenergebnisse für die Nachbearbeitung
     ├── asr_mic.json / asr_remote.json   Whisper-Ergebnis mit Wort-Zeitstempeln
     ├── diarization.json                 Sprecherabschnitte der Gegenseite
     ├── speakers.json                    Zuordnung Sprecher → Name
     ├── utterances.json                  zusammengeführte Äußerungen
+    ├── archive\                         frühere Whisper-Ergebnisse
     └── speaker_embeddings.npz           Stimm-Embeddings dieses Gesprächs (biometrisch!)
 ```
 
@@ -322,7 +483,7 @@ werden nach erfolgreicher Umwandlung gelöscht (`audio.keep_wav = true` behält 
 
 ---
 
-## 10. Kommandozeile
+## 12. Kommandozeile
 
 Alle Befehle mit `.venv\Scripts\python -m callrec …` (bzw. `callrec …` in der aktivierten
 Umgebung):
@@ -331,8 +492,12 @@ Umgebung):
 |---|---|
 | `tray` (oder ohne Argument) | Tray-Anwendung starten |
 | `record [--title T] [--participants "A <a@x>; B"] [--ics F] [--no-calendar]` | Aufnahme in der Konsole (Einwilligung durch Eingabe von `ja`) |
-| `process <Ordner> [--steps …] [--model M] [--device cuda\|cpu] [--language de\|auto]` | (Neu-)Verarbeitung; Schritte: `finalize,transcribe,diarize,identify,render,summarize` oder Presets `all`, `retranscribe`, `rediarize`, `resummarize`, `render` |
-| `retranscribe <Ordner>` | neu transkribieren (inkl. Transkript und Zusammenfassung) |
+| `process <Ordner> [--steps …] [--model M] [--device cuda\|cpu] [--language de\|auto] [--preset P]` | (Neu-)Verarbeitung; Schritte: `finalize,transcribe,diarize,identify,render,summarize` oder Presets `all`, `retranscribe`, `rediarize`, `resummarize`, `render` |
+| `retranscribe <Ordner> [--preset P]` | mit aktuellen Einstellungen neu transkribieren (neue Version, alte bleibt) |
+| `versions <Ordner>` | Versionen von Transkript und Zusammenfassung mit Einstellungen |
+| `handoff <Ordner> [--yes]` | **nur** die Zusammenfassung an SharePoint übergeben (mit Vorschau/Rückfrage) |
+| `llm models \| version \| pull [Modell]` | Sprachmodelle anzeigen, Ollama-Version, Modell laden/aktualisieren |
+| `preset list \| save <Name> \| show <Name>` | Presets verwalten |
 | `summarize <Ordner>` | Zusammenfassung neu erstellen |
 | `repair <Ordner>` | unterbrochene Aufnahme reparieren und Audio abschließen |
 | `speakers <Ordner>` | erkannte Sprecher anzeigen |
@@ -345,11 +510,11 @@ Umgebung):
 | `devices` | Audiogeräte und aktuelle Auswahl |
 | `models download [--whisper]` | Modelle vorab laden |
 | `list` | Aufnahmen und Status |
-| `config path \| check` | Konfigurationsdatei anzeigen/prüfen |
+| `config path \| check \| files` | Konfigurationsdatei anzeigen/prüfen; `files` legt Glossar, Korrekturliste und Vorlagen an |
 
 ---
 
-## 11. Konfiguration
+## 13. Konfiguration
 
 Datei: `%APPDATA%\CallRecorder\config.toml` (wird beim ersten Start mit Kommentaren angelegt).
 Wichtige Einstellungen:
@@ -367,7 +532,19 @@ Wichtige Einstellungen:
 | `diarization.cluster_threshold` | `0.4` | kleiner = Stimmen werden feiner getrennt |
 | `diarization.num_speakers` | `0` | feste Sprecheranzahl der Gegenseite (0 = automatisch) |
 | `speakers.match_threshold` | `0.55` | Schwelle für die Wiedererkennung |
-| `summary.model` | `gemma3:12b` | Ollama-Modell |
+| `general.preset` | leer | aktives Preset |
+| `transcription.initial_prompt` | leer | Zusatz-Kontext für Whisper |
+| `transcription.use_glossary` | `true` | Glossar als Hotwords |
+| `transcription.vad_threshold` / `vad_min_silence_ms` / `vad_speech_pad_ms` | `0.5` / `2000` / `400` | Sprachaktivitätserkennung |
+| `transcription.beam_size` | `5` | Suchbreite |
+| `transcript.timestamp_format` | `hh:mm:ss` | `hh:mm:ss`, `mm:ss`, `none` |
+| `transcript.merge_same_speaker` / `merge_max_gap_s` | `true` / `1.5` | Beiträge zusammenfassen |
+| `transcript.apply_replacements` | `true` | Korrekturliste anwenden |
+| `summary.provider` | `ollama` | `ollama` oder `openai` (OpenAI-kompatibel) |
+| `summary.model` | `gemma3:12b` | Modellname |
+| `summary.allow_remote_endpoint_data_leaves_this_computer` | `false` | nur `true`, wenn Inhalte den Rechner verlassen dürfen |
+| `handoff.mode` | `folder` | `folder` (OneDrive-Ordner) oder `graph` |
+| `handoff.folder` | leer | synchronisierter SharePoint-Ordner |
 | `detection.teams_processes` | `["ms-teams.exe", "teams.exe"]` | Prozessnamen für die Erinnerung |
 | `hotkey.toggle` | `ctrl+alt+shift+r` | z. B. `ctrl+shift+f9`, `win+alt+r` |
 
@@ -376,29 +553,37 @@ Einträge werden ignoriert und gemeldet.
 
 ---
 
-## 12. Wo liegen welche Daten?
+## 14. Wo liegen welche Daten?
 
 | Pfad | Inhalt |
 |---|---|
 | `%APPDATA%\CallRecorder\config.toml` | Konfiguration |
+| `%APPDATA%\CallRecorder\glossary.txt`, `replacements.txt`, `prompts\`, `presets\` | Abstimmungsdateien (Abschnitt 9) |
 | `%LOCALAPPDATA%\CallRecorder\logs\callrec.log` | Protokoll (rotierend, 5 × 5 MB) |
 | `%LOCALAPPDATA%\CallRecorder\msal_token_cache.bin` | Microsoft-Anmeldung (DPAPI-verschlüsselt) |
 | `%LOCALAPPDATA%\CallRecorder\voiceprints.bin` | **Stimmprofile** (DPAPI-verschlüsselt) |
 | `%LOCALAPPDATA%\CallRecorder\models\` | Whisper- und Sprechertrennungsmodelle |
 | `%LOCALAPPDATA%\CallRecorder\calendar_cache.json`, `me.json` | zuletzt abgerufene Termine, Ihr Name |
-| `%USERPROFILE%\Anrufaufnahmen\` | Aufnahmen (siehe Abschnitt 9) |
+| `%USERPROFILE%\Anrufaufnahmen\` | Aufnahmen (siehe Abschnitt 11) |
 
-**Was verlässt den Rechner?** Nur Anfragen an `login.microsoftonline.com` und
-`graph.microsoft.com` (Anmeldung, Termin-Metadaten, Ihr Name) sowie einmalige
-Modell-Downloads von `huggingface.co` (Whisper) und `github.com` (Sprechertrennung,
-SHA-256-geprüft). Audio, Transkripte, Zusammenfassungen und Stimmprofile nicht.
+**Was verlässt den Rechner?**
+- Anfragen an `login.microsoftonline.com` und `graph.microsoft.com` (Anmeldung,
+  Termin-Metadaten, Ihr Name),
+- Modell-Downloads von `huggingface.co` (Whisper), `github.com` (Sprechertrennung,
+  SHA-256-geprüft) und – auf Ihren Klick – die Ollama-Modellbibliothek (Sprachmodelle laden/aktualisieren),
+- **nur auf Ihren ausdrücklichen Klick:** die Zusammenfassung einer Aufnahme an SharePoint
+  (Abschnitt 10),
+- nur wenn Sie es ausdrücklich erlauben (`allow_remote_endpoint_data_leaves_this_computer`):
+  Transkripttext an einen entfernten KI-Server.
+
+Audio, Transkripte und Stimmprofile werden nie übertragen.
 
 **Alles löschen:** CallRecorder beenden, die Ordner `%APPDATA%\CallRecorder`,
 `%LOCALAPPDATA%\CallRecorder` und den Aufnahmeordner löschen.
 
 ---
 
-## 13. Fehlerbehebung
+## 15. Fehlerbehebung
 
 Zuerst ins Protokoll schauen: Tray-Menü **„Protokolldatei öffnen“**. Für die Transkription
 gibt es zusätzlich `data\asr_mic.log` / `data\asr_remote.log` im Aufnahmeordner.
@@ -427,8 +612,14 @@ lesen (z. B. „cudnn_ops64_9.dll not found“ → `setup.ps1` erneut ausführen
 Zu wenig Grafikspeicher → `transcription.model = "large-v3-turbo"` oder
 `compute_type = "int8_float16"`.
 
-**Zusammenfassung fehlt.** Ollama läuft nicht oder das Modell fehlt (`ollama list`).
-Danach `callrec summarize <Ordner>`.
+**Zusammenfassung fehlt.** Der KI-Server läuft nicht oder das Modell fehlt (`callrec llm
+models`). Danach `callrec summarize <Ordner>`. Bei OpenAI-kompatiblen Servern muss der
+Modellname exakt dem dort angezeigten entsprechen.
+
+**SharePoint-Übergabe schlägt fehl.** *folder*: Ordner existiert nicht / OneDrive pausiert
+(OneDrive-Symbol prüfen). *graph*: `403` → bei `Sites.Selected` fehlt die Freigabe der
+Website für die App (Abschnitt 5, Schritt 3) oder Ihr Konto hat dort kein Schreibrecht;
+`404` → `graph_drive_id` oder Ordnerpfad prüfen.
 
 **Anmeldung schlägt fehl.**
 - `AADSTS50011` (Redirect-URI) → in der App-Registrierung `http://localhost` unter
@@ -456,7 +647,16 @@ weniger Sprecher) oder bei bekannter Anzahl `diarization.num_speakers` setzen, d
 
 ---
 
-## 14. Für Entwickler
+## 16. Für Entwickler
+
+**Prüfstand der verwendeten Fremd-APIs** (Stand dieser Version): Ollama `/api/tags`,
+`/api/chat`, `/api/pull` (NDJSON mit `status`/`total`/`completed`, Fehler als `{"error": …}`),
+`/api/version` – geprüft gegen `docs/api.md` und `docs/api/errors.mdx` im Ollama-Repository.
+OpenAI-kompatibel `/v1/models` (`data[].id`) und `/v1/chat/completions`
+(`choices[0].message.content`) – geprüft gegen die llama.cpp-Server-Doku. LM-Studio-Doku war
+nicht erreichbar (Port 1234 = bekannter Standard, nicht erneut geprüft). Graph
+`PUT …/root:/{pfad}:/content` (Content-Type `text/plain`, bis 250 MB) und das
+`Sites.Selected`-Modell – geprüft gegen die microsoft-graph-docs.
 
 Aufbau (`src/callrec/`):
 
@@ -470,10 +670,12 @@ Aufbau (`src/callrec/`):
 | `consent.py` | Einwilligungs-Gate |
 | `asr/` | faster-whisper im Kindprozess, CUDA-DLL-Pfade, CPU-Rückfall |
 | `speakers/` | sherpa-onnx-Diarisierung, Embeddings, Stimmprofile, Wort→Sprecher |
-| `transcript.py`, `summary.py` | Zusammenführen/Markdown, Ollama |
+| `transcript.py`, `summary.py`, `llm.py` | Zusammenführen/Markdown; Zusammenfassung über austauschbare Anbieter (Ollama, OpenAI-kompatibel) |
+| `userfiles.py`, `versions.py` | Glossar, Korrekturliste, Prompt-Vorlagen; versionierte Ausgaben |
+| `handoff.py` | Übergabe **nur** der Zusammenfassung (Ordner oder Graph) |
 | `pipeline.py`, `jobs.py` | Verarbeitungsschritte, Hintergrund-Warteschlange |
 | `controller.py` | Ablaufsteuerung der App (UI-unabhängig) |
-| `ui/` | Tk-Dialoge, Overlay, pystray-Tray, App-Verdrahtung |
+| `ui/` | Tk-Dialoge (inkl. Einstellungen mit Reitern, Übergabe-Vorschau), Overlay, pystray-Tray, App-Verdrahtung |
 | `detect.py`, `hotkey.py` | Erinnerungslogik, globales Tastenkürzel (RegisterHotKey) |
 
 Tests (laufen auch unter Linux/macOS; Windows-spezifisches ist gekapselt):

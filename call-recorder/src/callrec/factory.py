@@ -101,15 +101,16 @@ def perform_handoff(cfg: Config, rec):  # type: ignore[no-untyped-def]
     """Hand over the summary of ``rec`` with the configured backend (explicit user action only)."""
     from callrec.handoff import build_target, handoff_summary
 
-    token = None
+    token_provider = None
     if cfg.handoff.mode == "graph":
         auth = graph_auth(cfg)
         scope = cfg.handoff.graph_scope
 
-        def token():  # type: ignore[no-untyped-def]
+        def _token():  # type: ignore[no-untyped-def]
             return auth.token_for_scopes([scope])
 
-    return handoff_summary(rec, build_target(cfg, token), cfg.handoff.include_participant_emails)
+        token_provider = _token
+    return handoff_summary(rec, build_target(cfg, token_provider), cfg.handoff.include_participant_emails)
 
 
 def reload_config_in_place(cfg: Config) -> None:
