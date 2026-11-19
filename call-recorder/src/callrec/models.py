@@ -1,0 +1,205 @@
+"""Plain data types shared across modules (no heavy imports here)."""
+
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
+from typing import Any
+
+SELF_SPEAKER_ID = "ME"
+
+
+@dataclass(frozen=True)
+class Person:
+    name: str
+    email: str = ""
+    role: str = "attendee"  # organizer | attendee | manual | self
+
+    @property
+    def display(self) -> str:
+        return self.name or self.email
+
+    def key(self) -> str:
+        """Identity key used for de-duplication (email preferred)."""
+        return (self.email or self.name).strip().lower()
+
+    def to_dict(self) -> dict[str, str]:
+        return asdict(self)
+
+    @staticmethod
+    def from_dict(d: dict[str, Any]) -> Person:
+        return Person(name=str(d.get("name", "")), email=str(d.get("email", "")), role=str(d.get("role", "attendee")))
+
+
+@dataclass
+class CalendarEvent:
+    id: str
+    subject: str
+    start: datetime  # timezone-aware
+    end: datetime  # timezone-aware
+    organizer: Person | None = None
+    attendees: list[Person] = field(default_factory=list)
+    is_online: bool = False
+    is_all_day: bool = False
+    is_cancelled: bool = False
+    declined: bool = False
+    show_as: str = ""
+    source: str = "graph"  # graph | ics | manual
+    join_url: str = ""
+
+    def participants(self) -> list[Person]:
+        """Organizer first, then attendees, de-duplicated."""
+        seen: set[str] = set()
+        out: list[Person] = []
+        people = ([self.organizer] if self.organizer else []) + list(self.attendees)
+        for p in people:
+            if not p.display:
+                continue
+            k = p.key()
+            if k in seen:
+                continue
+            seen.add(k)
+            out.append(p)
+        return out
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "subject": self.subject,
+            "start": self.start.isoformat(),
+            "end": self.end.isoformat(),
+            "organizer": self.organizer.to_dict() if self.organizer else None,
+            "attendees": [a.to_dict() for a in self.attendees],
+            "is_online": self.is_online,
+            "is_all_day": self.is_all_day,
+            "source": self.source,
+            "join_url": self.join_url,
+        }
+
+    @staticmethod
+    def from_dict(d: dict[str, Any]) -> CalendarEvent:
+        return CalendarEvent(
+            id=str(d.get("id", "")),
+            subject=str(d.get("subject", "")),
+            start=datetime.fromisoformat(d["start"]),
+            end=datetime.fromisoformat(d["end"]),
+            organizer=Person.from_dict(d["organizer"]) if d.get("organizer") else None,
+            attendees=[Person.from_dict(a) for a in d.get("attendees", [])],
+            is_online=bool(d.get("is_online", False)),
+            is_all_day=bool(d.get("is_all_day", False)),
+            source=str(d.get("source", "graph")),
+            join_url=str(d.get("join_url", "")),
+        )
+
+
+@dataclass
+class Word:
+    start: float
+    end: float
+    text: str
+    probability: float = 1.0
+
+
+@dataclass
+class AsrSegment:
+    start: float
+    end: float
+    text: str
+    words: list[Word] = field(default_factory=list)
+
+
+@dataclass
+class AsrResult:
+    language: str
+    duration: float
+    segments: list[AsrSegment]
+    model: str = ""
+    device: str = ""
+    compute_type: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @staticmethod
+    def from_dict(d: dict[str, Any]) -> AsrResult:
+        segs = [
+            AsrSegment(
+                start=float(s["start"]),
+                end=float(s["end"]),
+                text=str(s["text"]),
+                words=[Word(**w) for w in s.get("words", [])],
+            )
+            for s in d.get("segments", [])
+        ]
+        return AsrResult(
+            language=str(d.get("language", "")),
+            duration=float(d.get("duration", 0.0)),
+            segments=segs,
+            model=str(d.get("model", "")),
+            device=str(d.get("device", "")),
+            compute_type=str(d.get("compute_type", "")),
+        )
+
+
+@dataclass
+class SpeakerTurn:
+    """A diarization turn on the remote track."""
+
+    start: float
+    end: float
+    speaker: str  # internal id, e.g. "S1"
+
+
+@dataclass
+class Utterance:
+    start: float
+    end: float
+    speaker: str  # internal speaker id ("ME", "S1", ...)
+    text: str
+    track: str  # mic | remote
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @staticmethod
+    def from_dict(d: dict[str, Any]) -> Utterance:
+        return Utterance(
+            start=float(d["start"]),
+            end=float(d["end"]),
+            speaker=str(d["speaker"]),
+            text=str(d["text"]),
+            track=str(d.get("track", "")),
+        )
+
+
+@dataclass
+class SpeakerInfo:
+    """Mapping from an internal speaker id to a display name."""
+
+    id: str
+    label: str  # "Sprecher 1" - stable fallback name
+    name: str = ""  # assigned person name ("" = unassigned)
+    email: str = ""
+    profile_id: str = ""
+    score: float | None = None  # similarity of an automatic match
+    source: str = ""  # auto | manual | self
+
+    @property
+    def display(self) -> str:
+        return self.name or self.label
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @staticmethod
+    def from_dict(d: dict[str, Any]) -> SpeakerInfo:
+        score = d.get("score")
+        return SpeakerInfo(
+            id=str(d["id"]),
+            label=str(d.get("label", d["id"])),
+            name=str(d.get("name", "")),
+            email=str(d.get("email", "")),
+            profile_id=str(d.get("profile_id", "")),
+            score=float(score) if score is not None else None,
+            source=str(d.get("source", "")),
+        )

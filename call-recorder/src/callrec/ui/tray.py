@@ -1,0 +1,108 @@
+"""System tray icon (pystray). Menu callbacks run on pystray's thread and are posted to Tk."""
+
+from __future__ import annotations
+
+import logging
+import threading
+from collections.abc import Callable
+from typing import Any
+
+from PIL import Image, ImageDraw
+
+log = logging.getLogger(__name__)
+
+IDLE = "#607d8b"
+RECORDING = "#d32f2f"
+BUSY = "#f57c00"
+
+
+def make_icon(color: str, recording: bool = False, size: int = 64) -> Image.Image:
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    # microphone-like shape: filled circle with a ring when recording
+    d.ellipse((6, 6, size - 6, size - 6), fill=color)
+    if recording:
+        d.ellipse((20, 20, size - 20, size - 20), fill="white")
+    else:
+        d.rounded_rectangle((size // 2 - 7, 16, size // 2 + 7, 40), radius=7, fill="white")
+        d.rectangle((size // 2 - 2, 40, size // 2 + 2, 48), fill="white")
+    return img
+
+
+class TrayIcon:
+    def __init__(self, actions: dict[str, Callable[[], None]], post: Callable[[Callable[[], None]], None]) -> None:
+        import pystray
+
+        self._pystray = pystray
+        self.actions = actions
+        self.post = post
+        self.recording = False
+        self.title = ""
+        self.status = ""
+        self._lock = threading.Lock()
+
+        def act(name: str) -> Callable[[Any, Any], None]:
+            return lambda icon, item: self.post(self.actions[name])
+
+        item = pystray.MenuItem
+        self.icon = pystray.Icon(
+            "CallRecorder",
+            make_icon(IDLE),
+            "CallRecorder – bereit",
+            menu=pystray.Menu(
+                item(lambda i: "Aufnahme beenden" if self.recording else "Aufnahme starten …", act("toggle"), default=False),
+                pystray.Menu.SEPARATOR,
+                item("Letzte Aufnahme: Sprecher zuordnen …", act("review_last")),
+                item("Letzte Aufnahme: Zusammenfassung neu erstellen", act("resummarize_last")),
+                item("Letzte Aufnahme: komplett neu verarbeiten", act("reprocess_last")),
+                item("Aufnahmeordner öffnen", act("open_folder")),
+                pystray.Menu.SEPARATOR,
+                item("Stimmprofile verwalten …", act("profiles")),
+                item("Einstellungen …", act("settings")),
+                item("Bei Microsoft anmelden …", act("login")),
+                item("Protokolldatei öffnen", act("open_log")),
+                pystray.Menu.SEPARATOR,
+                item("Beenden", act("quit")),
+            ),
+        )
+
+    def start(self) -> None:
+        # On Windows run_detached() starts pystray's own message-loop thread; the
+        # default setup callback makes the icon visible once that loop is ready.
+        self.icon.run_detached()
+
+    def stop(self) -> None:
+        try:
+            self.icon.stop()
+        except Exception:
+            log.debug("Tray stop", exc_info=True)
+
+    def _refresh(self) -> None:
+        if self.recording:
+            text = f"● Aufnahme läuft – {self.title}"
+        elif self.status:
+            text = self.status
+        else:
+            text = "CallRecorder – bereit"
+        self.icon.title = text[:120]  # Windows tooltip limit is 127 characters
+        color = RECORDING if self.recording else (BUSY if self.status else IDLE)
+        self.icon.icon = make_icon(color, self.recording)
+        self.icon.update_menu()
+
+    def set_recording(self, recording: bool, title: str) -> None:
+        with self._lock:
+            self.recording = recording
+            self.title = title
+            self._refresh()
+
+    def set_status(self, text: str) -> None:
+        with self._lock:
+            self.status = text
+            self._refresh()
+
+    def notify(self, title: str, message: str) -> None:
+        try:
+            if self.icon.HAS_NOTIFICATION:
+                self.icon.notify(message[:250], title[:60])
+        except Exception:
+            log.debug("Benachrichtigung fehlgeschlagen", exc_info=True)
