@@ -238,6 +238,11 @@ def _coerce(section: str, key: str, value: Any, default: Any) -> Any:
 
 # Sections a preset may change (tuning only - never devices, calendar or hand-off).
 PRESET_SECTIONS = ("transcription", "diarization", "speakers", "transcript", "summary")
+# Keys that decide where conversation content is sent: only config.toml may set them,
+# never a preset file (presets are meant to be swapped and shared).
+PRESET_FORBIDDEN_KEYS = {
+    "summary": ("allow_remote_endpoint_data_leaves_this_computer", "ollama_url", "openai_url", "openai_api_key"),
+}
 
 
 def config_from_dict(data: dict[str, Any], base: Config | None = None) -> Config:
@@ -288,9 +293,21 @@ def apply_preset(cfg: Config, preset: dict[str, Any], name: str) -> Config:
     """Overlay a preset (only the tuning sections) onto ``cfg``."""
     allowed = {k: v for k, v in preset.items() if k in PRESET_SECTIONS}
     ignored = sorted(set(preset) - set(allowed))
+    dropped: list[str] = []
+    for section, keys in PRESET_FORBIDDEN_KEYS.items():
+        values = allowed.get(section)
+        if isinstance(values, dict):
+            values = dict(values)
+            for k in keys:
+                if k in values:
+                    del values[k]
+                    dropped.append(f"{section}.{k}")
+            allowed[section] = values
     out = config_from_dict(allowed, base=cfg)
     for k in ignored:
         out.warnings.append(f"Preset {name!r}: Abschnitt [{k}] ist in Presets nicht erlaubt und wurde ignoriert")
+    for k in dropped:
+        out.warnings.append(f"Preset {name!r}: {k} kann nur in config.toml gesetzt werden und wurde ignoriert")
     out.active_preset = name
     return out
 
@@ -325,6 +342,9 @@ def save_preset(cfg: Config, name: str) -> Path:
     d.mkdir(parents=True, exist_ok=True)
     path = d / f"{name.strip()}.toml"
     data = {k: v for k, v in config_to_dict(cfg).items() if k in PRESET_SECTIONS}
+    for section, keys in PRESET_FORBIDDEN_KEYS.items():
+        for k in keys:
+            data.get(section, {}).pop(k, None)
     with path.open("wb") as fh:
         tomli_w.dump(data, fh)
     return path

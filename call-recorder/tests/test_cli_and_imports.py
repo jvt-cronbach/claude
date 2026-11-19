@@ -126,3 +126,43 @@ def test_cli_handoff_preset_versions_llm(tmp_path: Path, capsys):
     assert "nicht erreichbar" in capsys.readouterr().out
     assert cli.main(["config", "files"]) == 0
     assert "glossary.txt" in capsys.readouterr().out
+
+
+def test_tray_notifications_wait_until_icon_is_visible(monkeypatch):
+    import sys
+    import types
+
+    shown: list[tuple[str, str]] = []
+
+    class Icon:
+        HAS_NOTIFICATION = True
+
+        def __init__(self, *a, **k):
+            self.visible = False
+            self.setup = None
+
+        def run_detached(self, setup=None):
+            self.setup = setup  # pystray calls this later from its own thread
+
+        def notify(self, message, title):
+            assert self.visible, "balloon before the icon exists is lost"
+            shown.append((title, message))
+
+    class Menu:
+        SEPARATOR = object()
+
+        def __init__(self, *items):
+            pass
+
+    fake = types.SimpleNamespace(Icon=Icon, Menu=Menu, MenuItem=lambda *a, **k: None)
+    monkeypatch.setitem(sys.modules, "pystray", fake)
+    from callrec.ui.tray import TrayIcon
+
+    tray = TrayIcon({}, lambda fn: None)
+    tray.READY_TIMEOUT_S = 0.01
+    tray.start()
+    tray.notify("Tastenkürzel", "nicht registriert")  # too early: logged, not lost in a crash
+    assert shown == []
+    tray.icon.setup(tray.icon)
+    tray.notify("Tastenkürzel", "nicht registriert")
+    assert shown == [("Tastenkürzel", "nicht registriert")]

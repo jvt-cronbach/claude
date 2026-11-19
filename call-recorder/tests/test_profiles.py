@@ -115,3 +115,52 @@ def test_renumber_and_speaker_embeddings():
     assert set(embs) == {"S1", "S2", "S3"}
     assert all(abs(np.linalg.norm(v) - 1) < 1e-5 for v in embs.values())
     assert max(FakeEmb.calls) <= 10 * sr
+
+
+def test_protected_profile_file_is_replaced_atomically(tmp_path: Path, monkeypatch):
+    import os
+
+    from callrec.speakers.profiles import AtomicProtectedFile
+
+    class Agent:  # stands in for DPAPI
+        def protect(self, s: str) -> bytes:
+            return s.encode("utf-8")[::-1]
+
+        def unprotect(self, b: bytes) -> str:
+            return b[::-1].decode("utf-8")
+
+    path = tmp_path / "voiceprints.bin"
+    store = ProfileStore(AtomicProtectedFile(path, Agent()))
+    assert store.all_profiles() == []  # missing file = no profiles
+    store.add_sample("Jürgen Müller", "j@x.de", np.ones(4), "m")
+    before = path.read_bytes()
+
+    def crash(*a, **k):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(os, "replace", crash)
+    with pytest.raises(OSError):
+        store.add_sample("Anna", "", np.ones(4), "m")
+    assert path.read_bytes() == before  # old profiles intact after a failed save
+    monkeypatch.undo()
+    assert [p.name for p in ProfileStore(AtomicProtectedFile(path, Agent())).all_profiles()] == ["Jürgen Müller"]
+
+
+def test_replace_file_retries_transient_sharing_violation(tmp_path: Path, monkeypatch):
+    import os
+
+    from callrec.recording import replace_file
+
+    real = os.replace
+    calls = {"n": 0}
+
+    def flaky(src, dst):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise PermissionError(32, "used by another process")
+        real(src, dst)
+
+    monkeypatch.setattr(os, "replace", flaky)
+    (tmp_path / "a").write_text("x")
+    replace_file(tmp_path / "a", tmp_path / "b", delay_s=0)
+    assert (tmp_path / "b").read_text() == "x" and calls["n"] == 3

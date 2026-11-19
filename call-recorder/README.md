@@ -106,8 +106,10 @@ Die Mikrofonspur ist immer **Sie** (Name aus dem Microsoft-Konto bzw. den Einste
 
 - Windows 11, ein Benutzerkonto mit Administratorrechten (nur für die Installation von
   Python/Treibern nötig)
-- **Python 3.12** (64 Bit) von python.org oder `winget install Python.Python.3.12`
-  (mit „tcl/tk“, ist Standard)
+- **Python 3.12 oder 3.13** (64 Bit) von python.org oder `winget install Python.Python.3.12`
+  (mit „tcl/tk“, ist Standard). Python 3.11 geht nicht (numpy 2.5 gibt es dafür nicht).
+- Visual C++ Runtime 2015–2022 x64 (`msvcp140.dll`, für die Transkription; meist schon
+  vorhanden, sonst `winget install Microsoft.VCRedist.2015+.x64` – `setup.ps1` warnt)
 - NVIDIA-Grafikkarte mit aktuellem Treiber (CUDA 12 kompatibel, Treiber ≥ 525).
   Für `large-v3` werden ca. 5 GB Grafikspeicher benötigt; sonst `large-v3-turbo` oder
   `medium` einstellen. Ohne GPU läuft alles auf der CPU (deutlich langsamer).
@@ -132,7 +134,7 @@ Die Mikrofonspur ist immer **Sie** (Name aus dem Microsoft-Konto bzw. den Einste
    - `-Autostart` – CallRecorder bei der Anmeldung starten
    - `-WithWhisperModel` – das Whisper-Modell (≈ 3 GB) gleich mitladen
    - `-NoCuda` – keine NVIDIA-Bibliotheken installieren (nur CPU)
-   - `-PythonVersion 3.13` – andere Python-Version
+   - `-PythonVersion 3.13` – andere Python-Version (nur 3.12 oder 3.13)
 
    Das Skript legt `.venv` an, installiert alle Pakete in exakt gepinnten Versionen
    (`requirements.txt`, `requirements-cuda.txt`, `constraints-win.txt`), prüft die Importe
@@ -291,7 +293,9 @@ Hinweis im Tray und Vermerk in `meta.json`). Später nachholen: Tray-Menü
 **„Letzte Aufnahme: Zusammenfassung neu erstellen“** oder `callrec summarize <Ordner>`.
 
 **Nur lokal:** CallRecorder akzeptiert nur Adressen auf diesem Rechner (`localhost`,
-`127.x.x.x`, `::1`) und ignoriert dafür Proxy-Einstellungen. Ein Server auf einem anderen
+`127.x.x.x`, `::1`) und ignoriert dafür Proxy-Einstellungen. Weiterleitungen (HTTP 3xx)
+werden nie befolgt; mehrdeutige Adressen (mit `@`, `\` oder Leerzeichen) werden abgelehnt.
+Adresse und Freigabe lassen sich nur in `config.toml` ändern, nicht über ein Preset. Ein Server auf einem anderen
 Rechner lässt sich nur mit der absichtlich deutlich benannten Einstellung
 `allow_remote_endpoint_data_leaves_this_computer = true` nutzen – dann **verlassen
 Gesprächsinhalte diesen Rechner**; das Protokoll und die Einstellungen weisen darauf hin, und
@@ -400,7 +404,7 @@ Alle Stellschrauben gibt es in **Einstellungen** (Reiter *Transkription*, *Sprec
 
 **Presets:** Einstellungen → „Als Preset speichern …“ (oder `callrec preset save Genau`).
 Ein Preset enthält nur diese Abstimmungs-Einstellungen (nie Geräte, Kalender oder
-SharePoint). Aktivieren unter *Allgemein → Aktives Preset* oder einmalig:
+SharePoint, nie Adresse/Schlüssel des KI-Servers oder die Freigabe entfernter Server). Aktivieren unter *Allgemein → Aktives Preset* oder einmalig:
 `callrec retranscribe <Ordner> --preset Genau`.
 
 **Vorher/Nachher vergleichen:** Wird eine Aufnahme mit geänderten Einstellungen neu verarbeitet
@@ -434,7 +438,10 @@ Microsoft-365-Connector in SharePoint lesen.
 Teilnehmende – Namen, E-Mails nur bei `include_participant_emails = true` –, Hinweis auf die
 bestätigte Einwilligung, Version und Modell) und dem Inhalt von `summary.md`. Technisch kann
 die Übergabefunktion nur ein „Zusammenfassungs-Dokument“ annehmen, das ausschließlich aus
-`summary.md` gebaut wird; das ist durch Tests abgesichert.
+`summary.md` gebaut wird; das ist durch Tests abgesichert. Übertragen wird genau die Fassung,
+die die Vorschau zeigt – hat sich die Zusammenfassung inzwischen geändert (z. B. weil eine
+Neuerstellung fertig wurde), bricht die Übergabe ab. Achtung: Die Zusammenfassung ist ein Text
+des Sprachmodells und kann einzelne Aussagen wörtlich zitieren – deshalb die Vorschau lesen.
 
 **Auslösen:** Tray-Menü **„Letzte Aufnahme: Zusammenfassung an SharePoint übergeben …“**,
 Schaltfläche im Sprecher-Zuordnungsdialog oder `callrec handoff <Ordner>`. Es erscheint
@@ -491,7 +498,7 @@ Umgebung):
 | Befehl | Zweck |
 |---|---|
 | `tray` (oder ohne Argument) | Tray-Anwendung starten |
-| `record [--title T] [--participants "A <a@x>; B"] [--ics F] [--no-calendar]` | Aufnahme in der Konsole (Einwilligung durch Eingabe von `ja`) |
+| `record [--title T] [--participants "A <a@x>; B"] [--ics F] [--no-calendar] [--no-process]` | Aufnahme in der Konsole (Einwilligung durch Eintippen von `ja` im Konsolenfenster; umgeleitete Eingabe wird nicht akzeptiert) |
 | `process <Ordner> [--steps …] [--model M] [--device cuda\|cpu] [--language de\|auto] [--preset P]` | (Neu-)Verarbeitung; Schritte: `finalize,transcribe,diarize,identify,render,summarize` oder Presets `all`, `retranscribe`, `rediarize`, `resummarize`, `render` |
 | `retranscribe <Ordner> [--preset P]` | mit aktuellen Einstellungen neu transkribieren (neue Version, alte bleibt) |
 | `versions <Ordner>` | Versionen von Transkript und Zusammenfassung mit Einstellungen |
@@ -569,7 +576,8 @@ Einträge werden ignoriert und gemeldet.
 **Was verlässt den Rechner?**
 - Anfragen an `login.microsoftonline.com` und `graph.microsoft.com` (Anmeldung,
   Termin-Metadaten, Ihr Name),
-- Modell-Downloads von `huggingface.co` (Whisper), `github.com` (Sprechertrennung,
+- Modell-Downloads von `huggingface.co` (Whisper; nur solange das Modell noch nicht lokal
+  liegt), `github.com` (Sprechertrennung,
   SHA-256-geprüft) und – auf Ihren Klick – die Ollama-Modellbibliothek (Sprachmodelle laden/aktualisieren),
 - **nur auf Ihren ausdrücklichen Klick:** die Zusammenfassung einer Aufnahme an SharePoint
   (Abschnitt 10),

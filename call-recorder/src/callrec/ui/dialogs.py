@@ -345,8 +345,9 @@ def manage_profiles(root: tk.Tk, profiles: ProfileStore) -> None:
 # ---------------------------------------------------------------------------
 
 
-def ask_handoff(root: tk.Misc, rec: Recording, cfg: Any, perform: Callable[[], dict[str, Any]]) -> bool:
-    """Preview + explicit confirmation; ``perform`` does the actual hand-over (may open a browser)."""
+def ask_handoff(root: tk.Misc, rec: Recording, cfg: Any, perform: Callable[[str], dict[str, Any]]) -> bool:
+    """Preview + explicit confirmation; ``perform(sha256_of_preview)`` does the actual hand-over
+    (may open a browser) and refuses if the document no longer matches the preview."""
     import threading
 
     from callrec.handoff import HANDOFF_WARNING, HandoffError, build_summary_document, last_handoff
@@ -384,7 +385,7 @@ def ask_handoff(root: tk.Misc, rec: Recording, cfg: Any, perform: Callable[[], d
 
         def work() -> None:
             try:
-                box["entry"] = perform()
+                box["entry"] = perform(doc.sha256)
             except Exception as exc:  # shown to the user
                 box["error"] = exc
 

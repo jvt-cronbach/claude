@@ -71,6 +71,7 @@ class Controller:
         self.current: Recording | None = None
         self._lock = threading.RLock()
         self._starting = False
+        self._notified: set[str] = set()
 
     @property
     def is_recording(self) -> bool:
@@ -146,6 +147,7 @@ class Controller:
             self.ui.notify("Aufnahme fehlgeschlagen", str(exc))
             return False
         self.recorder, self.backend, self.current = recorder, backend, rec
+        self._notified = set()
         self.ui.set_recording_state(True, decision.title)
         self.ui.notify("Aufnahme läuft", f"{decision.title}\nMikrofon: {mic.name}\nGegenseite: {loop.name}")
         return True
@@ -205,6 +207,10 @@ class Controller:
         warnings = self.recorder.health_warnings()
         for w in warnings:
             self.ui.set_status(w)
+            key = w.split(" seit ")[0]
+            if key not in self._notified:  # a tooltip alone is easily missed during a call
+                self._notified.add(key)
+                self.ui.notify("Problem bei der Aufnahme", w)
         return warnings
 
     def on_reminder(self, prompt: Prompt) -> None:

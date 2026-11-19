@@ -91,7 +91,10 @@ def test_worker_main_with_fake_model(tmp_path: Path, monkeypatch: pytest.MonkeyP
     calls = {}
 
     class StubModel:
-        def __init__(self, model, device, compute_type, download_root):
+        def __init__(self, model, device, compute_type, download_root, local_files_only=False):
+            calls.setdefault("local_only", []).append(local_files_only)
+            if local_files_only and calls.get("not_cached"):
+                raise FileNotFoundError("LocalEntryNotFoundError")
             calls["init"] = (model, device, compute_type, download_root)
 
         def transcribe(self, audio, **kw):
@@ -112,6 +115,11 @@ def test_worker_main_with_fake_model(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert calls["init"][1:3] == ("cpu", "int8")
     assert calls["kw"]["language"] is None and calls["kw"]["word_timestamps"] is True
     assert calls["kw"]["initial_prompt"] == "P" and calls["kw"]["vad_filter"] is True
+    assert calls["local_only"] == [True]  # cached model: huggingface.co is not contacted
+    calls.clear()
+    calls["not_cached"] = True
+    assert worker.main(["--audio", "x.flac", "--out", str(out), "--device", "cpu"]) == 0
+    assert calls["local_only"] == [True, False]  # download only when missing
 
 
 def test_nvidia_dirs(tmp_path: Path):

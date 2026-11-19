@@ -45,13 +45,43 @@ def is_loopback_host(host: str) -> bool:
         return False
 
 
+# Characters that make URL parsers disagree about the host (userinfo, backslash as
+# path separator, whitespace/control characters). urllib.parse and urllib3 (which
+# requests uses to connect) parse e.g. "http://evil.example\\x@127.0.0.1" differently:
+# the former sees 127.0.0.1, the latter connects to evil.example.
+_AMBIGUOUS_URL_CHARS = set("@\\") | {chr(c) for c in range(0x21)} | {"\x7f"}
+
+
+def _connect_host(url: str) -> str:
+    """Host that ``requests`` would actually connect to for ``url``."""
+    from urllib3.util import parse_url
+
+    prepared = requests.Request("GET", url).prepare().url or ""
+    return (parse_url(prepared).host or "").strip("[]").lower()
+
+
 def check_endpoint(url: str, allow_remote: bool) -> bool:
     """Return True if the URL is local; raise unless remote endpoints were explicitly allowed."""
-    parsed = urlparse(url)
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname or ""
+    except ValueError as exc:
+        raise RemoteEndpointRefused(f"Ungültige Adresse {url!r}") from exc
     if parsed.scheme not in ("http", "https"):
         raise RemoteEndpointRefused(f"Ungültige Adresse {url!r}")
-    if is_loopback_host(parsed.hostname or ""):
-        return True
+    ambiguous = any(ch in _AMBIGUOUS_URL_CHARS for ch in url)
+    if not ambiguous and is_loopback_host(hostname):
+        try:
+            same = _connect_host(url) == hostname.strip("[]").lower()
+        except Exception:  # noqa: BLE001 - unparsable for requests: not local
+            same = False
+        if same:
+            return True
+        ambiguous = True
+    if ambiguous and not allow_remote:
+        raise RemoteEndpointRefused(
+            f"Die Adresse {url!r} ist mehrdeutig (Benutzerangabe '@', '\\' oder Leerzeichen) und wird abgelehnt."
+        )
     if not allow_remote:
         raise RemoteEndpointRefused(
             f"Die Adresse {url!r} liegt nicht auf diesem Rechner. Gesprächsinhalte dürfen den Rechner nicht "
@@ -78,10 +108,25 @@ class LlmProvider(Protocol):
     def pull(self, model: str, progress: PullProgress) -> None: ...
 
 
+class _NoRedirectSession(requests.Session):
+    """Never follows redirects: a loopback server must not be able to forward the
+    transcript (307/308 keep the POST body) to another host."""
+
+    def get_redirect_target(self, resp: Any) -> None:  # type: ignore[override]
+        return None
+
+
+def _refuse_redirect(r: Any) -> None:
+    if 300 <= int(getattr(r, "status_code", 0) or 0) < 400:
+        raise LlmUnavailable(
+            f"KI-Server antwortet mit Weiterleitung ({r.status_code}) - Weiterleitungen werden nicht befolgt."
+        )
+
+
 def _session(base: Any = None) -> Any:
     if base is not None:
         return base
-    s = requests.Session()
+    s = _NoRedirectSession()
     s.trust_env = False  # never route through a system proxy
     return s
 
@@ -117,6 +162,7 @@ class OllamaProvider:
             r = self.session.get(f"{self.base_url}/api/tags", timeout=10)
         except requests.RequestException as exc:
             raise self._unreachable(exc) from exc
+        _refuse_redirect(r)
         if r.status_code >= 400:
             raise LlmUnavailable(f"Ollama-Fehler {r.status_code}: {self._error_text(r)}")
         return [str(m.get("name") or m.get("model") or "") for m in r.json().get("models", [])]
@@ -124,9 +170,10 @@ class OllamaProvider:
     def version(self) -> str | None:
         try:
             r = self.session.get(f"{self.base_url}/api/version", timeout=5)
+            _refuse_redirect(r)
             r.raise_for_status()
             return str(r.json().get("version") or "") or None
-        except (requests.RequestException, ValueError):
+        except (requests.RequestException, ValueError, LlmUnavailable):
             return None
 
     def chat(self, model: str, messages: list[dict[str, str]], options: dict[str, Any]) -> str:
@@ -135,6 +182,7 @@ class OllamaProvider:
             r = self.session.post(f"{self.base_url}/api/chat", json=payload, timeout=self.timeout)
         except requests.RequestException as exc:
             raise self._unreachable(exc) from exc
+        _refuse_redirect(r)
         if r.status_code == 404:
             raise LlmUnavailable(f"Modell {model!r} ist in Ollama nicht installiert (ollama pull {model}).")
         if r.status_code >= 400:
@@ -156,6 +204,7 @@ class OllamaProvider:
             )
         except requests.RequestException as exc:
             raise self._unreachable(exc) from exc
+        _refuse_redirect(r)
         if r.status_code >= 400:
             raise LlmUnavailable(f"Download fehlgeschlagen ({r.status_code}): {self._error_text(r)}")
         last = ""
@@ -199,6 +248,7 @@ class OpenAICompatProvider:
             r = self.session.get(f"{self.base_url}/models", headers=self._headers(), timeout=10)
         except requests.RequestException as exc:
             raise LlmUnavailable(f"KI-Server nicht erreichbar unter {self.base_url} ({exc.__class__.__name__}).") from exc
+        _refuse_redirect(r)
         if r.status_code >= 400:
             raise LlmUnavailable(f"KI-Server-Fehler {r.status_code}: {str(r.text)[:300]}")
         return [str(m.get("id", "")) for m in r.json().get("data", [])]
@@ -216,6 +266,7 @@ class OpenAICompatProvider:
             r = self.session.post(f"{self.base_url}/chat/completions", json=payload, headers=self._headers(), timeout=self.timeout)
         except requests.RequestException as exc:
             raise LlmUnavailable(f"KI-Server nicht erreichbar unter {self.base_url}: {exc}") from exc
+        _refuse_redirect(r)
         if r.status_code >= 400:
             raise LlmUnavailable(f"KI-Server-Fehler {r.status_code}: {str(r.text)[:300]}")
         choices = r.json().get("choices") or []

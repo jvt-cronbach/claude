@@ -240,3 +240,84 @@ def test_convert_is_blockwise_exact(tmp_path: Path):
     a, _ = sf.read(str(src), dtype="int16")
     b, _ = sf.read(str(dst), dtype="int16")
     assert np.array_equal(a, b)
+
+
+def test_wav_writer_rolls_back_partial_write_on_disk_full(tmp_path: Path):
+    from callrec.audio.wavwriter import StreamingWavWriter
+
+    path = tmp_path / "w.wav"
+    w = StreamingWavWriter(path, 8000, 1)
+    w.write(np.arange(100, dtype=np.int16))
+    real = w._fh
+
+    class Full:
+        """Writes 3 bytes (half a sample pair), then ENOSPC - like a disk filling up."""
+
+        def __init__(self):
+            self.calls = 0
+
+        def write(self, b):
+            self.calls += 1
+            if self.calls == 1:
+                return real.write(bytes(b[:3]))
+            raise OSError(28, "No space left on device")
+
+        def __getattr__(self, name):
+            return getattr(real, name)
+
+    w._fh = Full()  # type: ignore[assignment]
+    with pytest.raises(OSError):
+        w.write(np.full(50, 7, dtype=np.int16))
+    w._fh = real
+    w.write(np.full(10, 9, dtype=np.int16))  # space is available again
+    w.close()
+    data, _ = sf.read(str(path), dtype="int16")
+    assert list(data[:100]) == list(range(100)) and list(data[100:]) == [9] * 10  # no shifted garbage
+
+
+def test_recorder_warns_when_mic_stops_delivering(tmp_path: Path):
+    clock = {"t": 0.0}
+    be = FakeBackend()
+    mic, loop = be.resolve_devices("auto", "auto")
+    r = DualTrackRecorder(be, tmp_path, mic, loop, clock=lambda: clock["t"])
+    r.start(_consent())
+    be.streams[0].push(0.1, 0.1)
+    clock["t"] = 3.0
+    assert r.health_warnings() == []  # loopback silence alone is normal
+    clock["t"] = 8.0  # mic silent for 7.9 s although the stream claims to be active
+    w = r.health_warnings()
+    assert len(w) == 1 and "Mikrofon liefert seit 7 s keine Daten" in w[0]
+    r._writers["remote"].stats.errors.append("[Errno 28] No space left on device")
+    assert any("Datenträger voll" in x for x in r.health_warnings())
+    res = r.stop()
+    assert len(res.warnings) == 2  # each problem recorded once in meta.json
+
+
+def test_blockwise_load_and_mix_match_whole_file_result(tmp_path: Path):
+    import soxr
+
+    from callrec.audio.finalize import build_mix
+    from tests.conftest import tone, write_wav
+
+    a = tone(220, 23.0, 48000)  # longer than BLOCK_SECONDS, different lengths and rates
+    b = np.concatenate([tone(330, 31.0, 44100), np.zeros(10, dtype=a.dtype)])
+    write_wav(tmp_path / "a.wav", a, 48000)
+    write_wav(tmp_path / "b.wav", b, 44100)
+    ref_b = soxr.resample(sf.read(str(tmp_path / "b.wav"), dtype="float32")[0], 44100, 16000)
+    got_b, rate = load_mono(tmp_path / "b.wav", 16000)
+    assert rate == 16000 and abs(got_b.size - ref_b.size) <= 2
+    m = min(got_b.size, ref_b.size)
+    assert np.max(np.abs(got_b[1000 : m - 1000] - ref_b[1000 : m - 1000])) < 1e-3
+    same, r2 = load_mono(tmp_path / "a.wav", 48000)
+    assert r2 == 48000 and np.allclose(same, sf.read(str(tmp_path / "a.wav"), dtype="float32")[0])
+    mix = build_mix(tmp_path / "a.wav", tmp_path / "b.wav", tmp_path / "mix.flac", "flac")
+    info = sf.info(str(mix))
+    assert info.samplerate == 48000 and info.duration == pytest.approx(31.0, abs=0.01)
+    data, _ = sf.read(str(mix), dtype="float32")
+    fa, _ = sf.read(str(tmp_path / "a.wav"), dtype="float32")
+    fb = soxr.resample(sf.read(str(tmp_path / "b.wav"), dtype="float32")[0], 44100, 48000)
+    ref = np.zeros(max(fa.size, fb.size), dtype=np.float32)
+    ref[: fa.size] += fa
+    ref[: fb.size] += fb
+    k = min(ref.size, data.size) - 2000
+    assert np.max(np.abs(np.clip(ref[2000:k], -1, 1) - data[2000:k])) < 2e-3

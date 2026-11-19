@@ -111,8 +111,18 @@ def require_consent(record: ConsentRecord | None, now: datetime | None = None) -
 CLI_CONSENT_ANSWER = "ja"
 
 
-def cli_confirm(input_fn: Any, print_fn: Any, confirmed_by: str, participants: list[Person]) -> ConsentRecord:
-    """Interactive console confirmation: the user must type 'ja'."""
+def cli_confirm(
+    input_fn: Any, print_fn: Any, confirmed_by: str, participants: list[Person], interactive: bool = True
+) -> ConsentRecord:
+    """Interactive console confirmation: the user must type 'ja'.
+
+    ``interactive`` must be False when stdin is not a terminal: an answer piped in by a
+    script (``echo ja | callrec record``) is not a fresh confirmation by a person.
+    """
+    if not interactive:
+        raise ConsentError(
+            "Die Einwilligung muss in einem Konsolenfenster eingetippt werden (keine umgeleitete Eingabe)."
+        )
     print_fn("")
     print_fn("EINWILLIGUNG ERFORDERLICH (§ 201 StGB)")
     print_fn(CONSENT_STATEMENT)

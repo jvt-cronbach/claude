@@ -59,26 +59,65 @@ def convert(src: Path, dst: Path, fmt: str) -> Path:
     return dst
 
 
+def _mono_blocks(path: Path, target_rate: int | None):
+    """Yield float32 mono blocks (optionally resampled) - constant memory for long calls."""
+    with sf.SoundFile(str(path)) as f:
+        rate = f.samplerate
+        rs = soxr.ResampleStream(rate, target_rate, 1, dtype="float32") if target_rate and target_rate != rate else None
+        for block in f.blocks(blocksize=rate * BLOCK_SECONDS, dtype="float32", always_2d=True):
+            mono = block.mean(axis=1, dtype=np.float32) if block.shape[1] > 1 else block[:, 0]
+            yield (rs.resample_chunk(mono) if rs is not None else mono).astype(np.float32, copy=False)
+        if rs is not None:
+            yield rs.resample_chunk(np.zeros(0, dtype=np.float32), last=True).astype(np.float32, copy=False)
+
+
 def load_mono(path: Path, target_rate: int | None = 16000) -> tuple[np.ndarray, int]:
-    """Load an audio file as float32 mono, optionally resampled."""
-    data, rate = sf.read(str(path), dtype="float32", always_2d=True)
-    mono = data.mean(axis=1).astype(np.float32)
-    if target_rate and rate != target_rate:
-        mono = soxr.resample(mono, rate, target_rate).astype(np.float32)
-        rate = target_rate
-    return mono, int(rate)
+    """Load an audio file as float32 mono, optionally resampled.
+
+    Reads block-wise into one preallocated array: the previous whole-file read held the
+    native-rate 2-D float array, its mean and the resampled copy at the same time
+    (several GB for a 2-3 h call at 48 kHz).
+    """
+    info = sf.info(str(path))
+    rate = int(target_rate or info.samplerate)
+    est = int(np.ceil(info.frames * rate / info.samplerate)) + rate  # + 1 s resampler slack
+    out = np.empty(est, dtype=np.float32)
+    n = 0
+    for block in _mono_blocks(path, target_rate):
+        if n + block.size > out.size:
+            out = np.resize(out, n + block.size + rate)
+        out[n : n + block.size] = block
+        n += block.size
+    return out[:n].copy() if n < out.size // 2 else out[:n], rate
 
 
 def build_mix(mic: Path, remote: Path, dst: Path, fmt: str, rate: int = 48000) -> Path:
-    a, _ = load_mono(mic, rate)
-    b, _ = load_mono(remote, rate)
-    n = max(a.size, b.size)
-    mix = np.zeros(n, dtype=np.float32)
-    mix[: a.size] += a
-    mix[: b.size] += b
-    np.clip(mix, -1.0, 1.0, out=mix)
+    """Listening mix of both tracks, streamed block by block (constant memory)."""
     tmp = dst.with_name(dst.name + ".tmp")
-    sf.write(str(tmp), mix, rate, **_sf_args(fmt))
+    sources = [_mono_blocks(mic, rate), _mono_blocks(remote, rate)]
+    pending = [np.zeros(0, dtype=np.float32), np.zeros(0, dtype=np.float32)]
+    done = [False, False]
+    with sf.SoundFile(str(tmp), "w", samplerate=rate, channels=1, **_sf_args(fmt)) as out:
+        while not all(done):
+            for i in (0, 1):
+                while not done[i] and pending[i].size < rate:
+                    try:
+                        pending[i] = np.concatenate([pending[i], next(sources[i])])
+                    except StopIteration:
+                        done[i] = True
+            if all(done):
+                n = max(p.size for p in pending)
+            else:
+                n = min(p.size for i, p in enumerate(pending) if not done[i])
+            if n == 0:
+                continue
+            mix = np.zeros(n, dtype=np.float32)
+            for i in (0, 1):
+                k = min(n, pending[i].size)
+                mix[:k] += pending[i][:k]
+                pending[i] = pending[i][k:]
+            np.clip(mix, -1.0, 1.0, out=mix)
+            out.write(mix)
     tmp.replace(dst)
     return dst
 

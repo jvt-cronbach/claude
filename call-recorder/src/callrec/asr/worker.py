@@ -20,6 +20,30 @@ def resolve_compute_type(device: str, compute_type: str) -> str:
     return "float16" if device == "cuda" else "int8"
 
 
+def load_model(factory: Any, model: str, device: str, compute_type: str, download_root: str | None) -> Any:
+    """Load from the local cache first.
+
+    Without ``local_files_only`` faster-whisper/huggingface_hub contact huggingface.co on
+    *every* load to resolve the revision, i.e. once per transcribed track. The network is
+    only used when the model is not downloaded yet.
+    """
+    try:
+        return factory(model, device=device, compute_type=compute_type, download_root=download_root, local_files_only=True)
+    except FileNotFoundError:  # huggingface_hub LocalEntryNotFoundError: not downloaded yet
+        print(f"Modell {model} nicht im lokalen Cache - wird heruntergeladen", file=sys.stderr, flush=True)
+    return factory(model, device=device, compute_type=compute_type, download_root=download_root)
+
+
+def disable_onnxruntime_telemetry() -> None:
+    """Windows builds of onnxruntime (Silero VAD) emit ETW telemetry events unless disabled."""
+    try:
+        import onnxruntime
+
+        onnxruntime.disable_telemetry_events()
+    except Exception:  # noqa: BLE001 - optional
+        pass
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     if args.device == "cuda":
         from callrec.asr.cuda import setup_cuda_dll_paths
@@ -27,13 +51,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         setup_cuda_dll_paths()
     from faster_whisper import WhisperModel
 
+    disable_onnxruntime_telemetry()
     compute_type = resolve_compute_type(args.device, args.compute_type)
-    model = WhisperModel(
-        args.model,
-        device=args.device,
-        compute_type=compute_type,
-        download_root=args.download_root or None,
-    )
+    model = load_model(WhisperModel, args.model, args.device, compute_type, args.download_root or None)
     language = None if args.language in ("", "auto") else args.language
     segments, info = model.transcribe(
         args.audio,

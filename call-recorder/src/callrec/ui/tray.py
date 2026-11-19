@@ -30,6 +30,7 @@ def make_icon(color: str, recording: bool = False, size: int = 64) -> Image.Imag
 
 
 class TrayIcon:
+    READY_TIMEOUT_S = 5.0
     def __init__(self, actions: dict[str, Callable[[], None]], post: Callable[[Callable[[], None]], None]) -> None:
         import pystray
 
@@ -40,6 +41,7 @@ class TrayIcon:
         self.title = ""
         self.status = ""
         self._lock = threading.Lock()
+        self._ready = threading.Event()
 
         def act(name: str) -> Callable[[Any, Any], None]:
             return lambda icon, item: self.post(self.actions[name])
@@ -69,9 +71,13 @@ class TrayIcon:
         )
 
     def start(self) -> None:
-        # On Windows run_detached() starts pystray's own message-loop thread; the
-        # default setup callback makes the icon visible once that loop is ready.
-        self.icon.run_detached()
+        # On Windows run_detached() starts pystray's own message-loop thread; the setup
+        # callback runs once that loop (and its window) exists.
+        def setup(icon: Any) -> None:
+            icon.visible = True
+            self._ready.set()
+
+        self.icon.run_detached(setup)
 
     def stop(self) -> None:
         try:
@@ -103,6 +109,12 @@ class TrayIcon:
             self._refresh()
 
     def notify(self, title: str, message: str) -> None:
+        # Before the icon is visible Shell_NotifyIcon has no window/icon to attach the
+        # balloon to and the message is silently lost (e.g. "hotkey could not be registered"
+        # or "interrupted recording" right at startup).
+        if not self._ready.wait(self.READY_TIMEOUT_S):
+            log.info("Benachrichtigung ohne Tray-Symbol: %s - %s", title, message)
+            return
         try:
             if self.icon.HAS_NOTIFICATION:
                 self.icon.notify(message[:250], title[:60])

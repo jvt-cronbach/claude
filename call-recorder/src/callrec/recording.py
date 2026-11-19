@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,20 @@ META_SCHEMA = 1
 _meta_lock = threading.Lock()
 
 
+def replace_file(src: Path, dst: Path, attempts: int = 20, delay_s: float = 0.05) -> None:
+    """os.replace with retries: on Windows, virus scanners, the search indexer or OneDrive
+    briefly open freshly written files without FILE_SHARE_DELETE, and os.replace then fails
+    with PermissionError (WinError 5/32) although nothing is wrong."""
+    for i in range(attempts):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if i == attempts - 1:
+                raise
+            time.sleep(delay_s * (i + 1))
+
+
 def write_text_atomic(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
@@ -26,7 +41,7 @@ def write_text_atomic(path: Path, text: str) -> None:
         fh.write(text)
         fh.flush()
         os.fsync(fh.fileno())
-    tmp.replace(path)
+    replace_file(tmp, path)
 
 
 def new_meta(
@@ -202,8 +217,28 @@ def find_incomplete(root: Path) -> list[Recording]:
             status = (rec.load_meta().get("recording") or {}).get("status")
         except (OSError, ValueError):
             continue
+        if status == "failed":  # streams never started (device busy etc.): nothing to recover
+            continue
         if status == "recording" or has_unfinished_parts(rec.folder):
             out.append(rec)
+    return out
+
+
+def recordings_to_resume(root: Path) -> list[tuple[Recording, bool]]:
+    """Each recording that needs (re-)processing at startup exactly once: (rec, interrupted).
+
+    A recording that was stopped but whose WAV parts were never converted matches both
+    :func:`find_incomplete` and :func:`find_unprocessed`; it must be queued only once.
+    """
+    out: list[tuple[Recording, bool]] = []
+    seen: set[Path] = set()
+    for rec in find_incomplete(root):
+        seen.add(rec.folder)
+        out.append((rec, True))
+    for rec in find_unprocessed(root):
+        if rec.folder not in seen:
+            seen.add(rec.folder)
+            out.append((rec, False))
     return out
 
 

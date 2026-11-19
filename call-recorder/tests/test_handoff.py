@@ -99,6 +99,13 @@ def test_folder_handoff_records_meta_and_allows_rehandoff(tmp_path: Path):
     history = rec.load_meta()["handoffs"]
     assert len(history) == 2 and history[0]["sha256"] != history[1]["sha256"]
     assert last_handoff(rec) == history[1]
+    # what is sent must be exactly what was previewed
+    shown = build_summary_document(rec).sha256
+    rec.summary_path.write_text("# Zusammenfassung: Projekt Jour fixe\n\n## Kurzfassung\nGeändert.\n", encoding="utf-8")
+    with pytest.raises(HandoffError, match="seit der Vorschau"):
+        handoff_summary(rec, FolderTarget(share), expected_sha256=shown)
+    assert "Geändert." not in out.read_text(encoding="utf-8") and len(rec.load_meta()["handoffs"]) == 2
+    handoff_summary(rec, FolderTarget(share), expected_sha256=build_summary_document(rec).sha256)
     with pytest.raises(HandoffError):
         FolderTarget(tmp_path / "fehlt").put("a.md", b"x")
     with pytest.raises(HandoffError):

@@ -220,3 +220,53 @@ def test_openai_compatible_provider():
 def test_render():
     md = render_summary_md("Jour fixe", "## Kurzfassung\nX", "gemma3:12b", "19.11.2026 15:00")
     assert md.startswith("# Zusammenfassung: Jour fixe") and "gemma3:12b" in md
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://evil.example\\x@127.0.0.1:11434",  # urlparse: 127.0.0.1, requests: evil.example
+        "http://x\\evil.example@localhost:11434",
+        "http://evil.example\\x@[::1]:11434",
+        "http://user@127.0.0.1:11434",
+        "http://127.0.0.1 @evil.example",
+        "http://127.0.0.1\t@evil.example",
+        "http://localhost.evil.example:11434",
+        "http://127.0.0.1.nip.io:11434",
+        "http://0.0.0.0:11434",
+        "http://[::ffff:7f00:1]x:11434",
+    ],
+)
+def test_parser_differential_and_lookalikes_rejected(url):
+    with pytest.raises(RemoteEndpointRefused):
+        check_endpoint(url, allow_remote=False)
+
+
+def test_redirects_are_never_followed():
+    import requests as rq
+
+    from callrec.llm import _session
+
+    s = _session()
+    resp = rq.Response()
+    resp.status_code = 307
+    resp.headers["Location"] = "https://evil.example/api/chat"
+    assert s.get_redirect_target(resp) is None
+
+    class RedirectingSession:
+        trust_env = False
+
+        def post(self, url, **kw):
+            return FakeResp(307, {})
+
+        def get(self, url, **kw):
+            return FakeResp(308, {})
+
+    p = OllamaProvider("http://127.0.0.1:11434", session=RedirectingSession())
+    with pytest.raises(LlmUnavailable, match="Weiterleitung"):
+        p.chat("m", [{"role": "user", "content": "x"}], {})
+    with pytest.raises(LlmUnavailable, match="Weiterleitung"):
+        p.list_models()
+    o = OpenAICompatProvider("http://127.0.0.1:1234/v1", session=RedirectingSession())
+    with pytest.raises(LlmUnavailable, match="Weiterleitung"):
+        o.chat("m", [{"role": "user", "content": "x"}], {})

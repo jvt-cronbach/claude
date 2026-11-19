@@ -197,7 +197,7 @@ def cmd_handoff(args: argparse.Namespace) -> int:
         print("Abgebrochen.")
         return 1
     try:
-        entry = perform_handoff(cfg, rec)
+        entry = perform_handoff(cfg, rec, doc.sha256)  # exactly what was shown above
     except Exception as exc:
         print(f"Übergabe fehlgeschlagen: {exc}")
         return 1
@@ -350,7 +350,8 @@ def cmd_record(args: argparse.Namespace) -> int:
             if suggestion.message:
                 print(suggestion.message)
             try:
-                consent = cli_confirm(input, print, me.display, people)
+                tty = sys.stdin is not None and sys.stdin.isatty()
+                consent = cli_confirm(input, print, me.display, people, interactive=tty)
             except ConsentError as exc:
                 print(exc)
                 return None

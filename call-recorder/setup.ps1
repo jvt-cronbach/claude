@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Installiert CallRecorder in eine virtuelle Python-Umgebung (.venv) neben diesem Skript.
 
@@ -45,9 +45,19 @@ $py = Get-Command py -ErrorAction SilentlyContinue
 if (-not $py) {
     throw "Der Python-Launcher 'py' wurde nicht gefunden. Bitte Python $PythonVersion von https://www.python.org/downloads/windows/ installieren (Option 'tcl/tk and IDLE' aktiviert lassen) oder: winget install Python.Python.$PythonVersion"
 }
-& py "-$PythonVersion" -c "import sys, tkinter; print(sys.version)"
+if ($PythonVersion -notmatch '^3\.(12|13)$') {
+    throw "Python $PythonVersion wird nicht unterstützt: die gepinnten Pakete (u. a. numpy 2.5) gibt es nur für Python 3.12 und 3.13 (64 Bit)."
+}
+& py "-$PythonVersion" -c "import sys, struct, tkinter; print(sys.version); sys.exit(0 if struct.calcsize('P') == 8 else 3)"
+if ($LASTEXITCODE -eq 3) {
+    throw "Python $PythonVersion ist eine 32-Bit-Installation. Bitte die 64-Bit-Version installieren: winget install Python.Python.$PythonVersion"
+}
 if ($LASTEXITCODE -ne 0) {
     throw "Python $PythonVersion (mit tkinter) ist nicht installiert. Installation: winget install Python.Python.$PythonVersion"
+}
+# ctranslate2 (faster-whisper) needs the Visual C++ runtime (msvcp140.dll), which Python itself does not ship.
+if (-not (Test-Path (Join-Path $env:SystemRoot "System32\msvcp140.dll"))) {
+    Write-Warning "Visual C++ Runtime (msvcp140.dll) fehlt - ohne sie startet die Transkription nicht. Installation: winget install Microsoft.VCRedist.2015+.x64"
 }
 
 # --- 2. venv --------------------------------------------------------------------

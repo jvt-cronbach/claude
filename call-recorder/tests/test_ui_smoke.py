@@ -228,8 +228,8 @@ def test_handoff_dialog(root, tmp_path: Path):
         find(win, ttk.Button, "An SharePoint übergeben").invoke()
 
     root.after(200, drive)
-    ok = dialogs.ask_handoff(root, rec, cfg, lambda: calls.append(1) or {"location": "X"})
-    assert ok and calls == [1]
+    ok = dialogs.ask_handoff(root, rec, cfg, lambda sha: calls.append(sha) or {"location": "X"})
+    assert ok and len(calls) == 1 and len(calls[0]) == 64  # the sha256 of the previewed document
 
 
 def test_tkui_keeps_pumping_while_modal_dialog_open(tmp_path: Path):

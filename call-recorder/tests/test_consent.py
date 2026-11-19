@@ -70,6 +70,10 @@ def test_cli_confirm():
     assert any("Anna Beispiel" in line for line in out)
     with pytest.raises(ConsentError):
         cli_confirm(lambda prompt: "j", out.append, "Ich", PEOPLE)
+    asked: list[str] = []
+    with pytest.raises(ConsentError, match="Konsolenfenster"):  # piped stdin: never asked, never accepted
+        cli_confirm(lambda prompt: asked.append(prompt) or "ja", out.append, "Ich", PEOPLE, interactive=False)
+    assert asked == []
 
 
 class ExplodingBackend:

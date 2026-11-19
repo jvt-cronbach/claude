@@ -13,7 +13,7 @@ from callrec.config import Config
 from callrec.jobs import ProcessingQueue
 from callrec.models import AsrResult, AsrSegment, SpeakerTurn, Word
 from callrec.pipeline import ALL_STEPS, Components, Pipeline, initial_prompt_for
-from callrec.recording import Recording, find_incomplete, find_unprocessed
+from callrec.recording import Recording, find_incomplete, find_unprocessed, recordings_to_resume
 from callrec.review import (
     Assignment,
     apply_assignments,
@@ -235,6 +235,16 @@ def test_crash_recovery_detection(tmp_path: Path, profiles: ProfileStore):
     assert find_incomplete(root) == []
     rec.update_meta(["processing", "status"], "running")
     assert [r.folder for r in find_unprocessed(root)] == [rec.folder]
+
+
+def test_stopped_but_unconverted_recording_is_resumed_once(tmp_path: Path):
+    root = tmp_path / "recs"
+    rec = make_recording(root)  # WAV parts still present
+    rec.update_meta(["recording", "status"], "stopped")  # app closed before 'finalize' ran
+    assert find_incomplete(root) and find_unprocessed(root)  # matches both lists ...
+    assert [(r.folder, i) for r, i in recordings_to_resume(root)] == [(rec.folder, True)]  # ... queued once
+    rec.update_meta(["recording", "status"], "failed")  # audio device could not be opened
+    assert recordings_to_resume(root) == []  # not "recovered" as a 0-second call at next start
 
 
 def test_embeddings_roundtrip_and_delete(tmp_path: Path):

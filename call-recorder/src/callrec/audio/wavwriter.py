@@ -47,7 +47,8 @@ class StreamingWavWriter:
         self.sample_rate = int(sample_rate)
         self.channels = int(channels)
         self.checkpoint_interval_s = checkpoint_interval_s
-        self._fh: BinaryIO | None = open(path, "w+b")  # noqa: SIM115 - long-lived handle
+        # Unbuffered: a failed write (disk full) is seen immediately and can be rolled back.
+        self._fh: BinaryIO | None = open(path, "w+b", buffering=0)  # noqa: SIM115 - long-lived handle
         self._fh.write(_header(self.sample_rate, self.channels, 0))
         self._data_bytes = 0
         self._last_checkpoint = time.monotonic()
@@ -74,9 +75,25 @@ class StreamingWavWriter:
             raise ValueError("Mono-Daten für Mehrkanal-Datei")
         if self._data_bytes + arr.size * 2 > MAX_DATA_BYTES:
             raise OSError("WAV-Größenlimit (4 GB) erreicht")
-        self._fh.seek(0, os.SEEK_END)
-        self._fh.write(arr.tobytes())
-        self._data_bytes += arr.size * 2
+        data = memoryview(arr.tobytes())
+        end = HEADER_SIZE + self._data_bytes
+        try:
+            self._fh.seek(end)
+            written = 0
+            while written < len(data):
+                n = self._fh.write(data[written:])
+                if not n:
+                    raise OSError("Schreiben fehlgeschlagen (Datenträger voll?)")
+                written += n
+        except OSError:
+            # Roll back a partial write: otherwise later samples would be appended after an
+            # odd number of garbage bytes (byte-shifted = loud noise) and the header would lie.
+            try:
+                self._fh.truncate(end)
+            except OSError:
+                pass
+            raise
+        self._data_bytes += len(data)
         if time.monotonic() - self._last_checkpoint >= self.checkpoint_interval_s:
             self.checkpoint()
 
@@ -96,7 +113,7 @@ class StreamingWavWriter:
         self._fh.flush()
         self._fh.seek(0)
         self._fh.write(_header(self.sample_rate, self.channels, self._data_bytes))
-        self._fh.seek(0, os.SEEK_END)
+        self._fh.seek(HEADER_SIZE + self._data_bytes)
         self._fh.flush()
         try:
             os.fsync(self._fh.fileno())

@@ -7,7 +7,7 @@ name = "callrec"
 version = "0.1.0"
 description = "Lokaler Gesprächsrekorder für Teams-Anrufe mit Transkript, Sprechererkennung und Zusammenfassung (Windows 11)"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"  # numpy 2.5.x has no wheels for 3.11
 license = { text = "Proprietary / private use" }
 # Exact pins live in requirements.txt (runtime, Windows) and
 # requirements-dev.txt; these are the same pins so `pip install .` is reproducible.

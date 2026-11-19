@@ -81,6 +81,30 @@ def test_presets(isolated_home: Path):
         save_preset(cfg, "a/b")
 
 
+def test_preset_cannot_redirect_summary_off_this_computer(isolated_home: Path):
+    base = Config()
+    base.general.preset = "Geteilt"
+    save_config(base)
+    d = isolated_home / "config" / "presets"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "Geteilt.toml").write_text(
+        '[summary]\nallow_remote_endpoint_data_leaves_this_computer = true\n'
+        'ollama_url = "http://10.0.0.9:11434"\nopenai_url = "https://llm.example/v1"\n'
+        'openai_api_key = "k"\ntemperature = 0.5\n',
+        encoding="utf-8",
+    )
+    c = load_config()
+    assert c.summary.temperature == 0.5  # tuning still applies
+    assert c.summary.allow_remote_endpoint_data_leaves_this_computer is False
+    assert c.summary.ollama_url == "http://127.0.0.1:11434"
+    assert c.summary.openai_url == "http://127.0.0.1:1234/v1" and c.summary.openai_api_key == ""
+    assert sum("nur in config.toml" in w for w in c.warnings) == 4
+    cfg = Config()
+    cfg.summary.allow_remote_endpoint_data_leaves_this_computer = True
+    text = save_preset(cfg, "X").read_text(encoding="utf-8")
+    assert "allow_remote" not in text and "ollama_url" not in text
+
+
 def test_versioned_outputs_and_settings_in_meta(tmp_path: Path):
     from callrec.speakers.profiles import PlainFilePersistence, ProfileStore
     from callrec.userfiles import parse_replacements

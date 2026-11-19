@@ -68,7 +68,7 @@ def parse_hotkey(text: str) -> Hotkey:
 class GlobalHotkey:
     """Registers the hotkey in a dedicated thread with its own message loop."""
 
-    HOTKEY_ID = 0xC0DE
+    HOTKEY_ID = 0x0C0D  # applications must use 0x0000-0xBFFF (0xC000+ is for shared DLLs)
 
     def __init__(self, hotkey: Hotkey, callback: Callable[[], None]) -> None:
         self.hotkey = hotkey

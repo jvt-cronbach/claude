@@ -189,3 +189,20 @@ def test_processing_done_opens_review(tmp_path: Path):
     assert "Ollama aus" in ui.notes[-1][1]
     ctl._on_processed(J(), None, RuntimeError("kaputt"))
     assert ui.notes[-1][0] == "Verarbeitung fehlgeschlagen"
+
+
+def test_tick_notifies_each_recording_problem_once(tmp_path: Path):
+    ui = FakeUi(_decision)
+    ctl, _ = _controller(ui, tmp_path)
+    ctl.clock = lambda: datetime.now(UTC)
+    assert ctl.start(Suggestion(None)) is True
+    import time
+
+    ctl.recorder._writers["mic"].last_data_t = time.monotonic()  # type: ignore[union-attr]  # fake stream uses t=0
+    assert ctl.tick() == []
+    ctl.recorder._streams[0].active = False  # type: ignore[union-attr]
+    ctl.tick()
+    ctl.tick()
+    problems = [n for n in ui.notes if n[0] == "Problem bei der Aufnahme"]
+    assert len(problems) == 1 and "Mikrofon" in problems[0][1]
+    ctl.stop()

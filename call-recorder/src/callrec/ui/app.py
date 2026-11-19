@@ -26,7 +26,7 @@ from callrec.hotkey import GlobalHotkey, HotkeyError, parse_hotkey
 from callrec.jobs import ProcessingQueue
 from callrec.logging_setup import setup_logging
 from callrec.models import Person
-from callrec.recording import Recording, find_incomplete, find_unprocessed, list_recordings
+from callrec.recording import Recording, list_recordings, recordings_to_resume
 
 log = logging.getLogger(__name__)
 _MUTEX_HANDLE: Any = None
@@ -36,11 +36,16 @@ def acquire_single_instance() -> bool:
     if sys.platform != "win32":
         return True
     import ctypes
+    from ctypes import wintypes
 
     global _MUTEX_HANDLE
-    kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+    # use_last_error: ctypes saves GetLastError() right after the call; calling
+    # kernel32.GetLastError() separately may see a value clobbered in between.
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined]
+    kernel32.CreateMutexW.restype = wintypes.HANDLE
+    kernel32.CreateMutexW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.LPCWSTR]
     _MUTEX_HANDLE = kernel32.CreateMutexW(None, False, "Local\\CallRecorderSingleInstance")
-    return kernel32.GetLastError() != 183  # ERROR_ALREADY_EXISTS
+    return ctypes.get_last_error() != 183  # type: ignore[attr-defined]  # ERROR_ALREADY_EXISTS
 
 
 def open_path(path: Any) -> None:
@@ -174,7 +179,7 @@ def run_tray_app(cfg: Config | None = None) -> int:
         if rec is None:
             ui.notify("Keine Aufnahme", "Keine abgeschlossene Aufnahme gefunden.")
             return
-        dialogs.ask_handoff(ui.root, rec, cfg, lambda: perform_handoff(cfg, rec))
+        dialogs.ask_handoff(ui.root, rec, cfg, lambda sha: perform_handoff(cfg, rec, sha))
 
     def with_last(steps: frozenset[str]) -> None:
         rec = last_recording()
@@ -259,11 +264,11 @@ def run_tray_app(cfg: Config | None = None) -> int:
         ui.notify("Konfiguration", w)
 
     # crash recovery: finish recordings that were interrupted
-    for rec in find_incomplete(cfg.recordings_path()):
-        ui.notify("Unterbrochene Aufnahme", f"{rec.folder.name} wird wiederhergestellt und verarbeitet.")
-        controller.process(rec)
-    for rec in find_unprocessed(cfg.recordings_path()):
-        log.info("Setze Verarbeitung fort: %s", rec.folder.name)
+    for rec, interrupted in recordings_to_resume(cfg.recordings_path()):
+        if interrupted:
+            ui.notify("Unterbrochene Aufnahme", f"{rec.folder.name} wird wiederhergestellt und verarbeitet.")
+        else:
+            log.info("Setze Verarbeitung fort: %s", rec.folder.name)
         controller.process(rec)
 
     if cfg.detection.enabled and sys.platform == "win32":

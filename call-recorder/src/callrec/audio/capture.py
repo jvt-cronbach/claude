@@ -95,12 +95,14 @@ class TrackWriter:
         self.gap_threshold_s = gap_threshold_s
         self.writer = StreamingWavWriter(path, device.sample_rate, 1, checkpoint_interval_s)
         self.stats = TrackStats()
+        self.last_data_t: float | None = None  # timestamp of the last chunk delivered by the device
         self._queue: queue.Queue[tuple[bytes, float] | None] = queue.Queue()
         self._thread = threading.Thread(target=self._run, name=f"writer-{device.kind}", daemon=True)
         self._lock = threading.Lock()
 
     # called from the audio thread: must be cheap
     def on_data(self, data: bytes, t: float) -> None:
+        self.last_data_t = t
         self._queue.put((data, t))
 
     def start(self) -> None:
@@ -216,8 +218,12 @@ class DualTrackRecorder:
             raise
         log.info("Aufnahme gestartet: Mikrofon=%s, Loopback=%s", self.mic.name, self.loopback.name)
 
+    # A microphone delivers packets continuously (also during silence); the loopback
+    # legitimately delivers nothing while nothing is played, so only the mic is watched.
+    MIC_STALL_S = 5.0
+
     def health_warnings(self) -> list[str]:
-        """Called periodically while recording; reports dead streams."""
+        """Called periodically while recording; reports dead streams, stalled mic, write errors."""
         out = []
         for name, s in zip(("Mikrofon", "Lautsprecher-Loopback"), self._streams, strict=False):
             try:
@@ -225,10 +231,22 @@ class DualTrackRecorder:
             except Exception:
                 active = False
             if not active:
-                msg = f"{name}-Stream ist nicht mehr aktiv (Gerät getrennt?)"
-                if msg not in self._warnings:
-                    self._warnings.append(msg)
-                out.append(msg)
+                out.append(f"{name}-Stream ist nicht mehr aktiv (Gerät getrennt?)")
+        mic_w = self._writers.get("mic")
+        if mic_w is not None and self.t0 is not None:
+            now = self.clock()
+            last = mic_w.last_data_t if mic_w.last_data_t is not None else self.t0
+            if now - last > self.MIC_STALL_S:
+                out.append(
+                    f"Mikrofon liefert seit {int(now - last)} s keine Daten (Gerät getrennt oder Bluetooth-Profil gewechselt?)"
+                )
+        for key, w in self._writers.items():
+            if w.stats.errors:
+                out.append(f"Schreibfehler in der Spur {key}: {w.stats.errors[-1]} (Datenträger voll?)")
+        for msg in out:
+            base = msg.split(" seit ")[0]
+            if not any(m.split(" seit ")[0] == base for m in self._warnings):
+                self._warnings.append(msg)
         return out
 
     def stop(self) -> RecordingResult:

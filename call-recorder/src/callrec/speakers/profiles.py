@@ -42,18 +42,52 @@ class PlainFilePersistence:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(content, encoding="utf-8")
-        tmp.replace(self.path)
+        from callrec.recording import replace_file
+
+        replace_file(tmp, self.path)
 
     def load(self) -> str:
         return self.path.read_text(encoding="utf-8")
 
 
+class AtomicProtectedFile:
+    """DPAPI-encrypted file written atomically (temp file + fsync + os.replace).
+
+    msal-extensions' FilePersistenceWithDataProtection truncates and rewrites the file in
+    place, so a crash or full disk while saving would leave an undecryptable blob and all
+    voice profiles would be lost. The ciphertext format is the same (CryptProtectData with
+    the same entropy), so existing files stay readable.
+    """
+
+    def __init__(self, path: Path, agent: Any) -> None:
+        self.path = path
+        self._agent = agent  # object with protect(str) -> bytes / unprotect(bytes) -> str
+
+    def save(self, content: str) -> None:
+        import os
+
+        data = self._agent.protect(content)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.path.with_name(self.path.name + ".tmp")
+        with open(tmp, "wb") as fh:
+            fh.write(data)
+            fh.flush()
+            os.fsync(fh.fileno())
+        from callrec.recording import replace_file
+
+        replace_file(tmp, self.path)
+
+    def load(self) -> str:
+        data = self.path.read_bytes()  # FileNotFoundError if there are no profiles yet
+        return str(self._agent.unprotect(data))
+
+
 def secure_persistence(path: Path) -> Persistence:
     path.parent.mkdir(parents=True, exist_ok=True)
     if sys.platform == "win32":
-        from msal_extensions import FilePersistenceWithDataProtection
+        from msal_extensions.windows import WindowsDataProtectionAgent
 
-        return FilePersistenceWithDataProtection(str(path), entropy="callrec-voiceprints")  # type: ignore[no-any-return]
+        return AtomicProtectedFile(path, WindowsDataProtectionAgent(entropy="callrec-voiceprints"))
     log.warning("Nicht-Windows-System: Stimmprofile werden UNVERSCHLÜSSELT gespeichert (%s)", path)
     return PlainFilePersistence(path)
 
