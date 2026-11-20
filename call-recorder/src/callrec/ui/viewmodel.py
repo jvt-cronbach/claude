@@ -502,17 +502,27 @@ def retention_due_text(info: RecordingInfo, rt: Any, now: Any = None) -> str:
     """ "wird in 2 Tagen gelöscht" for the list and the details ("" = not soon / not at all)."""
     from datetime import datetime, timedelta
 
-    from callrec.retention import PRE_NOTICE_DAYS
+    from callrec.retention import MAX_AGE_DAYS, PRE_NOTICE_DAYS
 
-    if rt is None or not rt.enabled or info.pinned or info.reduced or info.started_at is None:
+    if rt is None or not rt.enabled or info.pinned or info.started_at is None:
         return ""
-    if rt.scope == "audio" and not info.has_audio:
+    pending = info.removed_text.startswith("Löschen unvollständig")
+    if info.reduced and not pending:
+        return ""
+    if rt.scope == "audio" and not info.has_audio and not pending:
         return ""
     now = now or datetime.now().astimezone()
     start = info.started_at if info.started_at.tzinfo else info.started_at.astimezone()
-    left = (start + timedelta(days=rt.max_age_days) - now).total_seconds() / 86400
+    left = (start + timedelta(days=min(int(rt.max_age_days), MAX_AGE_DAYS)) - now).total_seconds() / 86400
+    if pending:  # finished with the scope of the deletion that did not finish, not with the settings
+        return "Löschen unvollständig: wird beim nächsten Lauf fertig gelöscht" if left <= 0 else ""
     what = {"audio": "Audio", "recording": "Aufnahme"}.get(rt.scope, "Audio und Transkript")
     if left <= 0:
+        if info.is_recording or info.busy or info.chain_active:
+            return f"{what}: wird gelöscht, sobald Aufnahme bzw. Verarbeitung fertig ist"
+        if (not info.has_transcript and not info.removed) or info.processing_status.startswith("error"):
+            # held back until it was shown as "wird gelöscht" for 24 h (retention.SURFACE_S)
+            return f"{what}: nicht fertig verarbeitet – wird frühestens 24 h nach der Vorankündigung gelöscht"
         return f"{what}: wird beim nächsten Lauf gelöscht"
     if left < 1:
         return f"{what}: wird in den nächsten 24 h gelöscht"

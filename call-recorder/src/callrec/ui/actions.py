@@ -548,6 +548,10 @@ class AppActions:
         """After config.toml was saved (either settings UI): take it over in the running app."""
         try:
             reload_config_in_place(self.cfg)
+            if not self.cfg.retention.enabled:
+                from callrec import retention
+
+                retention.revoke_acknowledgement()  # switched on again later: asked again with the list
             if self.cfg.ui.frontend == "web":  # saved with the new interface chosen: try it again next start
                 from callrec.ui.webapp import clear_start_marker
 
@@ -802,8 +806,8 @@ class AppActions:
                 log.exception("Automatisches Löschen fehlgeschlagen")
                 return
             if res.removed:
-                self.ui.notify("Alte Aufnahmen gelöscht", f"{len(res.removed)} Aufnahme(n) älter als {rt.max_age_days} "
-                               f"Tage: {retention.SCOPE_TEXT[rt.scope]}.")
+                self.ui.notify("Alte Aufnahmen gelöscht", f"Älter als {rt.max_age_days} Tage – "
+                               f"{retention.removed_summary(res.scopes)}.")
                 self.ui.post(lambda: self._changed(None))
             if res.blocked == "changed":  # the answer was given to other settings: asked again at the next run
                 self.ui.notify("Automatisches Löschen", res.blocked_text)
@@ -824,6 +828,10 @@ class AppActions:
         def tick() -> None:
             if self.cfg.retention.enabled:
                 self.run_retention()
+            else:  # switched off (also in config.toml): switched on again, the first deletion is asked again
+                from callrec import retention
+
+                retention.revoke_acknowledgement()
             self._after(24 * 3600 * 1000, tick)
 
         self._after(first_delay_ms, tick)
@@ -838,8 +846,8 @@ class AppActions:
             if kind == "future":
                 self.ui.notify("Automatisches Löschen ausgesetzt", text)
             return ""
-        choice = self.dialogs.ask_retention(kind, text, [(i.title, i.when_text(datetime_now())) for i in plan.removable],
-                                            self.cfg.retention)
+        choice = self.dialogs.ask_retention(kind, text, [(i.title, retention.item_note(i, self.cfg.retention))
+                                                         for i in plan.removable], self.cfg.retention)
         if choice == "delete":  # exactly the recordings the question listed
             self.run_retention(confirmed=True, only=[i.id for i in plan.removable], expect=expect)
         elif choice == "keep":

@@ -213,6 +213,8 @@ def test_scope_recording_and_disabled(tmp_path: Path):
     cfg = Config()
     cfg.retention.scope = "recording"
     log: list[tuple[str, str]] = []
+    assert retention.run(root, cfg, remover(root, log), now=now).blocked == "broader" and log == []
+    retention.acknowledge(cfg.retention)
     retention.run(root, cfg, remover(root, log), now=now)
     assert not recs[0].folder.exists() and recs[1].folder.exists()
     cfg.retention.enabled = False
@@ -354,8 +356,9 @@ def test_clock_jump_is_caught_when_most_of_the_library_is_already_reduced(tmp_pa
         light(root, f"old{i:02d}", iso(now - timedelta(days=20 + i)),
               retention={"removed": "audio_transcript", "at": iso(now)})
     fresh = [light(root, f"new{i}", iso(now - timedelta(hours=h))) for i, h in enumerate((24, 2, 5))]
+    retention.acknowledge()
     st = retention.load_state()
-    st.update({"acknowledged": True, "last_run": iso(now)})
+    st.update({"last_run": iso(now)})
     retention.save_state(st)
     log: list[tuple[str, str]] = []
     res = retention.run(root, Config(), remover(root, log), now=now + timedelta(days=30))
@@ -807,3 +810,106 @@ def test_a_partly_emptied_audio_folder_is_labelled_not_rolled_back(tmp_path: Pat
     monkeypatch.setattr(os, "unlink", real)
     assert len(list((a.folder / "audio").iterdir())) == 1
     assert retention.pending_scope(a.load_meta()) == scope and read_info(a.folder).removed_text.startswith("Löschen unv")
+
+
+# ---------------------------------------------------------------------------
+# the answer covers only the settings it was given to
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("change", [
+    ("scope", "audio", "audio_transcript"), ("scope", "audio_transcript", "recording"),
+    ("delete_mode", "recycle_bin", "permanent"), ("max_age_days", 14, 7)])
+def test_broader_settings_than_the_answer_ask_again(tmp_path: Path, change: tuple[str, Any, Any]):
+    key, before, after = change
+    now = START + timedelta(days=30)
+    root = tmp_path / "lib"
+    a = light(root, "a", iso(now - timedelta(days=20)))
+    cfg = Config()
+    setattr(cfg.retention, key, before)
+    retention.acknowledge(cfg.retention)
+    setattr(cfg.retention, key, after)  # saved in the settings later
+    log: list[tuple[str, str]] = []
+    res = retention.run(root, cfg, remover(root, log), now=now)
+    assert res.blocked == "broader" and log == [] and a.transcript_path.exists()
+    title, msg = retention.question_text(res.blocked, res.blocked_text, [("a", "")], cfg.retention)
+    assert "geänderte Einstellungen" in title and "erweitert" in msg
+    res = retention.run(root, cfg, remover(root, log), now=now, confirmed=True, only=["a"],
+                        expect=retention.settings_key(cfg, root))
+    assert res.removed == ["a"] and retention.is_acknowledged(retention.load_state(), cfg.retention)
+
+
+def test_narrower_settings_need_no_new_question(tmp_path: Path):
+    now = START + timedelta(days=30)
+    root = tmp_path / "lib"
+    light(root, "a", iso(now - timedelta(days=20)))
+    for i in range(3):
+        light(root, f"y{i}", iso(now - timedelta(days=1)))
+    cfg = Config()
+    cfg.retention.scope, cfg.retention.max_age_days = "recording", 7
+    retention.acknowledge(cfg.retention)
+    cfg.retention.scope, cfg.retention.delete_mode, cfg.retention.max_age_days = "audio", "recycle_bin", 14
+    log: list[tuple[str, str]] = []
+    res = retention.run(root, cfg, lambda rec, s, m: log.append((rec.folder.name, s)), now=now)
+    assert res.blocked == "" and log == [("a", "audio")]
+
+
+def test_switching_off_and_on_again_asks_again(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from types import SimpleNamespace
+
+    import callrec.ui.actions as actions_mod
+
+    now = START + timedelta(days=30)
+    root = tmp_path / "lib"
+    a = light(root, "a", iso(now - timedelta(days=20)))
+    cfg = Config()
+    retention.acknowledge(cfg.retention)
+    act = _actions(root, cfg)
+    act.controller.calendar = SimpleNamespace(source=None)
+    monkeypatch.setattr(actions_mod, "reload_config_in_place", lambda c: None)
+    monkeypatch.setattr(actions_mod, "build_calendar_service", lambda c: SimpleNamespace(source=None))
+    cfg.retention.enabled = False
+    act.apply_saved_config()  # settings saved with retention off (classic or web settings)
+    assert not retention.is_acknowledged(retention.load_state(), cfg.retention)
+    cfg.retention.enabled = True
+    assert retention.run(root, cfg, remover(root, []), now=now).blocked == "first" and a.transcript_path.exists()
+    retention.acknowledge(cfg.retention)
+    cfg.retention.enabled = False
+    retention.run(root, cfg, remover(root, []), now=now)  # "callrec retention run" while off
+    cfg.retention.enabled = True
+    assert retention.run(root, cfg, remover(root, []), now=now).blocked == "first"
+
+
+def test_question_and_notice_name_the_scope_actually_applied(tmp_path: Path):
+    """A deletion that did not finish is finished with its own scope - the question says so."""
+    now = START + timedelta(days=30)
+    root = tmp_path / "lib"
+    a = light(root, "a", iso(now - timedelta(days=20)))
+    a.update_meta(["retention"], {"removing": "recording", "mode": "permanent", "by": "user"})
+    light(root, "b", iso(now - timedelta(days=20)))
+    cfg = Config()
+    p = retention.plan(root, cfg, now)
+    items = [(i.title, retention.item_note(i, cfg.retention)) for i in p.removable]
+    title, msg = retention.question_text("first", p.blocked_text, items, cfg.retention)
+    assert "• a (Löschen unvollständig – wird fertig gelöscht: die ganze Aufnahme (auch die Zusammenfassung), " \
+           "endgültig)" in msg and "\n• b\n" in msg + "\n" and "bei den markierten wie angegeben" in msg
+    res = retention.run(root, cfg, remover(root, []), now=now, confirmed=True, only=["a", "b"])
+    assert res.scopes == {"a": "recording", "b": "audio_transcript"}
+    text = retention.removed_summary(res.scopes)
+    assert "1 Aufnahme(n): die ganze Aufnahme" in text and "1 Aufnahme(n): Audio und Transkript" in text
+
+
+def test_badge_of_a_held_back_recording_does_not_say_next_run():
+    from callrec.library import RecordingInfo
+    from callrec.ui.viewmodel import retention_due_text
+
+    now = START + timedelta(days=30)
+    rt = Config().retention
+    old = START
+    unprocessed = RecordingInfo(Path("a"), "a", started_at=old, recording_status="stopped")
+    assert "frühestens 24 h nach der Vorankündigung" in retention_due_text(unprocessed, rt, now)
+    busy = RecordingInfo(Path("b"), "b", started_at=old, processing_status="running", has_transcript=True)
+    assert "sobald Aufnahme bzw. Verarbeitung fertig" in retention_due_text(busy, rt, now)
+    done = RecordingInfo(Path("c"), "c", started_at=old, processing_status="done", has_transcript=True)
+    assert retention_due_text(done, rt, now) == "Audio und Transkript: wird beim nächsten Lauf gelöscht"
+    pending = RecordingInfo(Path("d"), "d", started_at=old, removed="audio_transcript",
+                            removed_text="Löschen unvollständig (…)")
+    assert retention_due_text(pending, rt, now).startswith("Löschen unvollständig: wird beim nächsten Lauf fertig")

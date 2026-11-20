@@ -299,6 +299,43 @@ def _state_path() -> Path:
     return paths.data_dir() / "retention_state.json"
 
 
+SCOPE_RANK = {SCOPE_AUDIO: 0, SCOPE_AUDIO_TRANSCRIPT: 1, SCOPE_RECORDING: 2}  # how much a scope removes
+MODE_RANK = {"recycle_bin": 0, "permanent": 1}
+
+
+def ack_entry(rt: Any) -> dict[str, Any]:
+    """The settings an answer "Wie eingestellt löschen" (or a run with nothing to ask) was given to."""
+    return {"scope": str(rt.scope), "mode": str(rt.delete_mode), "age": int(rt.max_age_days)}
+
+
+def is_acknowledged(state: dict[str, Any], rt: Any) -> bool:
+    """The user agreed to deletions under settings at least as broad as ``rt``: not more removed, not
+    permanent instead of the recycle bin, not earlier. Broader settings (or none recorded) ask again."""
+    a = state.get("ack")
+    if not state.get("acknowledged") or not isinstance(a, dict):
+        return False
+    try:
+        return (SCOPE_RANK[str(rt.scope)] <= SCOPE_RANK[str(a["scope"])]
+                and MODE_RANK[str(rt.delete_mode)] <= MODE_RANK[str(a["mode"])]
+                and int(rt.max_age_days) >= int(a["age"]))
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def _set_ack(state: dict[str, Any], rt: Any) -> None:
+    state["acknowledged"] = True
+    state["ack"] = ack_entry(rt)
+
+
+def revoke_acknowledgement() -> None:
+    """Retention switched off: switched on again, the first deletion is asked again (with the list)."""
+    st = load_state()
+    if st.get("acknowledged") or "ack" in st:
+        st.pop("ack", None)
+        st["acknowledged"] = False
+        save_state(st)
+
+
 def load_state() -> dict[str, Any]:
     try:
         d = json.loads(_state_path().read_text(encoding="utf-8"))
@@ -339,6 +376,8 @@ class Item:
         return self.rec.folder.name
 
     def when_text(self, now: datetime) -> str:
+        if self.scope and self.due and not self.waiting:
+            return "Löschen unvollständig – wird beim nächsten Lauf fertig gelöscht"
         if self.due:
             return "wird beim nächsten Lauf gelöscht" if not self.waiting else f"wird gelöscht ({self.waiting})"
         days = (self.due_at - now).total_seconds() / 86400
@@ -476,9 +515,14 @@ def plan(root: Path, cfg: Any, now: datetime | None = None, busy: Callable[[Reco
         out.blocked, out.blocked_text = "future", (
             "Eine Aufnahme ist auf ein Datum in der Zukunft datiert – die Systemuhr stimmt vermutlich nicht. "
             "Automatisches Löschen ausgesetzt.")
-    elif not state.get("acknowledged") and out.removable:
-        out.blocked, out.blocked_text = "first", (
-            f"{len(out.removable)} vorhandene Aufnahme(n) sind älter als {rt.max_age_days} Tage.")
+    elif not is_acknowledged(state, rt) and out.removable:
+        if isinstance(state.get("ack"), dict) and state.get("acknowledged"):
+            out.blocked, out.blocked_text = "broader", (
+                "Die Einstellungen zum Löschen wurden erweitert (mehr, früher oder endgültig statt in den "
+                f"Papierkorb) – {len(out.removable)} Aufnahme(n) würden nach den neuen Einstellungen gelöscht.")
+        else:
+            out.blocked, out.blocked_text = "first", (
+                f"{len(out.removable)} vorhandene Aufnahme(n) sind älter als {rt.max_age_days} Tage.")
     elif len(out.removable) > 1 and _unusual(len(out.removable), out, rt.max_share_per_run, state, now):
         out.blocked, out.blocked_text = "share", (
             f"Der Lauf würde {len(out.removable)} von {out.total} Aufnahmen löschen – mehr als üblich "
@@ -518,6 +562,7 @@ def mark_surfaced(p: Plan, now: datetime | None = None, state: dict[str, Any] | 
 @dataclass
 class RunResult:
     removed: list[str] = field(default_factory=list)
+    scopes: dict[str, str] = field(default_factory=dict)  # id -> the scope applied to it
     failed: list[tuple[str, str]] = field(default_factory=list)
     blocked: str = ""
     blocked_text: str = ""
@@ -591,18 +636,21 @@ def run(root: Path, cfg: Any, remover: Callable[[Recording, str, str], object], 
             res.blocked, res.blocked_text = "changed", (
                 "Die Einstellungen zum Löschen wurden geändert, während die Frage offen war – nichts gelöscht.")
             return res
+        if not rt.enabled:  # e.g. "callrec retention run" while switched off
+            revoke_acknowledgement()
+            return res
         snap = SimpleNamespace(retention=rt)
         state = load_state()
         p = plan(root, snap, now, busy, state)
-        if not state.get("acknowledged") and rt.enabled and not p.candidates:
-            state["acknowledged"] = True  # nothing that could ever be deleted yet: no question needed
+        if not is_acknowledged(state, rt) and not p.candidates:
+            _set_ack(state, rt)  # nothing that could ever be deleted under these settings yet: no question needed
             p = plan(root, snap, now, busy, state)
         if p.blocked and not (confirmed and p.blocked != "future"):
             res.blocked, res.blocked_text = p.blocked, p.blocked_text
             save_state(state)
             return res
         if confirmed:
-            state["acknowledged"] = True
+            _set_ack(state, rt)  # exactly the settings the question showed (``expect``)
         wanted = set(only) if only is not None else None
         for item in p.removable:
             if wanted is not None and item.id not in wanted:
@@ -617,6 +665,7 @@ def run(root: Path, cfg: Any, remover: Callable[[Recording, str, str], object], 
             try:
                 remover(item.rec, item.scope or rt.scope, item.mode or rt.delete_mode)
                 res.removed.append(item.id)
+                res.scopes[item.id] = item.scope or rt.scope
                 surfaced = state.get("surfaced")
                 if isinstance(surfaced, dict):
                     surfaced.pop(item.id, None)
@@ -635,10 +684,30 @@ def pin_all(items: list[Item]) -> None:
         set_pinned(i.rec, True)
 
 
-def acknowledge() -> None:
+def acknowledge(rt: Any = None) -> None:
+    """Record the answer "Wie eingestellt löschen" for the settings ``rt`` (default: the defaults)."""
+    from callrec.config import RetentionConfig
+
     st = load_state()
-    st["acknowledged"] = True
+    _set_ack(st, rt if rt is not None else RetentionConfig())
     save_state(st)
+
+
+def removed_summary(scopes: dict[str, str]) -> str:
+    """ "2 Aufnahme(n): Audio und Transkript; 1: die ganze Aufnahme" for the notice after a run."""
+    counts: dict[str, int] = {}
+    for sc in scopes.values():
+        counts[sc] = counts.get(sc, 0) + 1
+    return "; ".join(f"{n} Aufnahme(n): {SCOPE_TEXT.get(sc, sc)}" for sc, n in counts.items())
+
+
+def item_note(item: Item, rt: Any) -> str:
+    """For the question: what happens to this recording if it differs from the settings (a deletion
+    that did not finish is finished with its own scope and mode)."""
+    if not item.scope:
+        return ""
+    how = "endgültig" if (item.mode or rt.delete_mode) == "permanent" else "in den Papierkorb"
+    return f"Löschen unvollständig – wird fertig gelöscht: {SCOPE_TEXT.get(item.scope, item.scope)}, {how}"
 
 
 def notify_due_today(p: Plan, now: datetime | None = None) -> str:
@@ -677,13 +746,19 @@ RETENTION_CHOICES = (
 
 def question_text(kind: str, text: str, items: list[tuple[str, str]], rt: Any) -> tuple[str, str]:
     """(title, message) of the question of a run that did not delete (first activation / unusual run)."""
-    names = "\n".join(f"• {t}" for t, _w in items[:12]) + (f"\n• … und {len(items) - 12} weitere" if len(items) > 12 else "")
+    """``items``: (title, note) - a note names a scope that differs from the settings (see :func:`item_note`)."""
+    # notes first: a recording treated differently from the settings must be visible in the list
+    ordered = sorted(items, key=lambda x: not x[1])
+    names = "\n".join(f"• {t}" + (f" ({w})" if w else "") for t, w in ordered[:12]) + (
+        f"\n• … und {len(items) - 12} weitere" if len(items) > 12 else "")
     how = ("ENDGÜLTIG gelöscht (nicht rückgängig zu machen)" if rt.delete_mode == "permanent"
            else "in den Windows-Papierkorb verschoben")
-    title = "Automatisches Löschen" if kind == "first" else "Ungewöhnlich viele Aufnahmen zum Löschen"
+    title = {"first": "Automatisches Löschen", "broader": "Automatisches Löschen: geänderte Einstellungen"}.get(
+        kind, "Ungewöhnlich viele Aufnahmen zum Löschen")
     intro = (f"Automatisches Löschen ist eingeschaltet: Aufnahmen älter als {rt.max_age_days} Tage werden gelöscht. "
-             if kind == "first" else "")
-    msg = (f"{intro}{text}\n\n{names}\n\nBei „Wie eingestellt löschen“ wird von diesen Aufnahmen "
+             if kind in ("first", "broader") else "")
+    others = (" (bei den markierten wie angegeben)" if any(w for _t, w in items) else "")
+    msg = (f"{intro}{text}\n\n{names}\n\nBei „Wie eingestellt löschen“ wird von diesen Aufnahmen{others} "
            f"{SCOPE_TEXT.get(rt.scope, rt.scope)} {how}. Bereits an SharePoint übergebene Zusammenfassungen bleiben "
            "dort erhalten. Ohne Entscheidung wird nichts gelöscht.")
     return title, msg
