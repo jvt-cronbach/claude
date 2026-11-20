@@ -34,7 +34,6 @@ def build_components(cfg: Config, profiles: ProfileStore | None = None) -> Compo
     def diarizer():  # type: ignore[no-untyped-def]
         from callrec.speakers.diarize import SherpaDiarizer
         from callrec.speakers.modelstore import SEGMENTATION, embedding_model, ensure_model
-
         from callrec.speakers.threads import effective_threads
 
         d = cfg.diarization

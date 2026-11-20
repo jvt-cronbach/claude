@@ -439,6 +439,7 @@ class ProfileStore:
         not_eligible: dict[str, str] | None = None,
         bonus: float = 0.0,
         preferred: list[Person] | None = None,
+        ignore_recording: str = "",
     ) -> dict[str, Decision]:
         """Decide for each diarized speaker: automatic assignment, suggestion, or nothing.
 
@@ -455,11 +456,25 @@ class ProfileStore:
         A non-participant profile that is the closest one is returned as ``suggestion`` only.
         ``not_eligible`` maps speakers to a reason (e.g. too little speech) - no assignment.
         Profiles matching ``exclude`` (the user, on the mic track) are never considered.
+        ``ignore_recording``: compare against what the profiles learned from *other* recordings
+        only - a recording must not confirm itself with its own earlier contribution.
         """
+        import copy
+
         excluded = exclude or []
         with self._lock:
-            profiles = [p for p in self._load().values()
-                        if p.model_id == model_id and not any(p.matches_person(x) for x in excluded)]
+            profiles = []
+            for p in self._load().values():
+                if p.model_id != model_id or any(p.matches_person(x) for x in excluded):
+                    continue
+                if ignore_recording and any(c.recording == ignore_recording for c in p.contributions):
+                    rest = [c for c in p.contributions if c.recording != ignore_recording]
+                    if not rest:
+                        continue
+                    p = copy.copy(p)
+                    p.contributions = rest
+                    p.recompute()
+                profiles.append(p)
         allowed_ids = {p.id for p in profiles
                        if participants is None or any(p.matches_person(x) for x in participants)}
         preferred_ids = {p.id for p in profiles if participants is None and any(
@@ -481,11 +496,10 @@ class ProfileStore:
                 continue
             best_sim, best = sims[0]
             allowed = [(s, p) for s, p in sims if p.id in allowed_ids]
-            if best.id not in allowed_ids:
-                if best_sim >= threshold:
-                    d.suggestion = Match(best, best_sim, best_sim)
-                    d.reason = f"klingt wie {best.name} (kein Teilnehmer dieses Termins)"
-                    continue
+            if best.id not in allowed_ids and best_sim >= threshold:
+                d.suggestion = Match(best, best_sim, best_sim)
+                d.reason = f"klingt wie {best.name} (kein Teilnehmer dieses Termins)"
+                continue
             if not allowed:
                 d.reason = "keine Stimmprofile von Teilnehmenden dieses Termins"
                 continue
@@ -502,7 +516,7 @@ class ProfileStore:
                 continue
             claims.append((score, spk, Match(prof, sim, score)))
         used: dict[str, str] = {}
-        for score, spk, m in sorted(claims, key=lambda x: (-x[0], x[1])):
+        for _score, spk, m in sorted(claims, key=lambda x: (-x[0], x[1])):
             if m.profile.id in used:
                 out[spk].suggestion = m
                 out[spk].reason = f"gleiche Stimme wie {used[m.profile.id]}? ({m.profile.name} {m.similarity:.2f})"

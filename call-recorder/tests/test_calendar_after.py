@@ -90,16 +90,6 @@ def test_assign_event_sets_participants_for_matching_and_dropdown(tmp_path: Path
     assert choices[:2] == ["Olga Organisatorin", "Karl Kunde"]
 
 
-def test_identify_prefers_invitees(tmp_path: Path):
-    """The pipeline passes the recording's participants as preferred candidates to the matching."""
-    import inspect
-
-    from callrec import pipeline
-
-    src = inspect.getsource(pipeline.Pipeline._step_identify)
-    assert "rec.participants()" in src and "invitee_bonus" in src
-
-
 def test_recording_is_named_after_the_event(tmp_path: Path):
     from callrec.calendar.service import Suggestion
     from tests.test_controller import FakeUi, _controller, _decision

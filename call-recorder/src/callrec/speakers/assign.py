@@ -110,7 +110,7 @@ def assign_remote(asr: AsrResult, turns: list[SpeakerTurn], max_gap: float = 2.0
 
     labelled = [(w, raw_speaker(w)) for w in sorted(words, key=lambda w: w.start)]
     if self_ids:
-        mic = sorted(((m.start, m.end) for m in mic_words or []))
+        mic = sorted((m.start, m.end) for m in mic_words or [])
         starts = [s for s, _ in mic]
 
         def on_mic(w: Word) -> bool:

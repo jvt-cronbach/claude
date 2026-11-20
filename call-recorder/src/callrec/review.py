@@ -7,9 +7,20 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from callrec.models import SELF_SPEAKER_ID, Person, SpeakerTurn
+from callrec.models import (
+    SELF_SPEAKER_ID,
+    SOURCE_AUTO,
+    SOURCE_MANUAL,
+    SOURCE_SELF_ECHO,
+    USER_DECIDED,
+    Person,
+    SpeakerTurn,
+)
 from callrec.recording import Recording
 from callrec.speakers.profiles import ProfileStore
+
+SELF_CHOICE = "Das bin ich (meine Stimme auf der Spur der Gegenseite)"
+SUGGESTION_SUFFIX = " (kein Teilnehmer dieses Termins)"
 
 
 @dataclass
@@ -23,6 +34,10 @@ class SpeakerOverview:
     utterances: int
     sample_text: str
     sample_span: tuple[float, float] | None
+    suggested_name: str = ""
+    suggested_score: float | None = None
+    note: str = ""
+    self_suspect: bool = False
 
 
 def choose_sample_span(turns: list[SpeakerTurn], min_len: float = 3.0, max_len: float = 8.0) -> tuple[float, float] | None:
@@ -40,6 +55,13 @@ def load_turns(rec: Recording) -> list[SpeakerTurn]:
     return [SpeakerTurn(**d) for d in json.loads(rec.turns_path.read_text(encoding="utf-8"))]
 
 
+def _sample_text(utts: list[Any]) -> str:
+    if not utts:
+        return ""
+    longest = max(utts, key=lambda u: len(u.text))
+    return longest.text if len(longest.text) <= 160 else longest.text[:157] + "..."
+
+
 def speaker_overview(rec: Recording) -> list[SpeakerOverview]:
     speakers = rec.load_speakers()
     utterances = rec.load_utterances()
@@ -51,44 +73,90 @@ def speaker_overview(rec: Recording) -> list[SpeakerOverview]:
         spk_turns = [t for t in turns if t.speaker == sid]
         spk_utts = [u for u in utterances if u.speaker == sid]
         talk = sum(t.end - t.start for t in spk_turns) or sum(u.end - u.start for u in spk_utts)
-        sample_text = ""
-        if spk_utts:
-            longest = max(spk_utts, key=lambda u: len(u.text))
-            sample_text = longest.text if len(longest.text) <= 160 else longest.text[:157] + "..."
         span = choose_sample_span(spk_turns)
         if span is None and spk_utts:
             u = max(spk_utts, key=lambda u: u.end - u.start)
             span = (u.start, min(u.end, u.start + 8.0))
-        out.append(SpeakerOverview(sid, info.label, info.name, info.score, info.source, talk, len(spk_utts), sample_text, span))
+        out.append(SpeakerOverview(sid, info.label, info.name, info.score, info.source, talk, len(spk_utts),
+                                   _sample_text(spk_utts), span, info.suggested_name, info.suggested_score,
+                                   info.note, info.self_suspect))
     out.sort(key=lambda o: (min((t.start for t in turns if t.speaker == o.id), default=1e12), o.id))
     return out
 
 
-def name_choices(rec: Recording, profiles: ProfileStore) -> list[str]:
-    """Invitees first (without the user), then known voice profiles."""
+def self_overview(rec: Recording) -> SpeakerOverview:
+    """The fixed row for your own (mic) track: not diarized, always attributed to you."""
+    speakers = rec.load_speakers()
+    me = speakers.get(SELF_SPEAKER_ID)
+    mine = [u for u in rec.load_utterances() if u.speaker == SELF_SPEAKER_ID and u.track == "mic"]
+    talk = sum(u.end - u.start for u in mine)
+    good = [u for u in mine if u.end - u.start >= 3.0]
+    pick = min(good, key=lambda u: u.start) if good else (max(mine, key=lambda u: u.end - u.start) if mine else None)
+    span = (pick.start, min(pick.end, pick.start + 8.0)) if pick is not None else None
+    name = me.display if me is not None else rec.self_person().display
+    return SpeakerOverview(SELF_SPEAKER_ID, "Ich", name, None, "self", talk, len(mine), _sample_text(mine), span)
+
+
+def _is_me(p: Person, me: Person) -> bool:
+    from callrec.speakers.names import persons_match
+
+    return p.key() == me.key() or persons_match(p, me)
+
+
+def name_choices(rec: Recording, profiles: ProfileStore, all_profiles: bool = False,
+                 exclude_speaker: str = "") -> list[str]:
+    """This call's participants (without you) - those not yet assigned first - then, only in the
+    "all_profiles" mode, the other known voice profiles."""
     me = rec.self_person()
-    names: list[str] = []
-    for p in rec.participants():
-        if p.key() == me.key() or (me.name and p.name.casefold() == me.name.casefold()):
-            continue
-        names.append(p.name)
-    names += [p.name for p in profiles.all_profiles()]
+    speakers = rec.load_speakers()
+    taken = {s.name.casefold() for sid, s in speakers.items() if s.name and sid not in (SELF_SPEAKER_ID, exclude_speaker)}
+    people = [p.name or p.email for p in rec.participants() if not _is_me(p, me)]
+    people = [n for n in dict.fromkeys(people) if n]
+    names = [n for n in people if n.casefold() not in taken] + [n for n in people if n.casefold() in taken]
+    if all_profiles:
+        names += [p.name for p in profiles.all_profiles() if not p.matches_person(me)]
     return list(dict.fromkeys(n for n in names if n))
+
+
+def row_choices(rec: Recording, profiles: ProfileStore, ov: SpeakerOverview, all_profiles: bool = False) -> list[str]:
+    """Dropdown of one speaker: participants, the labelled suggestion, "Das bin ich"."""
+    names = name_choices(rec, profiles, all_profiles, exclude_speaker=ov.id)
+    if ov.suggested_name and not any(n.casefold() == ov.suggested_name.casefold() for n in names):
+        names.append(suggestion_label(ov.suggested_name))
+    names.append(SELF_CHOICE)
+    return names
+
+
+def suggestion_label(name: str) -> str:
+    return f"klingt wie {name}{SUGGESTION_SUFFIX}"
+
+
+def parse_choice(text: str) -> tuple[str, bool]:
+    """(name, is_self) of a dropdown entry or free text."""
+    t = text.strip()
+    if t == SELF_CHOICE:
+        return "", True
+    if t.startswith("klingt wie ") and t.endswith(SUGGESTION_SUFFIX):
+        return t[len("klingt wie "):-len(SUGGESTION_SUFFIX)].strip(), False
+    return t, False
 
 
 @dataclass
 class Assignment:
     speaker_id: str
-    name: str  # "" = back to "Sprecher N"
+    name: str  # "" = back to "Sprecher N"; may also be a dropdown entry (suggestion / SELF_CHOICE)
     save_profile: bool = True
     email: str = ""
+    is_self: bool = False  # "das bin ich": the user's own voice on the remote track
 
 
-def _email_for(name: str, participants: list[Person]) -> str:
+def _participant_for(name: str, participants: list[Person]) -> Person | None:
+    from callrec.speakers.names import same_person
+
     for p in participants:
-        if p.name.casefold() == name.casefold():
-            return p.email
-    return ""
+        if same_person(p.name or p.email, "", name, "") or (p.email and p.email.casefold() == name.casefold()):
+            return p
+    return None
 
 
 def apply_assignments(
@@ -96,35 +164,102 @@ def apply_assignments(
     assignments: list[Assignment],
     profiles: ProfileStore,
     rerender: Callable[[], object],
+    min_learn_speech_s: float | None = None,
 ) -> list[str]:
-    """Rename speakers, learn voice profiles, then re-render the transcript."""
+    """Rename speakers, learn voice profiles, then re-render the transcript.
+
+    * An automatic match that you leave unchanged and do not tick "Stimme merken" for stays
+      automatic (it is not silently turned into a confirmed assignment, and nothing is learned).
+    * A changed or confirmed assignment is "manual": it always wins over later re-runs. With
+      "Stimme merken" its embedding is recorded for this recording+speaker - replacing whatever
+      that speaker had taught any profile before (a correction undoes the earlier update).
+    * A person assigned here who is not yet a participant of the recording becomes one.
+    * "Das bin ich": the speaker's text is attributed to you (duplicates of the mic track dropped);
+      it never teaches a profile.
+    """
+    from callrec.config import SpeakerConfig
+    from callrec.speakers.diarize import speech_seconds
+
+    min_learn = SpeakerConfig().min_learn_speech_s if min_learn_speech_s is None else min_learn_speech_s
     speakers = rec.load_speakers()
     embeddings, model_id = rec.load_embeddings()
     participants = rec.participants()
+    me = rec.self_person()
+    speech = speech_seconds(load_turns(rec))
+    rid = rec.folder.name
     messages: list[str] = []
+    added: list[Person] = []
     for a in assignments:
         info = speakers.get(a.speaker_id)
         if info is None or a.speaker_id == SELF_SPEAKER_ID:
             continue
-        name = a.name.strip()
+        name, is_self = parse_choice(a.name)
+        is_self = is_self or a.is_self
+        if is_self:
+            profiles.forget(rid, a.speaker_id)
+            info.name, info.email, info.profile_id, info.score = me.name or "Ich", me.email, "", None
+            info.source = SOURCE_SELF_ECHO
+            info.clear_hints()
+            messages.append(f"{info.label}: als Ihre eigene Stimme markiert.")
+            continue
         if not name:
+            if profiles.forget(rid, a.speaker_id):
+                messages.append(f"{info.label}: frühere Profil-Aktualisierung zurückgenommen.")
             info.name, info.email, info.profile_id, info.score, info.source = "", "", "", None, ""
             continue
+        unchanged_auto = info.source == SOURCE_AUTO and info.name.casefold() == name.casefold()
+        if unchanged_auto and not a.save_profile:
+            continue  # stays an automatic (re-checkable) assignment
+        person = _participant_for(name, participants + added)
+        if person is None and not _is_me(Person(name, a.email), me):
+            person = Person(name, a.email, "assigned")
+            added.append(person)
+        corrected = bool(info.name) and info.name.casefold() != name.casefold()
         info.name = name
-        info.email = a.email or _email_for(name, participants)
+        info.email = a.email or (person.email if person is not None else "")
         info.score = None
-        info.source = "manual"
+        info.source = SOURCE_MANUAL
+        info.clear_hints()
         if a.save_profile:
             emb = embeddings.get(a.speaker_id)
-            if emb is not None and model_id:
-                prof = profiles.add_sample(name, info.email, emb, model_id)
+            secs = speech.get(a.speaker_id, 0.0)
+            if emb is None or not model_id:
+                profiles.forget(rid, a.speaker_id)
+                messages.append(f"Für {info.label} liegt kein Stimm-Embedding vor - kein Profil gespeichert.")
+            elif secs < min_learn:
+                profiles.forget(rid, a.speaker_id)
+                messages.append(f"{info.label}: zu wenig Sprache ({secs:.0f} s, mindestens {min_learn:.0f} s) – "
+                                f"kein Stimmprofil gespeichert.")
+            else:
+                prof = profiles.learn(name, info.email, emb, model_id, recording=rid, speaker=a.speaker_id,
+                                      source="confirmed" if unchanged_auto else "manual", seconds=secs,
+                                      title=rec.title())
                 info.profile_id = prof.id
                 messages.append(f"Stimmprofil für {name} gespeichert ({prof.samples} Probe(n)).")
-            else:
-                messages.append(f"Für {info.label} liegt kein Stimm-Embedding vor - kein Profil gespeichert.")
+        elif corrected or info.profile_id:
+            if profiles.forget(rid, a.speaker_id):
+                messages.append(f"{info.label}: frühere Profil-Aktualisierung zurückgenommen.")
+            info.profile_id = ""
+    if added:
+        rec.update_meta(["participants"], [p.to_dict() for p in participants + added])
+        messages.append("Als Teilnehmende ergänzt: " + ", ".join(p.display for p in added) + ".")
     rec.save_speakers(speakers)
     rerender()
     return messages
+
+
+def set_participants(rec: Recording, people: list[Person], by: str = "user") -> list[str]:
+    """Replace the participants of a recording ("Teilnehmende bearbeiten"). The consent record is
+    not changed (it keeps the list confirmed at the start). Returns German messages."""
+    from datetime import datetime
+
+    old = rec.participants()
+    rec.update_meta(["participants"], [p.to_dict() for p in people])
+    hist = list(rec.load_meta().get("participants_history") or [])
+    hist.append({"at": datetime.now().astimezone().isoformat(timespec="seconds"), "by": by,
+                 "before": [p.to_dict() for p in old], "after": [p.to_dict() for p in people]})
+    rec.update_meta(["participants_history"], hist)
+    return [f"{len(people)} Teilnehmende gespeichert."]
 
 
 def parse_cli_assignments(items: list[str], no_profile: bool = False) -> list[Assignment]:
@@ -172,6 +307,6 @@ def carry_over_assignments(
             continue
         best, ov = max(overlap.items(), key=lambda kv: kv[1])
         info = old_speakers.get(best)
-        if info is not None and info.source == "manual" and info.name and ov / total >= min_fraction:
+        if info is not None and info.source in USER_DECIDED and info.name and ov / total >= min_fraction:
             out[nid] = dataclasses.replace(info, id=nid)
     return out
