@@ -25,13 +25,16 @@ is kept in ``retention.log``.
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
+import os
 import threading
 from collections.abc import Callable, Collection
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from callrec import paths
@@ -134,6 +137,10 @@ def reduced_meta(meta: dict[str, Any]) -> dict[str, Any]:
     out = {k: v for k, v in meta.items() if k in KEEP_META}
     proc = meta.get("processing") or {}
     summ = proc.get("summary") if isinstance(proc, dict) else None
+    if isinstance(summ, dict) and "skipped" in summ:
+        # the reason a summary attempt failed can quote the request (e.g. a server's error body with
+        # parts of the transcript): only a neutral note stays
+        summ = {**summ, "skipped": "Zusammenfassung wurde nicht erstellt."}
     out["processing"] = {"status": "done"} | ({"summary": summ} if isinstance(summ, dict) else {})
     versions = meta.get("versions") or {}
     if isinstance(versions, dict) and versions.get("summary"):
@@ -175,7 +182,9 @@ def remove(rec: Recording, root: Path, scope: str, mode: str = "permanent", by: 
     # (not for the whole folder into the recycle bin: one move, and a folder restored from there must
     # not carry the mark)
     marked = not (scope == SCOPE_RECORDING and mode != "permanent")
-    before = sorted(folder.iterdir()) if scope == SCOPE_RECORDING else []
+    # everything that could go, down to single files (a folder can be emptied only partly: one track
+    # deleted, the other one locked by a player) - to tell "nothing removed" from "partly removed"
+    before = _inventory(sorted(folder.iterdir()) if scope == SCOPE_RECORDING else items)
     if marked:
         _set_retention(rec, _meta_lock, {"removing": scope, "started": now, "by": by, "mode": mode})
     removed: list[str] = []
@@ -190,9 +199,11 @@ def remove(rec: Recording, root: Path, scope: str, mode: str = "permanent", by: 
             else:
                 assert recycler is not None
                 recycler(p)
+                if p.exists() or p.is_symlink():
+                    raise RetentionError(f"{p.name} ist noch vorhanden - nicht in den Papierkorb verschoben.")
             removed.append(p.name)
     except BaseException as exc:
-        gone = bool(removed) or any(not (p.exists() or p.is_symlink()) for p in (before or items))
+        gone = bool(removed) or any(not os.path.lexists(p) for p in before)
         if marked and rec.meta_path.exists():
             if gone:
                 _set_retention(rec, _meta_lock, {"removing": scope, "started": now, "by": by, "mode": mode,
@@ -217,6 +228,21 @@ def remove(rec: Recording, root: Path, scope: str, mode: str = "permanent", by: 
     write_log({"folder": folder.name, "scope": scope, "mode": mode, "by": by, "reason": reason})
     log.info("%s: %s entfernt (%s, %s)", folder.name, scope, mode, by)
     return f"{SCOPE_TEXT[scope].split(' (')[0]} von „{title}“ gelöscht"
+
+
+def _inventory(items: list[Path]) -> list[str]:
+    """``items`` and everything below them (links are listed, never followed)."""
+    from callrec.library import is_link
+
+    out: list[str] = []
+    for p in items:
+        out.append(str(p))
+        if p.is_dir() and not is_link(p):
+            for dirpath, dirs, files in os.walk(p):
+                links = [d for d in dirs if is_link(Path(dirpath) / d)]
+                dirs[:] = [d for d in dirs if d not in links]
+                out.extend(os.path.join(dirpath, n) for n in [*links, *dirs, *files])
+    return out
 
 
 def _set_retention(rec: Recording, lock: Any, entry: Any) -> None:
@@ -306,6 +332,7 @@ class Item:
     warning: str = ""  # e.g. "Zusammenfassung fehlt – vor dem Löschen erstellen?"
     scope: str = ""  # an incompletely deleted recording: the scope of that deletion (finished first)
     mode: str = ""
+    unfinished: bool = False  # never (successfully) processed when planned
 
     @property
     def id(self) -> str:
@@ -374,6 +401,8 @@ def _busy_by_meta(meta: dict[str, Any]) -> bool:
 
 
 LONG_GAP = timedelta(days=2)  # no run for longer than this: judge a large run against the remaining recordings
+BUSY_TEXT = "wird gerade aufgenommen oder verarbeitet"
+MAX_AGE_DAYS = 36500  # a larger value (config.toml) means "never" - and must not overflow the date arithmetic
 
 
 def plan(root: Path, cfg: Any, now: datetime | None = None, busy: Callable[[Recording], bool] = lambda r: False,
@@ -386,11 +415,22 @@ def plan(root: Path, cfg: Any, now: datetime | None = None, busy: Callable[[Reco
     out.total = len(recs)
     if not rt.enabled:
         return out
-    surfaced = state.get("surfaced") or {}
-    age = timedelta(days=rt.max_age_days)
+    raw_surfaced = state.get("surfaced")
+    surfaced: dict[str, Any] = raw_surfaced if isinstance(raw_surfaced, dict) else {}
+    age = timedelta(days=min(int(rt.max_age_days), MAX_AGE_DAYS))
     newest: datetime | None = None
+    from callrec.library import is_link
+
+    try:
+        inside = Path(root).resolve()
+    except OSError:
+        return out
     for rec in recs:
         try:
+            # a link/junction to a folder elsewhere is never deleted (Controller.remove refuses it): not listed,
+            # not asked about, not pinned through the question (which would write outside the recordings folder)
+            if is_link(rec.folder) or rec.folder.resolve().parent != inside:
+                continue
             meta = rec.load_meta()
             if "schema" not in meta:  # not written by CallRecorder (a recordings folder set to e.g. Documents)
                 continue
@@ -413,7 +453,7 @@ def plan(root: Path, cfg: Any, now: datetime | None = None, busy: Callable[[Reco
                 item.mode = "permanent" if r.get("mode") == "permanent" else rt.delete_mode
                 item.warning = ""
             hold = busy(rec) or _busy_by_meta(meta)
-            unfinished = not pending and _unfinished(meta, rec)
+            unfinished = item.unfinished = not pending and _unfinished(meta, rec)
         except (OSError, ValueError, TypeError, AttributeError):  # malformed meta.json: skipped, never deleted
             log.warning("Automatisches Löschen: %s übersprungen (meta.json unvollständig)", rec.folder.name)
             continue
@@ -422,12 +462,12 @@ def plan(root: Path, cfg: Any, now: datetime | None = None, busy: Callable[[Reco
                 out.upcoming.append(item)
             continue
         if hold:
-            item.waiting = "wird gerade aufgenommen oder verarbeitet"
+            item.waiting = BUSY_TEXT
         elif unfinished:
             seen = surfaced.get(item.id)
             try:
                 shown_long = seen is not None and (now - datetime.fromisoformat(seen)).total_seconds() >= SURFACE_S
-            except ValueError:
+            except (TypeError, ValueError):
                 shown_long = False
             if not shown_long:
                 item.waiting = "nicht fertig verarbeitet – frühestens nach 24 h Vorankündigung"
@@ -486,24 +526,77 @@ class RunResult:
 _run_lock = threading.Lock()  # the start run, the daily one and "Wie eingestellt löschen" never overlap
 
 
+def settings_key(cfg: Any, root: Path) -> tuple[Any, ...]:
+    """What a deletion was decided (or confirmed) under: a run stops when this changes meanwhile."""
+    rt = cfg.retention
+    return (bool(rt.enabled), str(rt.scope), str(rt.delete_mode), rt.max_age_days, str(root))
+
+
+def _current_key(cfg: Any, root: Path) -> tuple[Any, ...]:
+    """:func:`settings_key` with the recordings folder the settings name now (``root`` without one)."""
+    current = cfg.recordings_path() if callable(getattr(cfg, "recordings_path", None)) else root
+    return settings_key(cfg, current)
+
+
+def _recheck(item: Item, rt: Any, now: datetime, busy: Callable[[Recording], bool]) -> str:
+    """Right before deleting: why ``item`` must not be removed any more ("" = still removable) - it may
+    have been pinned, opened, queued or processed since the plan was made."""
+    try:
+        meta = item.rec.load_meta()
+        raw = (meta.get("recording") or {}).get("started_at")
+        start = datetime.fromisoformat(raw) if isinstance(raw, str) and raw else None
+        if start is None:
+            return "Beginn nicht lesbar"
+        start = start if start.tzinfo else start.astimezone()
+        if start != item.started_at or now < start + timedelta(days=min(int(rt.max_age_days), MAX_AGE_DAYS)):
+            return "nicht mehr fällig"
+        if is_pinned(meta):
+            return "Behalten"
+        if pending_scope(meta) != item.scope:
+            return "Zustand geändert"
+        done = removed_scope(meta)
+        if not item.scope and (done == SCOPE_AUDIO_TRANSCRIPT or (rt.scope == SCOPE_AUDIO and done == SCOPE_AUDIO)):
+            return "bereits entfernt"
+        if busy(item.rec) or _busy_by_meta(meta):
+            return BUSY_TEXT
+        if not item.scope and not item.unfinished and _unfinished(meta, item.rec):
+            return "Zustand geändert"
+    except (OSError, ValueError, TypeError, AttributeError):
+        return "meta.json nicht lesbar"
+    return ""
+
+
 def run(root: Path, cfg: Any, remover: Callable[[Recording, str, str], object], now: datetime | None = None,
         busy: Callable[[Recording], bool] = lambda r: False, confirmed: bool = False,
-        only: Collection[str] | None = None) -> RunResult:
+        only: Collection[str] | None = None, expect: tuple[Any, ...] | None = None) -> RunResult:
     """Remove what is due. ``remover(rec, scope, mode)`` is the app's delete path (Controller.remove,
     which refuses busy recordings). ``confirmed``: the user answered the question of a blocked run
     ("Wie eingestellt löschen"); with ``only`` (the ids that question listed) nothing else is removed
-    by this run - a recording that became due while the question was open is not part of the answer.
+    by this run - a recording that became due while the question was open is not part of the answer -
+    and with ``expect`` (:func:`settings_key` when the question was asked) nothing at all when the
+    settings changed while it was open: the answer was given to what the question said.
+
+    The run decides by the settings at its start and stops when they change meanwhile (settings saved,
+    another recordings folder); each recording is checked again right before it is removed.
 
     The run itself does not count as "shown": an unprocessed recording is held back until a UI showed
     it for :data:`SURFACE_S` (:func:`mark_surfaced`). The first deletion of all is always asked."""
     now = now or datetime.now().astimezone()
     with _run_lock:
-        state = load_state()
-        p = plan(root, cfg, now, busy, state)
-        if not state.get("acknowledged") and not p.candidates:
-            state["acknowledged"] = True  # nothing that could ever be deleted yet: no question needed
-            p = plan(root, cfg, now, busy, state)
+        rt = copy.copy(cfg.retention)  # the settings this run decides by
+        key = settings_key(cfg, root)
+        started = _current_key(cfg, root)
         res = RunResult()
+        if expect is not None and tuple(expect) != key:
+            res.blocked, res.blocked_text = "changed", (
+                "Die Einstellungen zum Löschen wurden geändert, während die Frage offen war – nichts gelöscht.")
+            return res
+        snap = SimpleNamespace(retention=rt)
+        state = load_state()
+        p = plan(root, snap, now, busy, state)
+        if not state.get("acknowledged") and rt.enabled and not p.candidates:
+            state["acknowledged"] = True  # nothing that could ever be deleted yet: no question needed
+            p = plan(root, snap, now, busy, state)
         if p.blocked and not (confirmed and p.blocked != "future"):
             res.blocked, res.blocked_text = p.blocked, p.blocked_text
             save_state(state)
@@ -514,14 +607,24 @@ def run(root: Path, cfg: Any, remover: Callable[[Recording, str, str], object], 
         for item in p.removable:
             if wanted is not None and item.id not in wanted:
                 continue
+            if _current_key(cfg, root) != started:
+                log.info("Automatisches Löschen angehalten: Einstellungen wurden während des Laufs geändert")
+                break
+            why = _recheck(item, rt, now, busy)
+            if why:
+                log.info("Automatisches Löschen: %s übersprungen (%s)", item.id, why)
+                continue
             try:
-                remover(item.rec, item.scope or cfg.retention.scope, item.mode or cfg.retention.delete_mode)
+                remover(item.rec, item.scope or rt.scope, item.mode or rt.delete_mode)
                 res.removed.append(item.id)
-                (state.get("surfaced") or {}).pop(item.id, None)
+                surfaced = state.get("surfaced")
+                if isinstance(surfaced, dict):
+                    surfaced.pop(item.id, None)
             except Exception as exc:  # one failure must not stop the others
                 log.warning("Automatisches Löschen von %s fehlgeschlagen: %s", item.id, exc)
                 res.failed.append((item.id, str(exc)))
-                write_log({"folder": item.id, "scope": cfg.retention.scope, "by": "retention", "error": str(exc)[:200]})
+                write_log({"folder": item.id, "scope": item.scope or rt.scope, "by": "retention",
+                           "error": str(exc)[:200]})
         state["last_run"] = now.isoformat(timespec="seconds")
         save_state(state)
         return res

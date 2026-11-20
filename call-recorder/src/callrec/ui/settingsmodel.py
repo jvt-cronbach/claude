@@ -225,8 +225,8 @@ PAGES: tuple[Page, ...] = (
               adv=True),
     )),
     Page("retention", "Löschen", "Alte Aufnahmen werden automatisch gelöscht – das Alter zählt ab Beginn der Aufnahme. "
-         "Aufnahmen mit „Behalten“ bleiben immer. Bereits an SharePoint übergebene Zusammenfassungen löscht "
-         "CallRecorder nie. Nicht per Preset einstellbar.", (
+         "Aufnahmen mit „Behalten“ bleiben immer. Bereits an SharePoint übergebene Zusammenfassungen bleiben "
+         "dort erhalten (CallRecorder löscht in SharePoint nichts). Nicht per Preset einstellbar.", (
         Field("retention", "enabled", "Alte Aufnahmen automatisch löschen"),
         Field("retention", "max_age_days", "Löschen nach (Tagen)", "Vorher erscheinen sie in der Übersicht als "
               "„wird in … Tagen gelöscht“, mit „Behalten“."),

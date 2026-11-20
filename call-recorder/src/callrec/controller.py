@@ -115,8 +115,11 @@ class Controller:
 
     def is_busy(self, rec: Recording) -> bool:
         """Being recorded right now or waiting/running in the processing queue."""
+        from callrec.paths import folder_key
+
         cur = self.current
-        return (cur is not None and cur.folder == rec.folder) or self.queue.is_busy_with(rec.folder)
+        return (cur is not None and (cur.folder == rec.folder or folder_key(cur.folder) == folder_key(rec.folder))) \
+            or self.queue.is_busy_with(rec.folder)
 
     # A double click on "stop" (window button, hotkey pressed twice) must not open the dialog of
     # a new recording right away: within this time after a stop a toggle does not start one.

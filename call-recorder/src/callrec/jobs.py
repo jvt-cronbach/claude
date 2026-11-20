@@ -167,10 +167,13 @@ class ProcessingQueue:
 
     def is_busy_with(self, folder: Path) -> bool:
         """True while a job for this recording is waiting or running."""
+        from callrec.paths import folder_key
+
         folder = Path(folder)
+        key = folder_key(folder)  # the same folder however it is spelled (web UI: resolved)
         with self._lock:
             jobs = [*self._pending, *([self._current] if self._current else [])]
-        return any(j.recording.folder == folder for j in jobs)
+        return any(j.recording.folder == folder or folder_key(j.recording.folder) == key for j in jobs)
 
     def cancel(self, job_id: int | None = None) -> str:
         """Cancel a waiting job, or the running one (``None`` = the running job).

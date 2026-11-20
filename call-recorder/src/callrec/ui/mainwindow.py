@@ -1553,11 +1553,19 @@ class MainWindow:
 
         now = datetime.now().astimezone()
         text = plan.notice(now) if plan is not None else ""
-        if text:
+        try:  # a refresh also runs while the window is in the tray (after processing, a deletion): not "shown"
+            seen = bool(self.visible) and bool(self.win.winfo_viewable())
+        except tk.TclError:
+            seen = False
+        if text and seen:
             from callrec.retention import Plan, mark_surfaced
 
             mark_surfaced(Plan(plan.enabled, plan.scope, upcoming=plan.next_24h(now)), now)  # shown now
         self._ret_next = [i.id for i in plan.next_24h(now)] if plan is not None else []
+        from callrec.retention import BUSY_TEXT
+
+        # "Jetzt löschen": not what is recorded, processed or open in a dialog right now
+        self._ret_now = [i.id for i in plan.next_24h(now) if i.waiting != BUSY_TEXT] if plan is not None else []
         warn = [i for i in (plan.next_24h(now) if plan is not None else []) if i.warning]
         if warn:
             text += " – " + "; ".join(f"{i.title}: {i.warning}" for i in warn[:3])
@@ -1577,7 +1585,7 @@ class MainWindow:
 
     def retention_now(self) -> None:
         rt = self.cfg.retention
-        infos = [self.by_id[i] for i in self._ret_next if i in self.by_id]
+        infos = [self.by_id[i] for i in getattr(self, "_ret_now", []) if i in self.by_id]
         if not infos:
             return
         title, message, _b = delete_question(infos, rt.scope, rt.delete_mode == "permanent")

@@ -319,8 +319,8 @@ class SettingsDialog:
 
         t = self._tab("Löschen")
         ttk.Label(t, text="Alte Aufnahmen werden automatisch gelöscht – das Alter zählt ab Beginn der Aufnahme. "
-                  "Aufnahmen mit „Behalten“ bleiben immer; an SharePoint übergebene Zusammenfassungen löscht "
-                  "CallRecorder nie. „permanent“ ist endgültig (nicht rückgängig zu machen; gewöhnliches Löschen, "
+                  "Aufnahmen mit „Behalten“ bleiben immer; an SharePoint übergebene Zusammenfassungen bleiben dort "
+                  "erhalten (CallRecorder löscht in SharePoint nichts). „permanent“ ist endgültig (nicht rückgängig zu machen; gewöhnliches Löschen, "
                   "kein sicheres Überschreiben). Nicht per Preset einstellbar.", wraplength=520).grid(
             row=0, column=0, columnspan=3, sticky="w", **PAD)
         rows: list[tuple[str, str, list[str] | None]] = [

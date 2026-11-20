@@ -382,7 +382,7 @@ class Bridge:
         """What the automatic deletion removes next (home view, library, settings)."""
         from datetime import datetime
 
-        from callrec.retention import SCOPE_TEXT, mark_surfaced, read_log
+        from callrec.retention import BUSY_TEXT, SCOPE_TEXT, mark_surfaced, read_log
 
         core = _core(self)
         plan = core.actions.retention_plan()
@@ -397,6 +397,8 @@ class Bridge:
                   "due": i.due, "waiting": i.waiting} for i in plan.removable + plan.waiting + plan.upcoming]
         return {"enabled": plan.enabled, "notice": plan.notice(now), "items": items,
                 "next24": [i.id for i in plan.next_24h(now)], "scope": SCOPE_TEXT.get(rt.scope, rt.scope),
+                # what "Jetzt löschen" takes (not what is recorded, processed or open in a dialog right now)
+                "next24_now": [i.id for i in plan.next_24h(now) if i.waiting != BUSY_TEXT],
                 "days": rt.max_age_days, "permanent": rt.delete_mode == "permanent",
                 "blocked": plan.blocked, "log": read_log(50)[::-1]}
 
@@ -408,7 +410,11 @@ class Bridge:
         core = _core(self)
         rt = core.cfg.retention
         # only what is still announced now (not pinned, not deleted meanwhile in the other window/run)
-        current = {i.id for i in core.actions.retention_plan().next_24h(datetime.now().astimezone())}
+        from callrec.retention import BUSY_TEXT
+
+        # nor one that is recorded, processed or open in a dialog now (shown as "wird gerade … verarbeitet")
+        current = {i.id for i in core.actions.retention_plan().next_24h(datetime.now().astimezone())
+                   if i.waiting != BUSY_TEXT}
         wanted = [str(x) for x in ids if str(x) in current] if isinstance(ids, list) else []
         if not wanted:
             return {"ok": True, "done": 0, "errors": []}

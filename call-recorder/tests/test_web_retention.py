@@ -118,3 +118,21 @@ def test_hidden_window_does_not_count_as_shown_and_retention_now_takes_only_anno
     retention.set_pinned(b, True)  # pinned in the other window after the notice was loaded
     res = br.retention_now(["2026-11-19_1400_A", "2026-11-19_1500_B"])
     assert res["done"] == 1 and b.transcript_path.exists() and not a.transcript_path.exists()
+
+
+def test_retention_now_skips_what_is_processed_or_open_in_a_dialog(loop: AppLoop, tmp_path: Path):
+    from datetime import datetime, timedelta
+
+    from callrec.ui.bridge import Bridge
+
+    old = datetime.now().astimezone() - timedelta(days=30)
+    a = processed(tmp_path / "recs", "2026-11-19_1400_A", "A")
+    b = processed(tmp_path / "recs", "2026-11-19_1500_B", "B")
+    for r in (a, b):
+        r.update_meta(["recording", "started_at"], old.isoformat())
+    b.update_meta(["processing", "chain"], {"stage": "review"})  # the speaker dialog of the chain is open
+    core = core_with_actions(tmp_path, loop)
+    ov = Bridge(core).retention_overview()  # the confirmation counts only what "Jetzt löschen" takes
+    assert set(ov["next24"]) == {"2026-11-19_1400_A", "2026-11-19_1500_B"} and ov["next24_now"] == ["2026-11-19_1400_A"]
+    res = Bridge(core).retention_now(["2026-11-19_1400_A", "2026-11-19_1500_B"])
+    assert res["done"] == 1 and not a.transcript_path.exists() and b.transcript_path.exists()

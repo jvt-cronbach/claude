@@ -1009,9 +1009,9 @@ A["pin-multi"] = async () => { await call("pin", [...S.multi], true); S.multi = 
 A.pin = async el => { await call("pin", el.dataset.id, el.dataset.on === "1"); snack("Behalten: wird nie automatisch gelöscht."); await loadRetention(); load(S.route); };
 A["ret-keep"] = async () => { const R = S.retention; if (!R) return; await call("pin", R.next24, true); snack("Behalten."); await loadRetention(); load(S.route); };
 A["ret-now"] = async () => {
-  const R = S.retention; if (!R || !R.next24.length) return;
-  if (!await confirmLocal("Jetzt löschen?", `${R.next24.length} Aufnahme(n): ${R.scope}${R.permanent ? " – endgültig, nicht rückgängig zu machen" : " – in den Papierkorb"}.`, "Jetzt löschen", { danger: true })) return;
-  const r = await call("retention_now", R.next24); if (r && r.error) showError(r.error); else snack("Gelöscht.");
+  const R = S.retention, ids = R ? (R.next24_now || []) : []; if (!ids.length) return;
+  if (!await confirmLocal("Jetzt löschen?", `${ids.length} Aufnahme(n): ${R.scope}${R.permanent ? " – endgültig, nicht rückgängig zu machen" : " – in den Papierkorb"}.`, "Jetzt löschen", { danger: true })) return;
+  const r = await call("retention_now", ids); if (r && r.error) showError(r.error); else snack("Gelöscht.");
   await loadRetention(); load(S.route);
 };
 A.ctx = async el => {

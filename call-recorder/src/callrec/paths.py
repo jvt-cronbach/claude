@@ -113,3 +113,14 @@ def replacements_file() -> Path:
 
 def prompts_dir() -> Path:
     return config_dir() / "prompts"
+
+
+def folder_key(path: Path | str) -> str:
+    """One spelling per folder for "is this the same recording?": the web UI names folders resolved,
+    the lists as configured - a mapped network drive, a junction, an 8.3 short name or other letter
+    case must not make a recording that is recorded, queued or open in a dialog look like another one."""
+    try:
+        p = os.path.realpath(path)
+    except (OSError, ValueError):
+        p = os.path.abspath(path)
+    return os.path.normcase(p)

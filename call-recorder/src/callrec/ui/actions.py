@@ -101,7 +101,7 @@ class AppActions:
         self.autostop: Any = None  # AutoStopRunner (countdown banner in the main window), set by the app
         # recordings with an open question or dialog (after-recording question, speaker assignment):
         # never deleted automatically meanwhile (not in the queue, so Controller.is_busy cannot see them)
-        self._held: dict[Path, int] = {}
+        self._held: dict[str, int] = {}  # paths.folder_key -> number of open questions/dialogs
         self._held_lock = threading.Lock()
         # the questions to the user (Tk dialogs by default; the web UI sets its in-page dialogs)
         self.dialogs: DialogPort = TkDialogPort(lambda: self.ui.root)
@@ -176,7 +176,9 @@ class AppActions:
 
     @contextlib.contextmanager
     def hold(self, rec: Recording) -> Iterator[None]:
-        key = rec.folder
+        from callrec.paths import folder_key
+
+        key = folder_key(rec.folder)  # the web UI names folders resolved, the lists do not
         with self._held_lock:
             self._held[key] = self._held.get(key, 0) + 1
         try:
@@ -191,8 +193,11 @@ class AppActions:
 
     def retention_busy(self, rec: Recording) -> bool:
         """Not to be deleted automatically now: recorded, queued, processed or a dialog about it is open."""
+        from callrec.paths import folder_key
+
+        key = folder_key(rec.folder)
         with self._held_lock:
-            held = rec.folder in self._held
+            held = key in self._held
         return held or self.controller.is_busy(rec)
 
     def ask_after_recording(self, rec: Recording) -> str:
@@ -782,7 +787,7 @@ class AppActions:
                                       reason=f"älter als {self.cfg.retention.max_age_days} Tage")
 
     def run_retention(self, confirmed: bool = False, done: Callable[[Any], None] | None = None,
-                      only: Any = None) -> None:
+                      only: Any = None, expect: Any = None) -> None:
         """At the start and then daily (worker thread): remove what is due; a run that must ask (first
         activation, clock looks wrong) asks on the UI thread instead of deleting."""
         from callrec import retention
@@ -791,7 +796,7 @@ class AppActions:
             rt = self.cfg.retention
             try:
                 res = retention.run(self.cfg.recordings_path(), self.cfg, self._retention_remove,
-                                    busy=self.retention_busy, confirmed=confirmed, only=only)
+                                    busy=self.retention_busy, confirmed=confirmed, only=only, expect=expect)
                 plan = self.retention_plan()
             except Exception:
                 log.exception("Automatisches Löschen fehlgeschlagen")
@@ -800,7 +805,9 @@ class AppActions:
                 self.ui.notify("Alte Aufnahmen gelöscht", f"{len(res.removed)} Aufnahme(n) älter als {rt.max_age_days} "
                                f"Tage: {retention.SCOPE_TEXT[rt.scope]}.")
                 self.ui.post(lambda: self._changed(None))
-            if res.blocked:
+            if res.blocked == "changed":  # the answer was given to other settings: asked again at the next run
+                self.ui.notify("Automatisches Löschen", res.blocked_text)
+            elif res.blocked:
                 self.ui.post(lambda: self.ask_retention(res.blocked, res.blocked_text))
             else:
                 text = retention.notify_due_today(plan)
@@ -825,6 +832,7 @@ class AppActions:
         """The run did not delete: first activation with old recordings, or the clock looks wrong."""
         from callrec import retention
 
+        expect = retention.settings_key(self.cfg, self.cfg.recordings_path())  # what the question describes
         plan = self.retention_plan()
         if not plan.removable or kind == "future":
             if kind == "future":
@@ -833,17 +841,17 @@ class AppActions:
         choice = self.dialogs.ask_retention(kind, text, [(i.title, i.when_text(datetime_now())) for i in plan.removable],
                                             self.cfg.retention)
         if choice == "delete":  # exactly the recordings the question listed
-            self.run_retention(confirmed=True, only=[i.id for i in plan.removable])
+            self.run_retention(confirmed=True, only=[i.id for i in plan.removable], expect=expect)
         elif choice == "keep":
+            # not an answer to the first deletion: what becomes due later is asked about first, too
             retention.pin_all(plan.removable)
-            retention.acknowledge()
             self._changed(None)
         elif choice == "off":
             base = load_config(preset="")
             base.retention.enabled = False
             save_config(base)
             self.apply_saved_config()
-            retention.acknowledge()
+            # not acknowledged: switched on again later, the first deletion is asked again (with the list)
         return choice
 
     # -- models -------------------------------------------------------

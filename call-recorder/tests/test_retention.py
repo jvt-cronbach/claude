@@ -553,8 +553,257 @@ def test_open_question_or_dialog_holds_a_recording_and_the_answer_is_exactly_the
             act._retention_remove(a, "audio_transcript", "permanent")
     assert not act.retention_busy(a) and a.transcript_path.exists()
     runs: list[Any] = []
-    act.run_retention = lambda confirmed=False, done=None, only=None: runs.append((confirmed, only))  # type: ignore[method-assign]
+    act.run_retention = lambda confirmed=False, done=None, only=None, **k: runs.append((confirmed, only))  # type: ignore[method-assign]
     act.dialogs = SimpleNamespace(ask_retention=lambda *a, **k: "delete")
     act.ui = SimpleNamespace(notify=lambda *a: None)
     assert act.ask_retention("first", "x") == "delete"
     assert runs == [(True, ["a"])]
+
+
+# ---------------------------------------------------------------------------
+# second review of 0.3.1
+# ---------------------------------------------------------------------------
+def _actions(root: Path, cfg: Config, **kw: Any) -> Any:
+    import threading
+    from types import SimpleNamespace
+
+    from callrec.ui.actions import AppActions
+
+    act = object.__new__(AppActions)
+    act.cfg = cfg
+    act._held, act._held_lock = {}, threading.Lock()
+    act.controller = kw.get("controller") or SimpleNamespace(
+        is_busy=lambda r: False, remove=lambda rec, scope, mode, **k: retention.remove(rec, root, scope, mode))
+    act.ui = SimpleNamespace(notify=lambda *a: None, post=lambda fn: fn())
+    act.on_changed, act.on_config_changed = [], []
+    return act
+
+
+def test_a_run_while_switched_off_is_no_answer_to_the_first_question(tmp_path: Path):
+    """``callrec retention run`` with retention off must not count as "nothing to ask": switched on
+    later, the old recordings are listed and asked about first."""
+    now = START + timedelta(days=30)
+    root = tmp_path / "lib"
+    old = [light(root, f"o{i}", iso(now - timedelta(days=30))) for i in range(3)]
+    for i in range(5):
+        light(root, f"y{i}", iso(now - timedelta(days=1)))
+    cfg = Config()
+    cfg.retention.enabled = False
+    log: list[tuple[str, str]] = []
+    retention.run(root, cfg, remover(root, log), now=now)
+    assert not retention.load_state().get("acknowledged")
+    cfg.retention.enabled = True
+    res = retention.run(root, cfg, remover(root, log), now=now)
+    assert res.blocked == "first" and log == [] and all(r.transcript_path.exists() for r in old)
+
+
+def test_keep_and_off_are_no_answer_to_the_first_deletion(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from types import SimpleNamespace
+
+    from callrec.ui import actions as actions_mod
+
+    now = datetime.now().astimezone()
+    root = tmp_path / "lib"
+    a = light(root, "a", iso(now - timedelta(days=10)))
+    cfg = Config()
+    cfg.general.recordings_dir = str(root)
+    act = _actions(root, cfg)
+    act.dialogs = SimpleNamespace(ask_retention=lambda *x, **k: "keep")
+    assert act.ask_retention("first", "x") == "keep"
+    assert retention.is_pinned(a.load_meta()) and not retention.load_state().get("acknowledged")
+    b = light(root, "b", iso(now - timedelta(days=10)))  # due later: still asked first
+    assert retention.run(root, cfg, remover(root, []), now=now).blocked == "first" and b.transcript_path.exists()
+    monkeypatch.setattr(actions_mod, "save_config", lambda base: None)
+    act.apply_saved_config = lambda: None
+    act.dialogs = SimpleNamespace(ask_retention=lambda *x, **k: "off")
+    assert act.ask_retention("first", "x") == "off"
+    assert not retention.load_state().get("acknowledged")
+
+
+def test_the_run_decides_by_the_settings_at_its_start_and_stops_when_they_change(tmp_path: Path):
+    now = START + timedelta(days=30)
+    root = tmp_path / "lib"
+    recs = [light(root, f"o{i}", iso(now - timedelta(days=30))) for i in range(2)]
+    for i in range(4):
+        light(root, f"y{i}", iso(now - timedelta(days=1)))
+    retention.acknowledge()
+    cfg = Config()
+    cfg.general.recordings_dir = str(root)
+    used: list[str] = []
+
+    def go(rec: Recording, scope: str, mode: str) -> str:
+        used.append(scope)
+        cfg.retention.scope = "recording"  # settings saved while the run is under way
+        return retention.remove(rec, root, scope, mode)
+
+    res = retention.run(root, cfg, go, now=now)
+    assert used == ["audio_transcript"] and len(res.removed) == 1
+    assert all(r.folder.exists() and r.summary_path.exists() for r in recs)
+
+
+def test_an_answer_given_to_other_settings_deletes_nothing(tmp_path: Path):
+    """The question said "Audio und Transkript"; meanwhile the settings say "die ganze Aufnahme"."""
+    now = START + timedelta(days=30)
+    root = tmp_path / "lib"
+    a = light(root, "a", iso(now - timedelta(days=10)))
+    cfg = Config()
+    cfg.general.recordings_dir = str(root)
+    asked = retention.settings_key(cfg, root)
+    cfg.retention.scope = "recording"
+    log: list[tuple[str, str]] = []
+    res = retention.run(root, cfg, remover(root, log), now=now, confirmed=True, only=["a"], expect=asked)
+    assert res.blocked == "changed" and log == [] and a.summary_path.exists()
+    assert not retention.load_state().get("acknowledged")
+    cfg.retention.scope = "audio_transcript"
+    res = retention.run(root, cfg, remover(root, log), now=now, confirmed=True, only=["a"], expect=asked)
+    assert res.removed == ["a"] and a.summary_path.exists()
+
+
+def test_each_recording_is_checked_again_right_before_it_is_deleted(tmp_path: Path):
+    now = START + timedelta(days=30)
+    root = tmp_path / "lib"
+    a = light(root, "a", iso(now - timedelta(days=30)))
+    b = light(root, "b", iso(now - timedelta(days=30)))
+    c = light(root, "c", iso(now - timedelta(days=30)))
+    for i in range(4):
+        light(root, f"y{i}", iso(now - timedelta(days=1)))
+    retention.acknowledge()
+
+    def go(rec: Recording, scope: str, mode: str) -> str:  # newest first: c, then b and a
+        if rec.folder == c.folder:
+            retention.set_pinned(b, True)  # "Behalten" clicked while the first one is deleted
+            a.update_meta(["processing", "status"], "running")  # "callrec process" started meanwhile
+        return retention.remove(rec, root, scope, mode)
+
+    res = retention.run(root, Config(), go, now=now)
+    assert res.removed == ["c"] and not c.transcript_path.exists()
+    assert b.transcript_path.exists() and a.transcript_path.exists()
+
+
+def test_reduced_meta_keeps_no_error_text_of_a_failed_summary(tmp_path: Path):
+    """A server's error body can quote the request (the transcript)."""
+    now = START + timedelta(days=30)
+    root = tmp_path / "lib"
+    a = light(root, "a", iso(now - timedelta(days=10)), processing={
+        "status": "done", "summary": {"skipped": "KI-Server-Fehler 422: … geheimer Inhalt …", "status": "failed"}})
+    retention.remove(a, root, "audio_transcript", "permanent")
+    text = a.meta_path.read_text(encoding="utf-8")
+    assert "geheimer Inhalt" not in text and a.load_meta()["processing"]["summary"]["status"] == "failed"
+
+
+def test_busy_and_open_dialogs_are_recognised_however_the_folder_is_spelled(tmp_path: Path):
+    """The web UI names a folder resolved (mapped drive -> UNC, junction, 8.3 name), the lists as
+    configured: a queued job or an open dialog must hold the recording either way."""
+    import threading
+    from types import SimpleNamespace
+
+    from callrec.controller import Controller
+    from callrec.jobs import ProcessingQueue
+
+    now = datetime.now().astimezone()
+    real = tmp_path / "real"
+    real.mkdir()
+    root = tmp_path / "linked"
+    root.symlink_to(real, target_is_directory=True)
+    a = light(root, "a", iso(now - timedelta(days=10)))
+    b = light(root, "b", iso(now - timedelta(days=10)))
+    q = ProcessingQueue.__new__(ProcessingQueue)
+    q._lock, q._pending, q._current = threading.Lock(), [SimpleNamespace(recording=Recording(a.folder.resolve()))], None
+    ctl = Controller.__new__(Controller)
+    ctl.queue, ctl.current = q, None
+    assert q.is_busy_with(a.folder) and ctl.is_busy(a)
+    ctl.current = Recording(b.folder.resolve())
+    assert ctl.is_busy(b)
+    ctl.current = None
+    cfg = Config()
+    cfg.general.recordings_dir = str(root)
+    act = _actions(root, cfg, controller=ctl)
+    with act.hold(Recording(b.folder.resolve())):
+        assert act.retention_busy(b)
+        p = retention.plan(root, cfg, now, busy=act.retention_busy)
+        assert p.removable == [] and {i.id for i in p.waiting} == {"a", "b"}
+
+
+def test_a_linked_folder_outside_is_neither_listed_nor_pinned_through_the_question(tmp_path: Path):
+    now = START + timedelta(days=30)
+    root = tmp_path / "lib"
+    root.mkdir()
+    outside = light(tmp_path / "elsewhere", "x", iso(now - timedelta(days=30)))
+    before = outside.meta_path.read_bytes()
+    (root / "x").symlink_to(outside.folder, target_is_directory=True)
+    light(root, "a", iso(now - timedelta(days=1)))
+    p = retention.plan(root, Config(), now)
+    assert p.removable == [] and p.candidates == 1
+    retention.pin_all(p.removable)
+    assert outside.meta_path.read_bytes() == before
+
+
+def test_huge_age_means_never_and_does_not_overflow(tmp_path: Path):
+    now = START + timedelta(days=30)
+    root = tmp_path / "lib"
+    light(root, "a", iso(now - timedelta(days=3000)))
+    cfg = Config()
+    cfg.retention.max_age_days = 10**12
+    p = retention.plan(root, cfg, now)
+    assert p.removable == [] and not p.blocked
+
+
+def test_recycle_bin_that_leaves_the_file_is_a_failure_not_a_deletion(tmp_path: Path):
+    now = START + timedelta(days=30)
+    root = tmp_path / "lib"
+    a = light(root, "a", iso(now - timedelta(days=10)))
+    with pytest.raises(LibraryError):
+        retention.remove(a, root, "audio_transcript", "recycle_bin", recycler=lambda p: None)
+    assert "retention" not in a.load_meta() and a.transcript_path.exists()  # nothing moved: unchanged
+
+
+def test_hidden_classic_window_does_not_count_as_shown(tmp_path: Path):
+    """The classic main window refreshes its list in the tray too (after processing, after a
+    deletion): that is no "shown as wird gelöscht"."""
+    from types import SimpleNamespace
+
+    pytest.importorskip("tkinter")
+    from callrec.ui.mainwindow import MainWindow
+
+    now = datetime.now().astimezone()
+    root = tmp_path / "lib"
+    light(root, "a", iso(now - timedelta(days=10)), transcript=False)  # never processed
+    plan = retention.plan(root, Config(), now)
+    btn = SimpleNamespace(pack=lambda **k: None, pack_forget=lambda: None)
+
+    def window(visible: bool) -> Any:
+        return SimpleNamespace(visible=visible, win=SimpleNamespace(winfo_viewable=lambda: visible),
+                               retention_var=SimpleNamespace(set=lambda t: None), ret_keep_btn=btn, ret_now_btn=btn,
+                               px=lambda v: v)
+
+    MainWindow.show_retention(window(False), plan)
+    assert not (retention.load_state().get("surfaced") or {})
+    MainWindow.show_retention(window(True), plan)
+    assert "a" in retention.load_state()["surfaced"]
+
+
+@pytest.mark.parametrize("scope", ["audio_transcript", "recording"])
+def test_a_partly_emptied_audio_folder_is_labelled_not_rolled_back(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                                                                    scope: str):
+    """One track deleted, the other one locked by a player: the recording must say "Löschen
+    unvollständig" (never processed again, finished by the next run) - not look untouched."""
+    import os
+
+    root = tmp_path / "lib"
+    a = light(root, "a", iso(START))
+    (a.folder / "audio" / "mix.flac").write_bytes(b"y")
+    real, calls = os.unlink, [0]
+
+    def locked_second(p: Any, *args: Any, **kw: Any) -> None:
+        if str(p).endswith(".flac"):
+            calls[0] += 1
+            if calls[0] == 2:
+                raise PermissionError(13, "gesperrt", str(p))
+        real(p, *args, **kw)
+
+    monkeypatch.setattr(os, "unlink", locked_second)
+    with pytest.raises(LibraryError):
+        retention.remove(a, root, scope, "permanent")
+    monkeypatch.setattr(os, "unlink", real)
+    assert len(list((a.folder / "audio").iterdir())) == 1
+    assert retention.pending_scope(a.load_meta()) == scope and read_info(a.folder).removed_text.startswith("Löschen unv")
