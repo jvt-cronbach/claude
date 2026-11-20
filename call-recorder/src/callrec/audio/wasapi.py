@@ -89,11 +89,13 @@ def _ancestor_names(proc: Any, limit: int = 4) -> list[str]:
     return names
 
 
-def call_app_sessions(flow: int, process_names: set[str] | list[str]) -> list[CallAppSession]:
+def call_app_sessions(flow: int, process_names: set[str] | list[str],
+                      errors: list[str] | None = None) -> list[CallAppSession]:
     """All audio sessions (active or not) of the configured call app on active endpoints of ``flow``.
 
     Must run in a thread with COM initialised (:func:`com_initialized`). Errors for single
-    devices/sessions are skipped (devices come and go, e.g. Bluetooth profile switches)."""
+    devices/sessions are skipped (devices come and go, e.g. Bluetooth profile switches) and, if
+    ``errors`` is given, noted there - the result is then possibly incomplete."""
     _require_windows()
     from pycaw.pycaw import AudioUtilities, IAudioSessionControl2
     from pycaw.utils import AudioSession
@@ -105,7 +107,9 @@ def call_app_sessions(flow: int, process_names: set[str] | list[str]) -> list[Ca
         try:
             enum = dev.AudioSessionManager.GetSessionEnumerator()
             count = enum.GetCount()
-        except Exception:
+        except Exception as exc:
+            if errors is not None:
+                errors.append(f"Gerät: {exc}")
             continue
         for i in range(count):
             try:
@@ -113,6 +117,12 @@ def call_app_sessions(flow: int, process_names: set[str] | list[str]) -> list[Ca
                 if ctl is None:
                     continue
                 session = AudioSession(ctl.QueryInterface(IAudioSessionControl2))
+                state = int(session.State)
+            except Exception as exc:
+                if errors is not None:
+                    errors.append(f"Sitzung: {exc}")
+                continue
+            try:
                 proc = session.Process
                 if proc is None:
                     continue
@@ -120,7 +130,7 @@ def call_app_sessions(flow: int, process_names: set[str] | list[str]) -> list[Ca
                 if matched is None:
                     continue
                 found.append(CallAppSession(str(dev.FriendlyName), matched, int(proc.pid),
-                                            int(session.State) == 1))  # 1 = AudioSessionStateActive
+                                            state == 1))  # 1 = AudioSessionStateActive
             except Exception:
                 continue
     return found

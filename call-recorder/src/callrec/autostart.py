@@ -77,7 +77,7 @@ def pythonw_for(executable: str | None = None) -> Path:
     """pythonw.exe next to the running interpreter (no console window), else the interpreter itself."""
     exe = Path(executable or sys.executable)
     w = exe.with_name("pythonw.exe")
-    return w if w.exists() or exe.name.lower() == "python.exe" else exe
+    return w if w.exists() else exe
 
 
 def desired_command(executable: str | None = None) -> str:
@@ -94,6 +94,14 @@ def command_executable(command: str) -> str:
         return shlex.split(command, posix=False)[0]
     except (ValueError, IndexError):
         return command.split(" ", 1)[0]
+
+
+def settings_change(state: str, shown_checked: bool, want: bool) -> str:
+    """What saving the settings does with the "Mit Windows starten" box: "enable", "disable" or ""
+    (unchanged box: nothing - a stale entry is repaired at the start, a foreign one is left alone)."""
+    if state == UNAVAILABLE or want == shown_checked:
+        return ""
+    return "enable" if want else "disable"
 
 
 def _same(a: str, b: str) -> bool:
@@ -160,6 +168,9 @@ class Autostart:
     def enable(self) -> AutostartStatus:
         if self.registry is None:
             raise OSError("Autostart ist nur unter Windows verfügbar.")
+        target = command_executable(self.desired())
+        if not self.exists(target):
+            raise OSError(f"{target} gibt es nicht – Autostart nicht eingerichtet.")
         self.registry.write(self.desired())
         self._remove_legacy()
         log.info("Autostart eingerichtet: %s", self.desired())
@@ -174,10 +185,20 @@ class Autostart:
         return self.status()
 
     def repair_if_stale(self) -> str:
-        """At every start: fix a stale entry (moved folder, old shortcut). Returns a message or ""."""
+        """At every start: fix a stale entry (moved folder, old shortcut, other arguments of this
+        same program). Returns a message or "".
+
+        An entry pointing at another *existing* program (a second installation, or this one started
+        from a different interpreter for a test) is left alone: silently re-pointing it could make
+        Windows start the wrong copy. The settings show it; the user decides there."""
         st = self.status()
         if st.state != STALE:
             return ""
+        if st.current:
+            exe = command_executable(st.current)
+            if self.exists(exe) and not _same(exe, command_executable(st.desired)):
+                log.info("Autostart-Eintrag gehört zu einem anderen Programm (%s) - nicht verändert", st.current)
+                return ""
         try:
             self.enable()
         except OSError as exc:

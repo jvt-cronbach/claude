@@ -80,6 +80,9 @@ class Countdown:
     deadline: float
     detail: str
     expired: bool = False
+    # call-end prompt decided while the remote track was quiet: the remote speaking again means
+    # the call is still on (a Teams session flapping, e.g. on a Bluetooth switch) -> clear
+    clear_on_remote: bool = False
 
 
 @dataclass
@@ -171,7 +174,10 @@ class AutoStopMonitor:
             return None
         reason = self._end_reason(cfg, obs, now)
         if reason is not None:
-            return self._start(reason[0], now, cfg, reason[1])
+            ev = self._start(reason[0], now, cfg, reason[1])
+            if reason[0] == CALL_ENDED and self.countdown is not None:
+                self.countdown.clear_on_remote = obs.remote_silent_s >= cfg.session_gone_s
+            return ev
         return None
 
     def _track_call_app(self, cfg: AutoStopConfig, obs: Observation, now: float) -> None:
@@ -207,7 +213,7 @@ class AutoStopMonitor:
 
     def _cleared(self, cd: Countdown, cfg: AutoStopConfig, obs: Observation) -> bool:
         if cd.reason == CALL_ENDED:
-            return obs.call_app_active is True
+            return obs.call_app_active is True or (cd.clear_on_remote and obs.remote_silent_s < 2.0)
         if cd.reason == SILENCE:
             return obs.both_silent_s < 2.0  # someone speaks again
         return False  # the maximum duration is not lifted by sound
@@ -286,16 +292,28 @@ class ControllerLike(Protocol):
              detail: str = ...) -> Any: ...
 
 
+def probe_result(sessions: list[Any], errors: list[str]) -> ProbeResult:
+    """Active if any session of the call app is active. "Gone" only when the enumeration was
+    complete: a device or session that could not be read (Bluetooth profile switch, device
+    vanishing mid-enumeration) may be the one Teams uses -> unknown (None), never "gone"."""
+    active = [s for s in sessions if s.active]
+    listed = [s.describe() + (" aktiv" if s.active else " inaktiv") for s in sessions]
+    if active:
+        return ProbeResult(True, active[0].describe(), listed)
+    if errors:
+        return ProbeResult(None, "", listed)
+    return ProbeResult(False, "", listed)
+
+
 def windows_probe(process_names: Callable[[], list[str]]) -> Callable[[], ProbeResult]:
     """Session probe for the real PC (pycaw). Needs COM in the calling thread."""
 
     def probe() -> ProbeResult:
         from callrec.audio.wasapi import E_CAPTURE, call_app_sessions
 
-        sessions = call_app_sessions(E_CAPTURE, process_names())
-        active = [s for s in sessions if s.active]
-        return ProbeResult(bool(active), active[0].describe() if active else "",
-                           [s.describe() + (" aktiv" if s.active else " inaktiv") for s in sessions])
+        errors: list[str] = []
+        sessions = call_app_sessions(E_CAPTURE, process_names(), errors=errors)
+        return probe_result(sessions, errors)
 
     return probe
 
@@ -364,12 +382,24 @@ class AutoStopRunner:
         self._stop.set()
 
     def _run(self) -> None:
-        with self.thread_context():
+        try:
+            ctx = self.thread_context()
+            ctx.__enter__()
+        except Exception:
+            # COM not available in this thread: the session probe then fails (= unknown), but the
+            # silence and maximum-duration checks must keep running
+            log.exception("Automatisches Aufnahme-Ende: COM-Initialisierung fehlgeschlagen")
+            ctx = _no_context()
+            ctx.__enter__()
+        try:
             while not self._stop.wait(self.tick_s):
                 try:
                     self.step()
                 except Exception:  # never let the safety net die
                     log.exception("Automatisches Aufnahme-Ende: Prüfung fehlgeschlagen")
+        finally:
+            with contextlib.suppress(Exception):
+                ctx.__exit__(None, None, None)
 
     # -- one poll ------------------------------------------------------------
     def _poll_probe(self, now: float) -> ProbeResult:
@@ -472,7 +502,8 @@ class AutoStopRunner:
             view = self._monitor.view(self.clock())
             if not session or view is None:
                 return
-            reason = cd.reason if cd is not None else MAX_DURATION
+            # "Jetzt beenden" on the max-duration *warning* (limit not reached yet) is a manual stop
+            reason = cd.reason if cd is not None else MANUAL
             detail = cd.detail if cd is not None else ""
             self._monitor.countdown = None
             self._monitor.history.append({"at": self.wall().astimezone().isoformat(timespec="seconds"),

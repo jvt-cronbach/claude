@@ -122,6 +122,7 @@ class ProcessingChain:
         unassigned: Callable[[Recording], int] | None = None,
         shutting_down: Callable[[], bool] = lambda: False,
         run_in_background: Callable[[Callable[[], None]], None] | None = None,
+        auto_handoff_allowed: Callable[[], bool] = lambda: True,
     ) -> None:
         self.submit = submit
         self.post = post
@@ -132,6 +133,9 @@ class ProcessingChain:
         self.changed = changed
         self.unassigned = unassigned or _unassigned_with_text
         self.shutting_down = shutting_down
+        # mode "full" + handoff_without_asking still switched on? (checked again at the hand-over,
+        # e.g. for a chain resumed after the setting was switched off)
+        self.auto_handoff_allowed = auto_handoff_allowed
         self.run_in_background = run_in_background or (
             lambda fn: threading.Thread(target=fn, name="chain-handoff", daemon=True).start())
         self._lock = threading.Lock()
@@ -204,21 +208,26 @@ class ProcessingChain:
             return rec.folder.name in self._cancelled
 
     # -- stages ---------------------------------------------------------------
-    def _next(self, rec: Recording, after: str) -> None:
-        if self._is_cancelled(rec):
-            return
+    def _next_stage(self, rec: Recording, after: str) -> str | None:
         plan = self._plan(rec)
-        stages = ORDER[ORDER.index(after) + 1:]
-        for st in stages:
+        for st in ORDER[ORDER.index(after) + 1:]:
             if st == STAGE_REVIEW and not plan.speakers:
                 continue
             if st == STAGE_SUMMARY and not plan.summary:
                 continue
             if st == STAGE_HANDOFF and not plan.handoff:
                 continue
-            self._run_stage(rec, st)
+            return st
+        return None
+
+    def _next(self, rec: Recording, after: str) -> None:
+        if self._is_cancelled(rec):
             return
-        self._finish(rec)
+        st = self._next_stage(rec, after)
+        if st is None:
+            self._finish(rec)
+        else:
+            self._run_stage(rec, st)
 
     def _run_stage(self, rec: Recording, stage: str) -> None:
         if self._is_cancelled(rec):
@@ -226,7 +235,7 @@ class ProcessingChain:
         self._save(rec, stage=stage)
         plan = self._plan(rec)
         if stage == STAGE_PROCESS:
-            self.submit(rec, plan.process_steps(), lambda job, res, err: self._job_done(rec, stage, res, err))
+            self.submit(rec, plan.process_steps(), lambda job, res, err: self._job_done(rec, stage, res, err, job))
         elif stage == STAGE_REVIEW:
             n = self.unassigned(rec)
             if n <= 0:
@@ -234,11 +243,18 @@ class ProcessingChain:
                 return
             self.post(lambda: self._do_review(rec))
         elif stage == STAGE_SUMMARY:
-            self.submit(rec, frozenset({"summarize"}), lambda job, res, err: self._job_done(rec, stage, res, err))
+            self.submit(rec, frozenset({"summarize"}), lambda job, res, err: self._job_done(rec, stage, res, err, job))
         elif stage == STAGE_HANDOFF:
             self.run_in_background(lambda: self._do_handoff(rec))
 
-    def _job_done(self, rec: Recording, stage: str, result: Any, error: BaseException | None) -> None:
+    def _job_done(self, rec: Recording, stage: str, result: Any, error: BaseException | None,
+                  job: Any = None) -> None:
+        if error is None and bool(getattr(job, "cancel_requested", False)) and not self.shutting_down():
+            # "Abbrechen" was clicked while the last step of the job ran: the step finished, but the
+            # chain must stop here (no summary to the cloud, no hand-over after a cancel)
+            from callrec.pipeline import ProcessingCancelled
+
+            error = ProcessingCancelled()
         if error is not None:
             from callrec.pipeline import is_cancellation
 
@@ -260,6 +276,16 @@ class ProcessingChain:
             self._save(rec, summary_problem=str(getattr(result, "summary_skipped", "") or "fehlgeschlagen"))
             self._log(rec, f"Zusammenfassung nicht erstellt: {getattr(result, 'summary_skipped', '')}")
         self.changed(rec)
+        if self.shutting_down():
+            # the step finished during the app exit: record the progress, run the next stage
+            # (dialog, cloud summary, hand-over) only at the next start
+            nxt = self._next_stage(rec, stage)
+            if nxt is None:
+                self._finish(rec)
+            else:
+                self._save(rec, stage=nxt)
+                self._log(rec, "Beim Beenden angehalten – wird beim nächsten Start fortgesetzt")
+            return
         self._next(rec, stage)
 
     def _do_review(self, rec: Recording) -> None:
@@ -285,7 +311,9 @@ class ProcessingChain:
             self._finish(rec)
             return
         why = ""
-        if ch.get("summary_problem") or not rec.summary_path.exists():
+        if ch.get("authorized_by") == "setting" and not self.auto_handoff_allowed():
+            why = "„ohne Rückfrage übergeben“ ist inzwischen ausgeschaltet"
+        elif ch.get("summary_problem") or not rec.summary_path.exists():
             why = "es gibt keine Zusammenfassung" + (f" ({ch.get('summary_problem')})" if ch.get("summary_problem") else "")
         else:
             ready, reason = self.handoff_ready()
@@ -356,5 +384,12 @@ def startup_work(root: Any) -> list[tuple[Recording, str]]:
         except (OSError, ValueError):
             continue
         proc = meta.get("processing") or {}
-        out.append((rec, "process" if proc.get("status") == "running" else "ask"))
+        if proc.get("status") == "running":
+            out.append((rec, "process"))
+        elif proc.get("status") == DEFERRED or isinstance(proc.get("chain"), dict):
+            # decided already ("Später", or a chain that was cancelled/failed): the unfinished WAV
+            # parts alone must not bring the question back at every start
+            continue
+        else:
+            out.append((rec, "ask"))
     return out

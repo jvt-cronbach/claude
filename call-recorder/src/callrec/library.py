@@ -83,7 +83,10 @@ class RecordingInfo:
     @property
     def needs_processing(self) -> bool:
         """Stopped, never (successfully) processed and nothing running: offer "Jetzt verarbeiten"."""
-        return (self.recording_status in ("stopped", "recovered") and not self.has_transcript and not self.busy
+        # "recording" with a processing decision: interrupted by a crash, then "Später" (not finalised yet)
+        stopped = self.recording_status in ("stopped", "recovered") or (
+            self.recording_status == "recording" and self.processing_status != "")
+        return (stopped and not self.has_transcript and not self.busy
                 and not self.chain_active and (self.processing_status in ("", "deferred", "cancelled")
                                                or self.processing_status.startswith("error")))
 

@@ -204,7 +204,8 @@ class SettingsDialog:
         ttk.Label(t, text="Mit Windows starten (im Infobereich):").grid(row=10, column=0, sticky="w", **PAD)
         st = self.autostart.status() if self.autostart is not None else None
         self.autostart_var = tk.BooleanVar(value=st is not None and st.state in ("on", "stale"))
-        self._autostart_initial = bool(self.autostart_var.get()) and st is not None and st.state == "on"
+        self._autostart_state = st.state if st is not None else "unavailable"
+        self._autostart_initial = bool(self.autostart_var.get())
         cb = ttk.Checkbutton(t, variable=self.autostart_var)
         cb.grid(row=10, column=1, sticky="w", **PAD)
         if st is None or st.state == "unavailable":
@@ -698,11 +699,13 @@ class SettingsDialog:
     def apply_autostart(self) -> None:
         if self.autostart is None:
             return
-        want = bool(self.autostart_var.get())
-        if want == self._autostart_initial:
+        from callrec.autostart import settings_change
+
+        change = settings_change(self._autostart_state, self._autostart_initial, bool(self.autostart_var.get()))
+        if not change:
             return
         try:
-            self.autostart.enable() if want else self.autostart.disable()
+            self.autostart.enable() if change == "enable" else self.autostart.disable()
         except OSError as exc:
             messagebox.showerror("Autostart", f"Autostart konnte nicht geändert werden: {exc}", parent=self.win)
 

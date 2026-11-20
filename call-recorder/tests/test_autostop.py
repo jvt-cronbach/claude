@@ -131,7 +131,7 @@ def test_teams_back_during_countdown_clears_it_but_silence_does_not_clear_call_e
     m.update(CFG, obs(0, active=True), 0)
     m.update(CFG, obs(5, remote=30, active=False), 5)
     assert m.update(CFG, obs(26, remote=30, active=False), 26).kind == "prompt"
-    assert m.update(CFG, obs(30, mic=0, remote=0, active=False), 30) is None  # someone speaks in the room: no clear
+    assert m.update(CFG, obs(30, mic=0, remote=34, active=False), 30) is None  # someone speaks in the room: no clear
     assert m.update(CFG, obs(33, remote=30, active=True), 33).kind == "cleared"
 
 
@@ -487,3 +487,145 @@ def test_setup_check_explains_what_happens():
     cfg.autostop.enabled = False
     item = check_autostop(cfg, windows=True)
     assert item.state == WARN and "vergessene Aufnahme" in item.detail
+
+
+def test_remote_speaking_again_clears_a_call_end_prompt_decided_on_a_quiet_remote():
+    # the Teams session flaps (not seen as active) while the call goes on: the other side talks again
+    m = AutoStopMonitor()
+    m.update(CFG, obs(0, active=True), 0)
+    m.update(CFG, obs(5, remote=25, active=False), 5)
+    assert m.update(CFG, obs(26, remote=46, active=False), 26).kind == "prompt"
+    ev = m.update(CFG, obs(30, remote=0.5, active=False), 30)
+    assert ev is not None and ev.kind == "cleared" and m.countdown is None
+    # still gone and quiet again for long enough: asked again (not stopped silently)
+    assert m.update(CFG, obs(45, remote=15, active=False), 45) is None
+    assert m.update(CFG, obs(51, remote=21, active=False), 51).kind == "prompt"
+    # a prompt from the long timeout (something was playing all along) is not lifted by that sound
+    m2 = AutoStopMonitor()
+    m2.update(CFG, obs(0, active=True), 0)
+    evs = run(m2, CFG, [(t, obs(t, remote=0.5, active=False)) for t in range(3, 150, 3)])
+    assert [e.kind for e in evs] == ["prompt"] and m2.countdown is not None
+
+
+def test_probe_result_incomplete_enumeration_is_unknown():
+    from callrec.audio.wasapi import CallAppSession
+    from callrec.autostop import probe_result
+
+    act = CallAppSession("Headset", "ms-teams.exe", 7, True)
+    idle = CallAppSession("Headset", "ms-teams.exe", 7, False)
+    assert probe_result([act], ["Gerät: E_FAIL"]).active is True
+    assert probe_result([idle], []).active is False
+    assert probe_result([], []).active is False  # Teams has no session at all: gone
+    assert probe_result([idle], ["Gerät: E_FAIL"]).active is None  # a device could not be read: unknown
+
+
+def test_call_app_sessions_against_the_pycaw_api(monkeypatch):
+    """The enumeration code with stand-ins shaped like pycaw 20260927 (AudioUtilities.GetAllDevices,
+    AudioDevice.AudioSessionManager, AudioSession(ctl2).State/.Process)."""
+    import sys
+    import types
+
+    from callrec.audio import wasapi
+
+    class Proc:
+        def __init__(self, name, pid, parents=()):
+            self._n, self.pid, self._p = name, pid, list(parents)
+
+        def name(self):
+            return self._n
+
+        def parents(self):
+            return [Proc(n, 1) for n in self._p]
+
+    class Ctl:
+        def __init__(self, proc, state):
+            self.proc, self.state = proc, state
+
+        def QueryInterface(self, iface):
+            return self
+
+    class Enum:
+        def __init__(self, ctls):
+            self.ctls = ctls
+
+        def GetCount(self):
+            return len(self.ctls)
+
+        def GetSession(self, i):
+            c = self.ctls[i]
+            if isinstance(c, Exception):
+                raise c
+            return c
+
+    class Dev:
+        def __init__(self, name, ctls=None, broken=False):
+            self.FriendlyName, self._ctls, self._broken = name, ctls or [], broken
+
+        @property
+        def AudioSessionManager(self):
+            if self._broken:
+                raise OSError("-2147023728 Element nicht gefunden")
+            return types.SimpleNamespace(GetSessionEnumerator=lambda: Enum(self._ctls))
+
+    class AudioSession:
+        def __init__(self, ctl2):
+            self._c = ctl2
+
+        @property
+        def State(self):
+            return self._c.state
+
+        @property
+        def Process(self):
+            return self._c.proc
+
+    devices = [Dev("Kopfhörer (BT Hands-Free)", broken=True),
+               Dev("Headset", [Ctl(Proc("ms-teams.exe", 7), 0), Ctl(None, 1), OSError("weg"),
+                               Ctl(Proc("msedgewebview2.exe", 9, ["ms-teams.exe"]), 1),
+                               Ctl(Proc("olk.exe", 11), 1)])]
+    pycaw = types.ModuleType("pycaw")
+    pp = types.ModuleType("pycaw.pycaw")
+    pu = types.ModuleType("pycaw.utils")
+    pp.AudioUtilities = types.SimpleNamespace(GetAllDevices=lambda flow, state: devices)  # type: ignore[attr-defined]
+    pp.IAudioSessionControl2 = object  # type: ignore[attr-defined]
+    pu.AudioSession = AudioSession  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "pycaw", pycaw)
+    monkeypatch.setitem(sys.modules, "pycaw.pycaw", pp)
+    monkeypatch.setitem(sys.modules, "pycaw.utils", pu)
+    monkeypatch.setattr(wasapi.sys, "platform", "win32")
+    errors: list[str] = []
+    found = wasapi.call_app_sessions(wasapi.E_CAPTURE, ["ms-teams.exe"], errors=errors)
+    assert [(s.process, s.active) for s in found] == [
+        ("ms-teams.exe", False), ("msedgewebview2.exe (gestartet von ms-teams.exe)", True)]
+    assert len(errors) == 2  # the unreadable device and the vanished session
+    assert wasapi.endpoints_with_active_session(wasapi.E_CAPTURE, {"ms-teams.exe"}) == ["Headset"]
+
+
+def test_stop_now_on_the_max_duration_warning_is_a_manual_stop():
+    cfg = dataclasses.replace(CFG, max_duration_minutes=60, max_duration_warning_minutes=10)
+    ctl = FakeCtl()
+    r, clock, posted, _ = _runner(ctl, cfg=cfg)
+    clock.t, ctl.t, ctl.sil = 1, 50 * 60, {"mic": 0.0, "remote": 0.0}
+    assert r.step().kind == "warning"
+    r.stop_now()
+    from callrec.autostop import MANUAL
+
+    assert ctl.stops == [(MANUAL, 1, "user")]
+
+
+def test_runner_keeps_checking_when_com_cannot_be_initialised():
+    import threading
+
+    ctl = FakeCtl()
+    stepped = threading.Event()
+
+    def broken_context():
+        raise OSError("CoInitialize fehlgeschlagen")
+
+    r = AutoStopRunner(lambda: CFG, ctl, lambda fn: None, thread_context=broken_context, tick_s=0.01)
+    r.step = lambda: stepped.set()  # type: ignore[method-assign]
+    r.start()
+    assert stepped.wait(2)
+    r.shutdown()
+    assert r._thread is not None
+    r._thread.join(2)

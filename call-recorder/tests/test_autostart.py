@@ -124,3 +124,42 @@ def test_setup_ps1_writes_the_same_entry():
     text = (Path(__file__).resolve().parents[1] / "setup.ps1").read_text(encoding="utf-8-sig")
     assert 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' in text
     assert f'"`"$VenvPythonW`" {ARGS}"' in text and '-Name "CallRecorder"' in text
+
+
+def test_missing_pythonw_is_never_written(tmp_path: Path):
+    py = tmp_path / "py" / "python.exe"
+    py.parent.mkdir()
+    py.write_text("")
+    assert desired_command(str(py)) == f'"{py}" {ARGS}'  # no pythonw.exe next to it: keep python.exe
+    reg = FakeReg()
+    a = Autostart(reg, str(tmp_path / "weg" / "python.exe"), startup_dir=tmp_path / "startup")
+    with pytest.raises(OSError):
+        a.enable()
+    assert reg.value is None
+
+
+def test_repair_leaves_an_existing_other_installation_alone(install: Path, tmp_path: Path):
+    other = tmp_path / "zweite" / "pythonw.exe"
+    other.parent.mkdir()
+    other.write_text("")
+    reg = FakeReg(f'"{other}" {ARGS}')
+    a = Autostart(reg, str(install), startup_dir=tmp_path / "startup")
+    assert a.repair_if_stale() == "" and reg.value == f'"{other}" {ARGS}' and reg.writes == 0
+    # same program, older arguments: repaired
+    reg2 = FakeReg(f'"{install}" -m callrec tray')
+    a2 = Autostart(reg2, str(install), startup_dir=tmp_path / "startup")
+    assert "korrigiert" in a2.repair_if_stale() and reg2.value == f'"{install}" {ARGS}'
+    # moved folder, and this installation is gone too: nothing is written
+    reg3 = FakeReg(f'"{tmp_path / "alt" / "pythonw.exe"}" {ARGS}')
+    a3 = Autostart(reg3, str(tmp_path / "auch-weg" / "pythonw.exe"), startup_dir=tmp_path / "startup")
+    assert "nicht korrigiert" in a3.repair_if_stale() and reg3.writes == 0
+
+
+def test_settings_box_unticked_on_a_stale_entry_removes_it():
+    from callrec.autostart import settings_change
+
+    assert settings_change(STALE, True, False) == "disable"  # shown ticked (stale), user unticks
+    assert settings_change(STALE, True, True) == ""
+    assert settings_change(OFF, False, True) == "enable"
+    assert settings_change(ON, True, True) == ""
+    assert settings_change(UNAVAILABLE, False, True) == ""

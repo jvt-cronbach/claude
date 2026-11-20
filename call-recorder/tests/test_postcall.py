@@ -271,3 +271,69 @@ def test_library_status_and_next_action(tmp_path: Path):
     rec.summary_path.write_text("# Zusammenfassung\n\nInhalt", encoding="utf-8")
     assert next_action(read_info(rec.folder))[1] == "Übergeben"
     assert next_action(read_info(rec.folder), busy=True)[1] == ""
+
+
+def test_cancel_clicked_while_the_last_step_finishes_stops_the_chain(rec):
+    # "Abbrechen" during the summary request: the request still finishes (job without error), but
+    # the chain must not go on to the hand-over
+    w = World()
+    w.chain.start(rec, Plan(True, False, True, True), "dialog")
+    w.finish_job()
+    rec_, steps, on_done = w.jobs[-1]
+    assert steps == frozenset({"summarize"})
+    rec.summary_path.write_text("# Zusammenfassung\n\nInhalt", encoding="utf-8")
+    on_done(SimpleNamespace(cancel_requested=True), SimpleNamespace(summary_skipped="", summary_failed=False), None)
+    assert w.handoffs == [] and chain_state(rec)["stage"] == CANCELLED
+    # same after the transcript: no summary job is started
+    w2 = World()
+    w2.chain.start(rec, Plan(True, False, True, False), "dialog")
+    _r, _s, on_done = w2.jobs[-1]
+    on_done(SimpleNamespace(cancel_requested=True), SimpleNamespace(summary_skipped="", summary_failed=False), None)
+    assert len(w2.jobs) == 1 and chain_state(rec)["stage"] == CANCELLED
+
+
+def test_step_finished_during_app_exit_waits_for_the_next_start(rec, tmp_path: Path):
+    w = World()
+    w.chain.start(rec, Plan(True, False, True, True), "dialog")
+    w.shutdown = True
+    _r, _s, on_done = w.jobs[-1]
+    on_done(SimpleNamespace(cancel_requested=True), SimpleNamespace(summary_skipped="", summary_failed=False), None)
+    assert len(w.jobs) == 1 and w.handoffs == []  # no cloud summary / hand-over while exiting
+    assert chain_state(rec)["stage"] == "summary"
+    assert [k for _, k in startup_work(tmp_path / "recs")] == ["resume"]
+
+
+def test_setting_handoff_is_checked_again_at_the_handoff(rec):
+    w = World()
+    w.chain.auto_handoff_allowed = lambda: False  # switched off after the chain was started / before resume
+    w.chain.start(rec, Plan(True, False, True, True), "setting")
+    w.finish_job()
+    w.finish_job()
+    ch = chain_state(rec)
+    assert w.handoffs == [] and ch["stage"] == DONE and "ausgeschaltet" in ch["handoff_skipped"]
+    # the user's choice in the question is not affected by that setting
+    w2 = World()
+    w2.chain.auto_handoff_allowed = lambda: False
+    w2.chain.start(rec, Plan(True, False, True, True), "dialog")
+    w2.finish_job()
+    w2.finish_job()
+    assert len(w2.handoffs) == 1
+
+
+def test_deferred_recording_with_unfinished_parts_is_not_asked_again(tmp_path: Path):
+    from callrec.library import read_info
+
+    root = tmp_path / "recs"
+    rec = make_recording(root, with_parts=True)  # real case: "Später" leaves the .part.wav files
+    assert [k for _, k in startup_work(root)] == ["ask"]
+    mark_deferred(rec)
+    assert startup_work(root) == []
+    # a cancelled / failed chain is a decision, too
+    rec.update_meta(["processing"], {"status": "cancelled", "chain": {"stage": CANCELLED}})
+    assert startup_work(root) == []
+    # interrupted by a crash (still "recording"), then "Später": "Jetzt verarbeiten" stays offered
+    rec.update_meta(["processing"], {})
+    rec.update_meta(["recording", "status"], "recording")
+    assert [k for _, k in startup_work(root)] == ["ask"]
+    mark_deferred(rec)
+    assert startup_work(root) == [] and read_info(rec.folder).needs_processing

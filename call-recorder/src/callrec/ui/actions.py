@@ -106,6 +106,8 @@ class AppActions:
             notify=self.ui.notify,
             changed=lambda rec: self.ui.post(lambda: self._changed(rec)),
             shutting_down=lambda: bool(getattr(self.queue, "_shutting_down", False)),
+            auto_handoff_allowed=lambda: (self.cfg.processing.after_recording == "full"
+                                          and self.cfg.processing.handoff_without_asking),
         )
         if hasattr(self.queue, "add_listener"):
             self.queue.add_listener(self.chain.on_queue_event)
