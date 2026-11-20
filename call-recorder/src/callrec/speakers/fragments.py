@@ -68,9 +68,9 @@ def plan_fragments(turns: list[SpeakerTurn], speakers: dict[str, SpeakerInfo], e
         best: tuple[str, float] | None = None
         for tid in targets:
             if tid in embeddings:
-                sim = float(np.dot(v, l2_normalize(np.asarray(embeddings[tid]))))
-                if best is None or sim > best[1]:
-                    best = (tid, sim)
+                cos = float(np.dot(v, l2_normalize(np.asarray(embeddings[tid]))))
+                if best is None or cos > best[1]:
+                    best = (tid, cos)
         if best is not None and best[1] >= threshold:
             similar[sid] = best
     summary: dict[str, dict[str, Any]] = {}
@@ -78,7 +78,8 @@ def plan_fragments(turns: list[SpeakerTurn], speakers: dict[str, SpeakerInfo], e
         if t.speaker not in minors:
             out.append(t)
             continue
-        to, why, sim = "", "unklar: keine passende Stimme in der Nähe", None
+        to, why = "", "unklar: keine passende Stimme in der Nähe"
+        sim: float | None = None
         if t.speaker in similar:
             to, sim = similar[t.speaker]
             why = "ähnliche Stimme"

@@ -160,6 +160,13 @@ class UiServer:
                     self._clips.pop(k, None)
         return f"{self.origin}/{self.token}/clip/{name}"
 
+    def unpublish(self, path: Path) -> None:
+        """A clip file that is deleted: its URL answers 404 from now on."""
+        target = Path(path).resolve()
+        with self._lock:
+            for k in [k for k, v in self._clips.items() if v == target]:
+                self._clips.pop(k, None)
+
     def is_own_url(self, url: str) -> bool:
         u = urlsplit(url or "")
         return f"{u.scheme}://{u.netloc}" == self.origin and u.path.startswith(f"/{self.token}/")

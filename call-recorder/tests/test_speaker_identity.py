@@ -247,7 +247,9 @@ def test_unchanged_auto_match_is_not_confirmed_silently(tmp_path: Path, store: P
 def test_minimum_speech_blocks_matching_and_learning(tmp_path: Path, store: ProfileStore):
     rec = _two_known_voices(tmp_path, store)
     rec2 = recording_with_voices(tmp_path / "r2", 550, 330)
-    pipeline, _, _ = make_pipeline(store, cfg=Config())  # defaults: 8 s / 20 s, the fake voices speak ~2-3 s
+    cfg = Config()  # defaults: 8 s / 20 s, the fake voices speak ~2-3 s
+    cfg.speakers.min_named_speech_s = 0.0  # (fragments: see test_fragments.py)
+    pipeline, _, _ = make_pipeline(store, cfg=cfg)
     pipeline.run(rec2)
     assert all(not s.name for sid, s in rec2.load_speakers().items() if sid != "ME")
     assert "zu wenig Sprache" in rec2.load_speakers()["S1"].note

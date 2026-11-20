@@ -109,6 +109,7 @@ def short_cfg() -> Config:
     cfg = Config()
     cfg.speakers.min_match_speech_s = 0.0
     cfg.speakers.min_learn_speech_s = 0.0
+    cfg.speakers.min_named_speech_s = 0.0  # the fake voices speak 2-3 s: no fragments here
     return cfg
 
 

@@ -46,6 +46,7 @@ REASON_TEXT = {
     SILENCE: "längere Stille auf beiden Spuren",
     MAX_DURATION: "Höchstdauer erreicht",
     APP_QUIT: "CallRecorder wurde beendet",
+    "system_shutdown": "Windows wurde heruntergefahren oder abgemeldet",
 }
 
 

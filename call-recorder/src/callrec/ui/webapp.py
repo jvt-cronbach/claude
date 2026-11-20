@@ -102,6 +102,7 @@ class WebCore:
         self.stop_event = threading.Event()
         self.hotkey: Any = None
         self.tray: Any = None
+        self.show_requests: Any = None
         # set in wire()
         self.ui: Any = None
         self.controller: Any = None
@@ -146,7 +147,8 @@ class WebCore:
         ui.consent_mode = lambda: consent_mode(cfg)
         ui.me_provider = self.me_provider
         self.actions = AppActions(cfg, ui, self.controller, self.queue, self.profiles, self.me_provider, self.log_file)
-        self.samples = SampleClips(self.server.publish) if self.server is not None else SampleClips(lambda p: "")
+        self.samples = (SampleClips(self.server.publish, self.server.unpublish) if self.server is not None
+                        else SampleClips(lambda p: ""))
         self.actions.dialogs = WebDialogPort(ui.broker, self.navigate, ui.notify, self.samples)
         ui.review_handler = self.actions.review
         self.actions.show_window_handler = lambda: self.windows.show_main(activate=True)
@@ -659,6 +661,24 @@ def _boot(core: WebCore, start_minimized: bool) -> None:
         windows.destroy_all()  # ends webview.start() on the main thread
 
     actions.quit_handler = quit_app
+    from callrec.ui.app import ShowRequests
+
+    core.show_requests = ShowRequests(lambda: core.loop.post(lambda: windows.show_main(activate=True)))
+    core.show_requests.start()  # a second start of CallRecorder shows this window
+    from callrec.ui.sessionend import STOP_TIMEOUT_S, SessionEnd, install_winforms, winforms_pump
+
+    session = SessionEnd(lambda: core.loop.call(actions.end_session, timeout=STOP_TIMEOUT_S),
+                         lambda: core.loop.post(quit_app), pump=winforms_pump())
+    all_windows = [w for w in (windows.main, getattr(windows, "indicator", None), getattr(windows, "toast", None))
+                   if w is not None]
+    installed = {"n": install_winforms(all_windows, session) if sys.platform == "win32" else len(all_windows)}
+
+    def install_later() -> None:  # a form that did not exist yet at the start
+        if installed["n"] < len(all_windows) and not windows.quitting:
+            installed["n"] += install_winforms(all_windows, session)
+            core.loop.after(2000, install_later)
+
+    core.loop.after(2000, install_later)
     tray_actions: dict[str, Any] = {
         "show_window": lambda: windows.show_main(activate=True),
         "toggle": actions.toggle,
@@ -676,8 +696,10 @@ def _boot(core: WebCore, start_minimized: bool) -> None:
             ui.notify("Tastenkürzel", core.hotkey.error)
     except HotkeyError as exc:
         ui.notify("Tastenkürzel ungültig", str(exc))
-    for w in cfg.warnings:
-        ui.notify("Konfiguration", w)
+    from callrec.notices import startup_notices
+
+    for title, text in startup_notices(cfg):  # config warnings and, once, the notices after an update
+        ui.notify(title, text)
     try:
         msg = actions.autostart.repair_if_stale()
         if msg:
@@ -743,7 +765,7 @@ def _boot(core: WebCore, start_minimized: bool) -> None:
 
 def _stop_workers(core: WebCore) -> None:
     """Tray (a non-daemon thread) and hotkey; safe to call more than once."""
-    for what in (core.hotkey, core.tray):
+    for what in (core.hotkey, core.tray, core.show_requests):
         if what is not None:
             try:
                 what.stop()
@@ -763,4 +785,6 @@ def _shutdown(core: WebCore) -> None:
         core.queue.join(timeout=10)
     core.loop.stop()
     core.loop.join(timeout=5)
+    if core.samples is not None:
+        core.samples.close()  # speaker clips in the temp folder
     time.sleep(0.05)

@@ -665,14 +665,15 @@ DLG.after_recording = d => {
 DLG.review = d => {
   const x = d.data, L = d.local;
   if (!L.sel) { L.sel = {}; L.keep = {}; L.other = {}; for (const r of x.rows) { L.sel[r.id] = r.initial || ""; L.keep[r.id] = r.keep; } L.resum = !x.in_chain; }
-  const open = x.rows.filter(r => !L.sel[r.id]).length;
-  const rows = x.rows.map((r, n) => {
+  const named = x.rows.filter(r => !r.minor || L.sel[r.id]);
+  const open = named.filter(r => !L.sel[r.id]).length;
+  const rows = x.rows.filter(r => !r.minor || L.showFragments || L.sel[r.id]).map((r, n) => {
     const c = (n % SP_COLORS) + 1;
     const values = r.choices.map(c => c.value);
     const typed = L.sel[r.id] && !values.includes(L.sel[r.id]);
     return h`<section class="card voice" aria-labelledby="vh-${n}" data-c="${c}">
-      <div class="rec-title"><div class="voice-head"><span class="swatch"></span><h3 id="vh-${n}">${r.label}</h3>${r.source === "auto" && r.name ? h`<span class="chip chip-accent">${I("check")}Automatisch erkannt · ${r.name}</span>` : r.source === "self_echo" ? h`<span class="chip chip-info">${I("info")}Klingt wie die eigene Stimme</span>` : L.sel[r.id] ? "" : h`<span class="chip chip-warn">Noch ohne Namen</span>`}</div>
-        <div class="play"><button class="pbtn" data-act="sample" ${data({ sid: r.id })} aria-label="Beispiel von ${r.label} anhören" ${r.can_play ? "" : raw("disabled")}>${I(L.playing === r.id ? "pause" : "play", "ico-sm")}</button><span class="caption muted num">${r.talk} Sprechzeit · ${r.utterances} Beiträge</span></div>
+      <div class="rec-title"><div class="voice-head"><span class="swatch"></span><h3 id="vh-${n}">${r.label}</h3>${r.minor && !L.sel[r.id] ? h`<span class="chip">Kurzes Fragment · ${r.speech} s Sprache</span>` : r.source === "auto" && r.name ? h`<span class="chip chip-accent">${I("check")}Automatisch erkannt · ${r.name}</span>` : r.source === "self_echo" ? h`<span class="chip chip-info">${I("info")}Klingt wie die eigene Stimme</span>` : L.sel[r.id] ? "" : h`<span class="chip chip-warn">Noch ohne Namen</span>`}</div>
+        <div class="play"><button class="pbtn" data-act="sample" ${data({ sid: r.id })} aria-label="Beispiel von ${r.label} anhören" ${r.can_play ? "" : raw("disabled")}>${I(L.playing === r.id ? "pause" : "play", "ico-sm")}</button><span class="caption muted num">${r.talk} Sprechzeit · ${r.utterances} Beiträge</span>${r.can_play ? h`<span class="caption muted num" data-sample-info="${r.id}">${(L.info || {})[r.id] || r.sample_info}</span>` : ""}${r.can_play && r.sample_count > 1 ? h`<button class="btn btn-link btn-sm" data-act="sample" ${data({ sid: r.id, step: "1" })}>Weiteres Beispiel</button>` : ""}</div>
         ${r.sample ? h`<div class="quotes"><div class="qt"><span class="ts">Beispiel</span><q>${r.sample}</q></div></div>` : ""}
         ${r.note ? h`<p class="note mt-2">${r.note}</p>` : ""}</div>
       <fieldset class="choices"><legend class="label">Diese Stimme gehört zu …</legend>
@@ -686,10 +687,11 @@ DLG.review = d => {
     ${x.bound && x.bound.merged ? h`<p class="help mb-4">Die Gegenseite wurde auf ${x.bound.participants} eingeladene Person(en) begrenzt (zuvor ${x.bound.raw} getrennte Stimmen). Waren nicht eingeladene Personen dabei? ${btn("Weitere Sprecher zulassen", { cls: "btn-link btn-sm", act: "rv", attrs: data({ a: "more" }) })}</p>` : ""}
     <div class="sp-grid"><section class="card"><div class="fixed-row">${avatar(x.me.name, "avatar-lg", true)}<div class="rec-title"><div class="strong">${x.me.name} <span class="chip">${I("lock")}Mikrofonspur, immer die eigene Stimme</span></div><div class="muted">${x.me.utterances} Beiträge · ${x.me.talk} Sprechzeit · Name ändern unter Einstellungen › Allgemein</div></div>
       <button class="btn" data-act="sample" data-sid="${x.me.id}" ${x.me.can_play ? "" : raw("disabled")}>${I(L.playing === x.me.id ? "pause" : "play", "ico-sm")}Anhören</button></div></section>
+    ${x.fragments ? h`<p class="help">${btn(L.showFragments ? "Kurze Fragmente ausblenden" : `Kurze Fragmente anzeigen (${x.fragments})`, { cls: "btn-link btn-sm", act: "rv-frag" })} Sehr kurze Stimmen (Husten, „mhm“, Störgeräusche) werden nicht abgefragt; ihr Text steht bei der passenden Person oder als „Unklar“.</p>` : ""}
     ${x.rows.length ? rows : h`<div class="empty compact"><h3>Keine Stimmen der Gegenseite</h3><p>In dieser Aufnahme wurden keine Sprecher der Gegenseite erkannt.</p></div>`}</div>
     ${x.error ? h`<div class="banner banner-err mt-4" role="alert">${I("alert")}<div class="bd">${x.error}</div></div>` : ""}
     <audio id="sample-audio" preload="none"></audio>`,
-  h`<span class="left"><b>${x.rows.length - open} von ${x.rows.length} Stimmen zugeordnet</b> <span class="muted">· Stimmprofile sind biometrische Daten und verlassen den Rechner nie.</span></span>
+  h`<span class="left"><b>${named.length - open} von ${named.length} Stimmen zugeordnet</b> <span class="muted">· Stimmprofile sind biometrische Daten und verlassen den Rechner nie.</span></span>
     ${x.in_chain ? h`<span class="caption muted">Danach wird die Zusammenfassung mit diesen Namen erstellt.</span>` : h`<label class="check"><input type="checkbox" id="rv-resum" ${L.resum ? raw("checked") : ""}><span class="t">Zusammenfassung danach neu erstellen</span></label>`}
     ${x.can_handoff ? btn("Übergeben …", { cls: "btn-subtle", icon: "send", act: "rv", attrs: data({ a: "handoff" }) }) : ""}
     ${btn(x.in_chain ? "Überspringen" : "Abbrechen", { act: "dlg-cancel" })}${x.rows.length ? btn("Übernehmen", { cls: "btn-primary", act: "rv", attrs: data({ a: "apply" }) }) : ""}`, "review");
@@ -1091,15 +1093,18 @@ A["pc-discard"] = el => { const d = curDlg(el); d.local.confirmDiscard = true; r
 A["pc-back"] = el => { const d = curDlg(el); d.local.confirmDiscard = false; renderDialog(); };
 A.rv = el => {
   const d = curDlg(el), L = d.local, a = el.dataset.a;
-  if (a === "apply") answer(d, { action: "apply", assignments: d.data.rows.map(r => ({ id: r.id, name: L.sel[r.id] || "", keep: !!L.keep[r.id] })), resummarize: !!L.resum });
+  if (a === "apply") answer(d, { action: "apply", assignments: d.data.rows.filter(r => !r.minor || L.sel[r.id]).map(r => ({ id: r.id, name: L.sel[r.id] || "", keep: !!L.keep[r.id] })), resummarize: !!L.resum });
   else answer(d, { action: a });
 };
+A["rv-frag"] = el => { const d = curDlg(el); d.local.showFragments = !d.local.showFragments; renderDialog(); };
 A.sample = async el => {
   const d = topDialog(); if (!d) return;
-  const sid = el.dataset.sid, audio = $("#sample-audio");
-  if (d.local.playing === sid) { stopSample(); renderDialog(); return; }
-  const r = await act("play_sample", d.data.id, sid);
+  const sid = el.dataset.sid, step = el.dataset.step === "1" ? 1 : 0, audio = $("#sample-audio");
+  if (d.local.playing === sid && !step) { stopSample(); renderDialog(); return; }
+  if (audio) audio.pause();
+  const r = await act("play_sample", d.data.id, sid, step);
   if (!r || !r.url || !audio) return;
+  d.local.info = { ...(d.local.info || {}), [sid]: r.caption || "" };
   audio.src = r.url; d.local.playing = sid;
   audio.onended = () => { d.local.playing = ""; renderDialog(); };
   renderDialog();

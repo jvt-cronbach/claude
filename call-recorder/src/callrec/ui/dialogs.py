@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import tempfile
 import tkinter as tk
 from collections.abc import Callable
 from pathlib import Path
@@ -273,8 +272,9 @@ def review_speakers(
     """``in_chain``: part of the guided processing - "Überspringen" instead of "Abbrechen", and
     no re-summary checkbox (the chain creates the summary next, with the names).
     ``speaker_cfg``: the [speakers] settings (match scope, minimum speech for learning)."""
-    from callrec.audio.finalize import find_audio, write_clip
+    from callrec.audio.finalize import find_audio
     from callrec.config import SpeakerConfig
+    from callrec.ui.clips import ClipStore
 
     sc = speaker_cfg or SpeakerConfig()
     overview = speaker_overview(rec)
@@ -282,26 +282,44 @@ def review_speakers(
     win = tk.Toplevel(root)
     win.title(f"Sprecher zuordnen – {rec.title()}")
     audio = find_audio(rec.folder)
-    tmpdir = Path(tempfile.mkdtemp(prefix="callrec_"))
+    clips = ClipStore()
+    captions: dict[str, tk.StringVar] = {}
 
-    def player(track: str, ov: Any) -> Callable[[], None]:
+    def player(track: str, ov: Any, step: int = 0) -> Callable[[], None]:
         def play() -> None:
-            if audio is None or ov.sample_span is None:
+            if audio is None or not ov.samples:
                 return
-            clip = tmpdir / f"{ov.id}.wav"
             try:
-                write_clip(getattr(audio, track), ov.sample_span[0], ov.sample_span[1], clip)
-                _play(clip)
+                _stop_playback()
+                clip = clips.make(rec.folder, track, ov.samples, (rec.folder.name, ov.id), step)
+                if ov.id in captions:
+                    captions[ov.id].set(clip.caption(ov.speech_s))
+                _play(clip.path)
             except Exception as exc:
                 messagebox.showerror("Wiedergabe", str(exc), parent=win)
         return play
 
+    def play_buttons(parent: Any, track: str, ov: Any) -> Any:
+        box = ttk.Frame(parent)
+        b1 = ttk.Button(box, text="▶ Anhören", command=player(track, ov))
+        b2 = ttk.Button(box, text="Weiteres Beispiel", command=player(track, ov, 1))
+        b1.pack(anchor="w")
+        if len(ov.samples) > 1:
+            b2.pack(anchor="w", pady=(2, 0))
+        if audio is None or not ov.samples:
+            b1.state(["disabled"])
+        first = ov.samples[0] if ov.samples else None
+        captions[ov.id] = tk.StringVar(value=(f"{first.count} Beispiel(e), {first.duration:.0f} s" if first else ""))
+        ttk.Label(box, textvariable=captions[ov.id], foreground="#555").pack(anchor="w")
+        return box
+
     ttk.Label(
         win,
-        text="Ordnen Sie jede Stimme der Gegenseite einer Person zu. Angeboten werden die Teilnehmenden dieses "
-        "Termins; Sie können auch einen Namen eintippen (die Person wird dann als Teilnehmende ergänzt). Ihre eigene "
-        "Stimme steht nicht zur Auswahl: Die Mikrofonspur ist immer Ihnen zugeordnet (erste Zeile). Gespeicherte "
-        "Stimmprofile sind biometrische Daten und bleiben ausschließlich auf diesem Rechner.",
+        text="Jede Stimme der Gegenseite einer Person zuordnen. Angeboten werden die Teilnehmenden dieses "
+        "Termins; ein eingetippter Name wird als Teilnehmende ergänzt. Die eigene Stimme steht nicht zur Auswahl: "
+        "Die Mikrofonspur gehört immer zur eigenen Person (erste Zeile). Kurze Fragmente (Husten, „mhm“) werden "
+        "nicht abgefragt. Gespeicherte Stimmprofile sind biometrische Daten und bleiben ausschließlich auf diesem "
+        "Rechner.",
         wraplength=720,
     ).grid(row=0, column=0, columnspan=5, sticky="w", **PAD)
     warnings = list((((rec.load_meta().get("processing") or {}).get("identification") or {}).get("trackcheck")
@@ -319,10 +337,7 @@ def review_speakers(
               f"{fmt_ts(me_row.talk_time_s, 'mm:ss')} Sprechzeit").grid(row=row, column=0, sticky="nw", **PAD)
     ttk.Label(win, text=f"„{me_row.sample_text}“" if me_row.sample_text else "-", wraplength=300,
               foreground="#333").grid(row=row, column=1, sticky="nw", **PAD)
-    me_btn = ttk.Button(win, text="▶ Anhören", command=player("mic", me_row))
-    if audio is None or me_row.sample_span is None:
-        me_btn.state(["disabled"])
-    me_btn.grid(row=row, column=2, sticky="nw", **PAD)
+    play_buttons(win, "mic", me_row).grid(row=row, column=2, sticky="nw", **PAD)
     ttk.Label(win, text="immer Sie – Name unter Einstellungen → Darstellung", foreground="#555").grid(
         row=row, column=3, columnspan=2, sticky="nw", **PAD)
     row += 1
@@ -333,35 +348,44 @@ def review_speakers(
         _modal(win)
         root.wait_window(win)
         _stop_playback()
+        clips.close()
         return False
 
     all_profiles = getattr(sc, "match_scope", "participants") == "all_profiles"
     rows: list[tuple[str, tk.StringVar, tk.BooleanVar]] = []
+    fragment_widgets: list[Any] = []
     for i, ov in enumerate(overview, start=row):
         info = f"{ov.label}\n{fmt_ts(ov.talk_time_s, 'mm:ss')} Sprechzeit, {ov.utterances} Beiträge"
+        if ov.minor:
+            info += f"\nkurzes Fragment ({ov.speech_s:.1f} s Sprache)"
         if ov.source == "auto" and ov.score is not None:
             info += f"\nautomatisch erkannt ({ov.score:.2f})"
         elif ov.source == "self_echo":
-            info += "\nals Ihre Stimme markiert"
-        ttk.Label(win, text=info).grid(row=i, column=0, sticky="nw", **PAD)
+            info += "\nals eigene Stimme markiert"
+        lab = ttk.Label(win, text=info)
+        lab.grid(row=i, column=0, sticky="nw", **PAD)
         sample = f"„{ov.sample_text}“" if ov.sample_text else "-"
         if ov.note and not ov.name:
             sample += f"\n({ov.note})"
-        ttk.Label(win, text=sample, wraplength=300, foreground="#333").grid(row=i, column=1, sticky="nw", **PAD)
-        btn = ttk.Button(win, text="▶ Anhören", command=player("remote", ov))
-        if audio is None or ov.sample_span is None:
-            btn.state(["disabled"])
-        btn.grid(row=i, column=2, sticky="nw", **PAD)
+        lab2 = ttk.Label(win, text=sample, wraplength=300, foreground="#333")
+        lab2.grid(row=i, column=1, sticky="nw", **PAD)
+        box = play_buttons(win, "remote", ov)
+        box.grid(row=i, column=2, sticky="nw", **PAD)
         initial = SELF_CHOICE if ov.source == "self_echo" else (ov.name or ov.preselect_name)
         name_var = tk.StringVar(value=initial)
-        ttk.Combobox(win, textvariable=name_var, values=row_choices(rec, profiles, ov, all_profiles),
-                     width=44).grid(row=i, column=3, sticky="nw", **PAD)
-        # an automatic match is only learned when you confirm it here
-        keep_var = tk.BooleanVar(value=ov.source != "auto")
-        ttk.Checkbutton(win, variable=keep_var).grid(row=i, column=4, sticky="n", **PAD)
+        combo = ttk.Combobox(win, textvariable=name_var, values=row_choices(rec, profiles, ov, all_profiles), width=44)
+        combo.grid(row=i, column=3, sticky="nw", **PAD)
+        # an automatic match is only learned when you confirm it here (never for a short fragment)
+        keep_var = tk.BooleanVar(value=ov.source != "auto" and not ov.minor)
+        chk = ttk.Checkbutton(win, variable=keep_var)
+        chk.grid(row=i, column=4, sticky="n", **PAD)
         rows.append((ov.id, name_var, keep_var))
+        if ov.minor:
+            fragment_widgets.extend([lab, lab2, box, combo, chk])
     last = row + len(overview)
 
+    for w in fragment_widgets:
+        w.grid_remove()  # short fragments: hidden until "Kurze Fragmente anzeigen"
     resum_var = tk.BooleanVar(value=not in_chain)
     bottom = ttk.Frame(win)
     bottom.grid(row=last, column=0, columnspan=5, sticky="we", **PAD)
@@ -371,6 +395,16 @@ def review_speakers(
     else:
         ttk.Checkbutton(bottom, text="Zusammenfassung danach neu erstellen", variable=resum_var).pack(side="left")
     applied = {"value": False}
+    n_frag = sum(1 for ov in overview if ov.minor)
+    if n_frag:
+        def toggle_fragments() -> None:
+            shown = frag_btn.cget("text").startswith("Kurze Fragmente ausblenden")
+            for w in fragment_widgets:
+                w.grid_remove() if shown else w.grid()
+            frag_btn.configure(text=f"Kurze Fragmente anzeigen ({n_frag})" if shown else "Kurze Fragmente ausblenden")
+
+        frag_btn = ttk.Button(bottom, text=f"Kurze Fragmente anzeigen ({n_frag})", command=toggle_fragments)
+        frag_btn.pack(side="left", padx=8)
 
     def apply() -> None:
         _stop_playback()
@@ -409,6 +443,7 @@ def review_speakers(
     _modal(win)
     root.wait_window(win)
     _stop_playback()
+    clips.close()
     return applied["value"]
 
 

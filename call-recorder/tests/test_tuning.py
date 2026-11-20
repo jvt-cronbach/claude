@@ -126,6 +126,7 @@ def test_versioned_outputs_and_settings_in_meta(tmp_path: Path):
 
     # change the tuning: glossary, prompt, replacements, rendering, new model -> retranscribe
     cfg = Config()
+    cfg.speakers.min_named_speech_s = 0.0  # the fake voices speak 2-3 s
     cfg.transcription.model = "medium"
     cfg.transcription.initial_prompt = "Projektbesprechung Firma Muster."
     cfg.transcript.timestamp_format = "mm:ss"

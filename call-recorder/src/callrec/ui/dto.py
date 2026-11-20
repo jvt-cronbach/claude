@@ -189,20 +189,29 @@ def speaker_review(rec: Recording, profiles: Any, speaker_cfg: Any, in_chain: bo
             "score": ov.score, "talk": fmt_ts(ov.talk_time_s, "mm:ss"), "talk_s": ov.talk_time_s,
             "utterances": ov.utterances, "sample": ov.sample_text, "note": ov.note if not ov.name else "",
             "suggested": ov.suggested_name, "self_suspect": ov.self_suspect,
-            "keep": ov.source != "auto",  # an automatic match is only learned when confirmed here
-            "can_play": audio is not None and ov.sample_span is not None,
-            "choices": choices, "_span": ov.sample_span, "_track": "remote",
+            "keep": ov.source != "auto" and not ov.minor,  # an automatic match is only learned when confirmed here
+            "can_play": audio is not None and bool(ov.samples),
+            "minor": ov.minor, "speech": f"{ov.speech_s:.1f}".replace(".", ","),
+            "sample_info": _sample_info(ov), "sample_count": len(ov.samples),
+            "choices": choices, "_samples": ov.samples, "_track": "remote",
         })
     return {
         "id": rec.folder.name, "title": rec.title(), "in_chain": in_chain,
         "me": {"id": me.id, "name": me.name, "talk": fmt_ts(me.talk_time_s, "mm:ss"), "utterances": me.utterances,
-               "sample": me.sample_text, "can_play": audio is not None and me.sample_span is not None,
-               "_span": me.sample_span, "_track": "mic"},
-        "rows": rows, "warnings": warnings,
+               "sample": me.sample_text, "can_play": audio is not None and bool(me.samples),
+               "sample_info": _sample_info(me), "_samples": me.samples, "_track": "mic"},
+        "rows": rows, "warnings": warnings, "fragments": sum(1 for r in rows if r["minor"]),
         "bound": {"merged": bool(bound.get("merged")), "participants": bound.get("participants"),
                   "raw": bound.get("raw_speakers")} if can_allow_more and not in_chain else None,
         "can_handoff": can_handoff and not in_chain, "error": "",
     }
+
+
+def _sample_info(ov: Any) -> str:
+    if not ov.samples:
+        return ""
+    first = ov.samples[0]
+    return f"{first.count} Beispiel(e) · {first.duration:.0f} s"
 
 
 def event_choice(ev: Any) -> dict[str, Any]:

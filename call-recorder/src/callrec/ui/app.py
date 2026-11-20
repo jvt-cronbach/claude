@@ -41,6 +41,96 @@ def acquire_single_instance() -> bool:
     return ctypes.get_last_error() != 183  # type: ignore[attr-defined]  # ERROR_ALREADY_EXISTS
 
 
+SHOW_EVENT_NAME = "Local\\CallRecorderShowWindow"  # per Windows session, like the single-instance mutex
+EVENT_MODIFY_STATE = 0x0002
+SYNCHRONIZE = 0x00100000
+ASFW_ANY = 0xFFFFFFFF
+
+
+def _kernel32() -> Any:
+    import ctypes
+    from ctypes import wintypes
+
+    k = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined]
+    k.CreateEventW.restype = wintypes.HANDLE
+    k.CreateEventW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.BOOL, wintypes.LPCWSTR]
+    k.OpenEventW.restype = wintypes.HANDLE
+    k.OpenEventW.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.LPCWSTR]
+    k.SetEvent.argtypes = [wintypes.HANDLE]
+    k.WaitForSingleObject.restype = wintypes.DWORD
+    k.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    k.CloseHandle.argtypes = [wintypes.HANDLE]
+    return k
+
+
+def signal_running_instance(k32: Any = None, user32: Any = None) -> bool:
+    """Second start: ask the running CallRecorder to show its main window (a named event in this
+    Windows session - no network, no data). True = the running instance was signalled."""
+    if k32 is None:
+        if sys.platform != "win32":
+            return False
+        k32 = _kernel32()
+    h = k32.OpenEventW(EVENT_MODIFY_STATE | SYNCHRONIZE, False, SHOW_EVENT_NAME)
+    if not h:
+        return False
+    try:
+        try:  # this process was started by the user (foreground): let the running one take the focus
+            u = user32
+            if u is None:
+                import ctypes
+
+                u = ctypes.windll.user32  # type: ignore[attr-defined]
+            u.AllowSetForegroundWindow(ASFW_ANY)
+        except Exception:
+            log.debug("AllowSetForegroundWindow nicht möglich", exc_info=True)
+        return bool(k32.SetEvent(h))
+    finally:
+        k32.CloseHandle(h)
+
+
+class ShowRequests:
+    """The running instance: waits for :func:`signal_running_instance` and calls ``on_show``
+    (from a helper thread - ``on_show`` must post to the UI thread)."""
+
+    def __init__(self, on_show: Any, k32: Any = None) -> None:
+        self.on_show = on_show
+        self.k32 = k32
+        self._stop = threading.Event()
+        self._handle: Any = None
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> bool:
+        k = self.k32
+        if k is None:
+            if sys.platform != "win32":
+                return False
+            k = self.k32 = _kernel32()
+        self._handle = k.CreateEventW(None, False, False, SHOW_EVENT_NAME)  # auto-reset
+        if not self._handle:
+            log.warning("Signal für einen zweiten Start nicht eingerichtet")
+            return False
+        self._thread = threading.Thread(target=self._run, name="show-requests", daemon=True)
+        self._thread.start()
+        return True
+
+    def _run(self) -> None:
+        while not self._stop.is_set():
+            if self.k32.WaitForSingleObject(self._handle, 500) == 0:  # WAIT_OBJECT_0
+                log.info("Zweiter Start: Hauptfenster wird gezeigt")
+                try:
+                    self.on_show()
+                except Exception:
+                    log.exception("Hauptfenster nicht gezeigt")
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=2)
+        if self._handle and self.k32 is not None:
+            self.k32.CloseHandle(self._handle)
+            self._handle = None
+
+
 class MeProvider:
     """User's own name: config > cached Graph /me > Graph /me > 'Ich'."""
 
@@ -142,6 +232,9 @@ def run_tray_app(cfg: Config | None = None, start_minimized: bool = False, front
     The web UI falls back to the classic window when it cannot start (with a notice)."""
     log_file = setup_logging(console=sys.stderr is not None)
     if not acquire_single_instance():
+        if signal_running_instance():
+            log.info("CallRecorder läuft bereits - das Hauptfenster der laufenden Instanz wird gezeigt")
+            return 0
         log.error("CallRecorder läuft bereits")
         return 1
     cfg = cfg or load_config()
@@ -241,6 +334,11 @@ def _run_tk(cfg: Config, log_file: Any, start_minimized: bool, fallback_notice: 
         ui.root.quit()
 
     actions.quit_handler = quit_app
+    show_requests = ShowRequests(lambda: ui.post(window.show))  # a second start shows this window
+    show_requests.start()
+    from callrec.ui.sessionend import SessionEnd, install_tk
+
+    install_tk(ui.root, SessionEnd(actions.end_session, quit_app, inline=True))
     tray_actions: dict[str, Any] = {
         "show_window": window.show,
         "toggle": actions.toggle,
@@ -260,8 +358,10 @@ def _run_tk(cfg: Config, log_file: Any, start_minimized: bool, fallback_notice: 
     except HotkeyError as exc:
         ui.notify("Tastenkürzel ungültig", str(exc))
 
-    for w in cfg.warnings:
-        ui.notify("Konfiguration", w)
+    from callrec.notices import startup_notices
+
+    for title, text in startup_notices(cfg):  # config warnings and, once, the notices after an update
+        ui.notify(title, text)
     if fallback_notice:
         ui.notify("Neue Oberfläche nicht verfügbar", fallback_notice)
 
@@ -302,6 +402,7 @@ def _run_tk(cfg: Config, log_file: Any, start_minimized: bool, fallback_notice: 
     else:
         ui.root.after(50, window.show)
     ui.mainloop()
+    show_requests.stop()
     queue.stop()
     queue.join(timeout=10)  # let a cancelled job record its state before the process ends
     return 0

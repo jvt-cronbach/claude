@@ -134,7 +134,6 @@ class WebDialogPort:
                         resummarize: Callable[[], object], handoff: Callable[[], object] | None = None,
                         in_chain: bool = False, speaker_cfg: Any = None,
                         allow_more: Callable[[], object] | None = None) -> bool:
-        from callrec.review import Assignment, apply_assignments
         from callrec.ui.dto import speaker_review
 
         data = speaker_review(rec, profiles, speaker_cfg, in_chain=in_chain, can_handoff=handoff is not None,
@@ -142,6 +141,19 @@ class WebDialogPort:
         if self.samples is not None:
             self.samples.register(rec, data)
         allowed_ids = {r["id"] for r in data["rows"]}
+        try:
+            return self._review_loop(rec, profiles, rerender, resummarize, handoff, in_chain, speaker_cfg,
+                                     allow_more, data, allowed_ids)
+        finally:
+            if self.samples is not None:
+                self.samples.release()
+
+    def _review_loop(self, rec: Recording, profiles: Any, rerender: Callable[[], object],
+                     resummarize: Callable[[], object], handoff: Callable[[], object] | None, in_chain: bool,
+                     speaker_cfg: Any, allow_more: Callable[[], object] | None, data: dict[str, Any],
+                     allowed_ids: set[str]) -> bool:
+        from callrec.review import Assignment, apply_assignments
+
         while True:
             res = _as_dict(self.broker.ask("review", data))
             action = res.get("action")
@@ -305,37 +317,43 @@ class WebDialogPort:
 
 
 class SampleClips:
-    """Speaker samples of the open review dialog as WAV clips (temp folder), served to the page by
-    the loopback server only under an unguessable name."""
+    """Speaker samples of the open review dialog as WAV clips (:class:`callrec.ui.clips.ClipStore`),
+    served to the page by the loopback server only under an unguessable name; removed again (file and
+    registration) when superseded, when the dialog closes and at the exit."""
 
-    def __init__(self, publish: Callable[[Path], str]) -> None:
-        import tempfile
+    def __init__(self, publish: Callable[[Path], str], unpublish: Callable[[Path], None] = lambda p: None) -> None:
+        from callrec.ui.clips import ClipStore
 
         self.publish = publish
-        self.tmp = Path(tempfile.mkdtemp(prefix="callrec_clips_"))
-        self._spans: dict[tuple[str, str], tuple[Path, str, float, float]] = {}
+        self.store = ClipStore(on_remove=unpublish)
+        self._samples: dict[tuple[str, str], tuple[Path, str, list[Any], float]] = {}
         self._lock = threading.Lock()
 
     def register(self, rec: Recording, data: dict[str, Any]) -> None:
         with self._lock:
             for row in [data.get("me") or {}, *data.get("rows", [])]:
-                span = row.get("_span")
-                if span:
-                    self._spans[(rec.folder.name, str(row["id"]))] = (rec.folder, str(row.get("_track")), *span)
-                row.pop("_span", None)
-                row.pop("_track", None)
+                samples = row.pop("_samples", None)
+                track = str(row.pop("_track", "remote"))
+                if samples:
+                    self._samples[(rec.folder.name, str(row["id"]))] = (rec.folder, track, list(samples),
+                                                                        float(row.get("talk_s") or 0.0))
 
-    def url(self, rec_id: str, speaker_id: str) -> str:
-        from callrec.audio.finalize import find_audio, write_clip
-
+    def url(self, rec_id: str, speaker_id: str, step: int = 0) -> dict[str, Any]:
         with self._lock:
-            entry = self._spans.get((str(rec_id), str(speaker_id)))
+            entry = self._samples.get((str(rec_id), str(speaker_id)))
         if entry is None:
             raise ValueError("Für diese Stimme gibt es keine Hörprobe.")
-        folder, track, start, end = entry
-        audio = find_audio(folder)
-        if audio is None:
-            raise ValueError("Für diese Aufnahme gibt es (noch) keine fertigen Audiodateien.")
-        dst = self.tmp / f"{uuid.uuid4().hex}.wav"
-        write_clip(getattr(audio, track), start, end, dst)
-        return self.publish(dst)
+        folder, track, samples, _talk = entry
+        clip = self.store.make(folder, track, samples, (str(rec_id), str(speaker_id)), 1 if step else 0)
+        return {"url": self.publish(clip.path), "index": clip.index, "count": clip.count,
+                "caption": clip.caption()}
+
+    def release(self) -> None:
+        """The review dialog closed: its clips go."""
+        with self._lock:
+            self._samples.clear()
+        self.store.clear()
+
+    def close(self) -> None:
+        self.release()
+        self.store.close()

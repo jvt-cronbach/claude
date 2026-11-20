@@ -186,7 +186,7 @@ def write_clip_pieces(src: Path, pieces: list[tuple[float, float]], dst: Path, g
     as one 16-bit WAV - a speaker sample made from short turns."""
     info = sf.info(str(src))
     rate = info.samplerate
-    parts = []
+    parts: list[np.ndarray] = []
     for start, end in pieces:
         s = max(0, int(start * rate))
         e = min(info.frames, int(end * rate))

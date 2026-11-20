@@ -151,7 +151,7 @@ class AppActions:
         in mode "full". At the app exit nothing is asked - the question comes at the next start."""
         from callrec.postcall import default_plan
 
-        if reason == "app_quit":
+        if reason in ("app_quit", "system_shutdown"):
             log.info("Aufnahme beim Beenden gestoppt - Rückfrage zur Verarbeitung beim nächsten Start")
             return
         pc = self.cfg.processing
@@ -744,6 +744,19 @@ class AppActions:
                 done(False, str(exc))
 
         threading.Thread(target=worker, name="whisper-download", daemon=True).start()
+
+    def end_session(self) -> bool:
+        """Windows shuts down / logs off: finish a running recording through the normal stop path
+        (reason "system_shutdown"; the question about processing comes at the next start). True = a
+        recording was stopped."""
+        if self.autostop is not None:
+            try:
+                self.autostop.shutdown()
+            except Exception:
+                log.exception("Auto-Stopp nicht beendet")
+        if not self.controller.is_recording:
+            return False
+        return self.controller.stop("system_shutdown", by="system") is not None
 
     def quit(self) -> None:
         self.quit_handler()

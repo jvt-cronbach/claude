@@ -260,9 +260,10 @@ class Bridge:
         return list(_core(self).ui.broker.open_dialogs())
 
     @safe
-    def play_sample(self, rec_id: str, speaker_id: str) -> dict[str, Any]:
+    def play_sample(self, rec_id: str, speaker_id: str, step: int = 0) -> dict[str, Any]:
+        """``step`` 1 = "Weiteres Beispiel" (the next passage of this speaker)."""
         self._rec(rec_id)
-        return {"url": _core(self).samples.url(rec_id, str(speaker_id))}
+        return dict(_core(self).samples.url(rec_id, str(speaker_id), 1 if step else 0))
 
     # ------------------------------------------------------------------ recordings
     @safe

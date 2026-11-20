@@ -637,6 +637,38 @@ def migrate_handoff_default_file(path: Path) -> bool:
     return True
 
 
+CONSENT_ASK_NOTE = (
+    "Aufnahmestart: Vor einer Aufnahme erscheint jetzt eine einzelne Frage „Aufnehmen?“ mit dem Hinweis, dass "
+    "alle Teilnehmenden zugestimmt haben müssen (Versionen bis 0.2: ausdrückliche Bestätigung der Einwilligung "
+    "per Häkchen). meta.json vermerkt dann „gestartet mit Hinweis“, nicht „Einwilligung bestätigt“. Die "
+    "ausdrückliche Bestätigung bleibt wählbar: Einstellungen › Aufnahme › Vor der Aufnahme."
+)
+MIGRATION_NOTES = frozenset({LEGACY_LANGUAGE_NOTE, HANDOFF_DEFAULT_NOTE, CONSENT_ASK_NOTE})
+
+
+def migrate_consent_section_file(path: Path) -> bool:
+    """Config written by a version up to 0.2 (no [consent]): record the mode now in effect once, so the
+    notice about it is shown only this time. Comments are kept."""
+    text = path.read_text(encoding="utf-8")
+    if not text.endswith("\n"):
+        text += "\n"
+    new = text + ("\n[consent]\n# 0.3: Standard ist eine Frage vor der Aufnahme (ask); confirm = ausdrückliche "
+                  "Bestätigung wie bis 0.2\nmode = \"ask\"\n")
+    if tomllib.loads(new).get("consent", {}).get("mode") != "ask":  # never write a file that does not parse
+        return False
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(new, encoding="utf-8")
+    tmp.replace(path)
+    return True
+
+
+def _remember_notice(cfg: Config, text: str) -> None:
+    from callrec import notices
+
+    cfg.warnings.append(text)
+    notices.add(text)  # shown once by the next UI, even if this load was a CLI command
+
+
 def load_config(path: Path | None = None, preset: str | None = None) -> Config:
     """Load config.toml and overlay the preset (argument wins over general.preset)."""
     path = path or paths.config_file()
@@ -674,11 +706,19 @@ def load_config(path: Path | None = None, preset: str | None = None) -> Config:
             log.info("processing.default_handoff = false (alter Standardwert) -> true")
         else:
             handoff_migrated = False
+        consent_migrated = False
+        if "consent" not in data:
+            try:
+                consent_migrated = migrate_consent_section_file(path)
+            except (OSError, ValueError):
+                log.warning("config.toml: [consent] nicht ergänzt", exc_info=True)
         cfg = config_from_dict(data)
         if migrated:
-            cfg.warnings.append(LEGACY_LANGUAGE_NOTE)
+            _remember_notice(cfg, LEGACY_LANGUAGE_NOTE)
         if handoff_migrated:
-            cfg.warnings.append(HANDOFF_DEFAULT_NOTE)
+            _remember_notice(cfg, HANDOFF_DEFAULT_NOTE)
+        if consent_migrated:
+            _remember_notice(cfg, CONSENT_ASK_NOTE)
     name = preset if preset is not None else cfg.general.preset.strip()
     if name:
         ppath = paths.presets_dir() / f"{name}.toml"
