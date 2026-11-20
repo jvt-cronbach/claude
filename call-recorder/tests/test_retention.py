@@ -243,3 +243,16 @@ def test_cli_retention_status_pin_run(tmp_path: Path):
     assert not old.transcript_path.exists() and old.summary_path.exists() and new.transcript_path.exists()
     assert cmd_retention(argparse.Namespace(action="unpin", folder=new.folder.name, yes=False), out.append) == 0
     assert not retention.is_pinned(new.load_meta())
+
+
+def test_profile_provenance_shows_deleted_and_reduced_recordings(tmp_path: Path):
+    from callrec.ui.dto import provenance_state
+
+    now = START + timedelta(days=30)
+    root, (a, b) = library(tmp_path, now, [10, 10])
+    assert provenance_state(root, a.folder.name) == ""
+    retention.remove(a, root, "audio_transcript", "permanent")
+    retention.remove(b, root, "recording", "permanent")
+    assert provenance_state(root, a.folder.name) == " (nur noch Zusammenfassung)"
+    assert provenance_state(root, b.folder.name) == " (Aufnahme gelöscht)"
+    assert provenance_state(None, b.folder.name) == ""

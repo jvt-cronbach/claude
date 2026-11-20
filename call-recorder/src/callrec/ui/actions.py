@@ -678,7 +678,8 @@ class AppActions:
         from callrec.review import rebuild_profile
 
         self.dialogs.manage_profiles(self.profiles,
-                                     rebuild=lambda pid: rebuild_profile(self.profiles, pid, self.cfg.recordings_path()))
+                                     rebuild=lambda pid: rebuild_profile(self.profiles, pid, self.cfg.recordings_path()),
+                                     recordings_root=self.cfg.recordings_path())
 
     # -- files --------------------------------------------------------
     def _open(self, path: Any) -> bool:

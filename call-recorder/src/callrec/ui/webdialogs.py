@@ -298,7 +298,8 @@ class WebDialogPort:
         return choice if choice in ("now", "after", "restore") else None
 
     # -- pages instead of modal windows ----------------------------------------------------
-    def manage_profiles(self, profiles: Any, rebuild: Callable[[str], str] | None = None) -> None:
+    def manage_profiles(self, profiles: Any, rebuild: Callable[[str], str] | None = None,
+                        recordings_root: Any = None) -> None:
         self.navigate("settings", {"page": "profiles"})
 
     def edit_settings(self, base: Any, mics: list[str], outs: list[str], save: Callable[[Any], None],

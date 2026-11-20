@@ -42,7 +42,8 @@ class DialogPort(Protocol):
 
     def ask_update(self, res: Any, busy: str, install_info: dict[str, Any]) -> str | None: ...
 
-    def manage_profiles(self, profiles: Any, rebuild: Callable[[str], str] | None = None) -> None: ...
+    def manage_profiles(self, profiles: Any, rebuild: Callable[[str], str] | None = None,
+                        recordings_root: Any = None) -> None: ...
 
     def edit_settings(self, base: Any, mics: list[str], outs: list[str], save: Callable[[Any], None],
                       initial_tab: str = "", autostart: Any = None) -> bool: ...
@@ -120,10 +121,11 @@ class TkDialogPort:
 
         return dialogs.ask_update(self._root(), res, busy, install_info)
 
-    def manage_profiles(self, profiles: Any, rebuild: Callable[[str], str] | None = None) -> None:
+    def manage_profiles(self, profiles: Any, rebuild: Callable[[str], str] | None = None,
+                        recordings_root: Any = None) -> None:
         from callrec.ui import dialogs
 
-        dialogs.manage_profiles(self._root(), profiles, rebuild=rebuild)
+        dialogs.manage_profiles(self._root(), profiles, rebuild=rebuild, recordings_root=recordings_root)
 
     def edit_settings(self, base: Any, mics: list[str], outs: list[str], save: Callable[[Any], None],
                       initial_tab: str = "", autostart: Any = None) -> bool:

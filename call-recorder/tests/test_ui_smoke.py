@@ -236,7 +236,7 @@ def test_settings_dialog_all_tabs_and_llm(root, tmp_path: Path):
                             lambda c: save_config(c, path), provider_factory=lambda c: FakeProvider())
     tabs = [dlg.nb.tab(t, "text") for t in dlg.nb.tabs()]
     assert tabs == ["Allgemein", "Aufnahme-Ende", "Transkription", "Sprache & Qualität", "Sprecher", "Darstellung", "Zusammenfassung",
-                    "Microsoft-Konto", "SharePoint"]
+                    "Microsoft-Konto", "SharePoint", "Löschen"]
     assert dlg.vars[("transcription", "language_candidates")].get() == "de, en"
     dlg.vars[("transcription", "language_candidates")].set("de, en; fr")
     dlg.vars[("audio", "mic_device")].set("Headset Mikrofon (Jabra)")

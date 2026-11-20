@@ -401,7 +401,7 @@ def test_setup_checks_fresh_install_is_usable_without_microsoft_and_sharepoint()
                                signed_in=lambda: None)
     states = {i.key: i.state for i in items if i.key != "updates"}  # depends on the checkout (own test)
     assert states == {"audio": "ok", "whisper": "ok", "summary": "unknown", "microsoft": "optional",
-                      "sharepoint": "optional", "autostop": "ok"}
+                      "sharepoint": "optional", "autostop": "ok", "retention": "ok"}
     ready, text = setupcheck.summary_line(items)
     assert ready and "Optional noch offen" in text and "Microsoft" in text
     ms = next(i for i in items if i.key == "microsoft")
