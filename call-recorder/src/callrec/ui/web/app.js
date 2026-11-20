@@ -344,7 +344,7 @@ function listPane() {
     if (grp !== g) { g = grp; items.push(h`<li class="grp" role="presentation">${grp}</li>`); }
     const picked = S.multi.includes(r.id);
     items.push(h`<li role="presentation"><button class="rec-item ${picked ? "picked" : ""}" role="option" aria-selected="${r.id === S.selected || picked}" data-act="select" ${data({ id: r.id })}>
-      <span class="t ellipsis">${r.title}</span><span class="m">${whenText(r.started_at)} · ${r.duration}</span>${statusChip(r)}${r.pinned ? h`<span class="chip">${I("lock")}Behalten</span>` : r.removed_text ? h`<span class="chip">${r.reduced ? "Nur Zusammenfassung" : "Audio gelöscht"}</span>` : r.due ? h`<span class="chip chip-warn">${I("trash")}${r.due.split(": ")[1] || r.due}</span>` : ""}</button></li>`);
+      <span class="t ellipsis">${r.title}</span><span class="m">${whenText(r.started_at)} · ${r.duration}</span>${statusChip(r)}${r.pinned ? h`<span class="chip">${I("lock")}Behalten</span>` : r.removed_text ? h`<span class="chip">${r.removed_text.startsWith("Löschen unvollständig") ? "Löschen unvollständig" : r.reduced ? "Nur Zusammenfassung" : "Audio gelöscht"}</span>` : r.due ? h`<span class="chip chip-warn">${I("trash")}${r.due.split(": ")[1] || r.due}</span>` : ""}</button></li>`);
   }
   return h`<section class="lib-list" aria-label="Aufnahmeliste"><div class="lib-tools">
       <h1 tabindex="-1" data-focus>Aufnahmen</h1>
@@ -868,7 +868,11 @@ async function load(route) {
 const MQ_SINGLE = matchMedia("(max-width: 999px)");
 async function loadList() {
   const r = await call("list_recordings", S.filter, S.query);
-  if (r && !r.error) S.list = r;
+  if (r && !r.error) {
+    S.list = r;
+    // a selection only ever holds what the list shows (a filter/search change or a deletion elsewhere)
+    const shown = new Set((r.items || []).map(x => x.id)); S.multi = S.multi.filter(id => shown.has(id));
+  }
   if (S.route === "library") renderMain();
 }
 async function select(id, focus = true) {
@@ -1306,7 +1310,7 @@ document.addEventListener("keydown", e => {
     n.focus(); select(n.dataset.id, false).then(() => { const again = $(`.rec-item[data-id="${CSS.escape(n.dataset.id)}"]`); if (again) again.focus(); });
     return;
   }
-  if (item && e.key === "Delete") { e.preventDefault(); deleteFlow(S.multi.length > 1 ? [...S.multi] : [item.dataset.id], "recording"); return; }
+  if (item && e.key === "Delete") { e.preventDefault(); deleteFlow(S.multi.length > 1 && S.multi.includes(item.dataset.id) ? [...S.multi] : [item.dataset.id], "recording"); return; }
   if (item && e.key === "Enter") { e.preventDefault(); const t = $(".reader-sheet"); if (t) { t.setAttribute("tabindex", "-1"); t.focus(); } }
 });
 

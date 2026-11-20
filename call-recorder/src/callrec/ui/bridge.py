@@ -387,7 +387,11 @@ class Bridge:
         core = _core(self)
         plan = core.actions.retention_plan()
         now = datetime.now().astimezone()
-        mark_surfaced(plan, now)  # shown: an unprocessed one may be removed after 24 h
+        # shown: an unprocessed one may be removed after 24 h - but only when somebody can see it (the
+        # page also loads in the hidden window of a start in the tray)
+        windows = getattr(core, "windows", None)
+        if windows is None or getattr(windows, "main_visible", False):
+            mark_surfaced(plan, now)
         rt = core.cfg.retention
         items = [{"id": i.id, "title": i.title, "when": i.when_text(now), "warning": i.warning,
                   "due": i.due, "waiting": i.waiting} for i in plan.removable + plan.waiting + plan.upcoming]
@@ -399,9 +403,16 @@ class Bridge:
     @safe
     def retention_now(self, ids: Any) -> dict[str, Any]:
         """ "Jetzt löschen" in the pre-notice: those recordings, with the configured scope and mode."""
-        rt = _core(self).cfg.retention
-        return self.delete([str(x) for x in ids] if isinstance(ids, list) else [], rt.delete_mode == "permanent",
-                           rt.scope)
+        from datetime import datetime
+
+        core = _core(self)
+        rt = core.cfg.retention
+        # only what is still announced now (not pinned, not deleted meanwhile in the other window/run)
+        current = {i.id for i in core.actions.retention_plan().next_24h(datetime.now().astimezone())}
+        wanted = [str(x) for x in ids if str(x) in current] if isinstance(ids, list) else []
+        if not wanted:
+            return {"ok": True, "done": 0, "errors": []}
+        return self.delete(wanted, rt.delete_mode == "permanent", rt.scope)
 
     @safe
     def cancel_processing(self, job_id: Any = None) -> dict[str, Any]:

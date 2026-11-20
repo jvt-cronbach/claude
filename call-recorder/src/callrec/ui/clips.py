@@ -37,6 +37,31 @@ class Clip:
         return out
 
 
+STALE_S = 12 * 3600
+
+
+def remove_stale_clip_folders(base: Path | None = None, now: float | None = None) -> int:
+    """Clip folders left behind by a crash or a killed process (passages of conversations - also of
+    recordings whose audio was deleted since): removed when the next dialog needs clips."""
+    import time
+
+    base = Path(base or tempfile.gettempdir())
+    now = time.time() if now is None else now
+    n = 0
+    try:
+        candidates = list(base.glob("callrec_clips_*"))
+    except OSError:
+        return 0
+    for d in candidates:
+        try:
+            if d.is_dir() and not d.is_symlink() and now - d.stat().st_mtime > STALE_S:
+                shutil.rmtree(d, ignore_errors=True)
+                n += 1
+        except OSError:
+            continue
+    return n
+
+
 class ClipStore:
     def __init__(self, on_remove: Callable[[Path], None] = lambda p: None) -> None:
         self._dir: Path | None = None
@@ -48,6 +73,7 @@ class ClipStore:
     @property
     def folder(self) -> Path:
         if self._dir is None:
+            remove_stale_clip_folders()
             self._dir = Path(tempfile.mkdtemp(prefix="callrec_clips_"))
         return self._dir
 

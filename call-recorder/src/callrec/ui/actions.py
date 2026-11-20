@@ -10,11 +10,12 @@ UI thread except where the existing dialogs already did so.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import sys
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -98,6 +99,10 @@ class AppActions:
         self.quit_handler: Callable[[], None] = lambda: None
         self.show_window_handler: Callable[[], None] = lambda: None
         self.autostop: Any = None  # AutoStopRunner (countdown banner in the main window), set by the app
+        # recordings with an open question or dialog (after-recording question, speaker assignment):
+        # never deleted automatically meanwhile (not in the queue, so Controller.is_busy cannot see them)
+        self._held: dict[Path, int] = {}
+        self._held_lock = threading.Lock()
         # the questions to the user (Tk dialogs by default; the web UI sets its in-page dialogs)
         self.dialogs: DialogPort = TkDialogPort(lambda: self.ui.root)
         from callrec.autostart import Autostart
@@ -169,11 +174,36 @@ class AppActions:
             return
         self.ui.post(lambda: self.ask_after_recording(rec))
 
-    def ask_after_recording(self, rec: Recording) -> str:
-        from callrec.postcall import default_plan, mark_deferred
+    @contextlib.contextmanager
+    def hold(self, rec: Recording) -> Iterator[None]:
+        key = rec.folder
+        with self._held_lock:
+            self._held[key] = self._held.get(key, 0) + 1
+        try:
+            yield
+        finally:
+            with self._held_lock:
+                n = self._held.get(key, 0) - 1
+                if n > 0:
+                    self._held[key] = n
+                else:
+                    self._held.pop(key, None)
 
+    def retention_busy(self, rec: Recording) -> bool:
+        """Not to be deleted automatically now: recorded, queued, processed or a dialog about it is open."""
+        with self._held_lock:
+            held = rec.folder in self._held
+        return held or self.controller.is_busy(rec)
+
+    def ask_after_recording(self, rec: Recording) -> str:
         if not rec.meta_path.exists():
             return ""
+        with self.hold(rec):
+            return self._ask_after_recording(rec)
+
+    def _ask_after_recording(self, rec: Recording) -> str:
+        from callrec.postcall import default_plan, mark_deferred
+
         ready, why = self.handoff_ready()
         summary_problem = "" if self.cfg.summary.enabled else "in den Einstellungen ausgeschaltet"
         choice, plan = self.dialogs.ask_after_recording(rec, default_plan(self.cfg), "" if ready else why,
@@ -290,14 +320,15 @@ class AppActions:
             self.ui.notify("Noch nicht verarbeitet", "Die Aufnahme wird noch verarbeitet.")
             return
         pipeline = build_pipeline(self.cfg, self.profiles)
-        self.dialogs.review_speakers(
-            rec, self.profiles,
-            rerender=lambda: pipeline.run(rec, {"render"}),
-            resummarize=lambda: self.resummarize(rec),
-            handoff=lambda: self.handoff(rec),
-            speaker_cfg=self.cfg.speakers,
-            allow_more=lambda: self.allow_more_speakers(rec),
-        )
+        with self.hold(rec):  # the dialog writes speakers.json and the transcript
+            self.dialogs.review_speakers(
+                rec, self.profiles,
+                rerender=lambda: pipeline.run(rec, {"render"}),
+                resummarize=lambda: self.resummarize(rec),
+                handoff=lambda: self.handoff(rec),
+                speaker_cfg=self.cfg.speakers,
+                allow_more=lambda: self.allow_more_speakers(rec),
+            )
         self._changed(rec)
 
     def rerender(self, rec: Recording | None = None) -> bool:
@@ -740,9 +771,18 @@ class AppActions:
     def retention_plan(self) -> Any:
         from callrec import retention
 
-        return retention.plan(self.cfg.recordings_path(), self.cfg, busy=self.controller.is_busy)
+        return retention.plan(self.cfg.recordings_path(), self.cfg, busy=self.retention_busy)
 
-    def run_retention(self, confirmed: bool = False, done: Callable[[Any], None] | None = None) -> None:
+    def _retention_remove(self, rec: Recording, scope: str, mode: str) -> object:
+        from callrec.library import LibraryError
+
+        if self.retention_busy(rec):  # checked again right before: a dialog may have opened meanwhile
+            raise LibraryError("Die Aufnahme wird gerade bearbeitet - wird später gelöscht.")
+        return self.controller.remove(rec, scope, mode, by="retention",
+                                      reason=f"älter als {self.cfg.retention.max_age_days} Tage")
+
+    def run_retention(self, confirmed: bool = False, done: Callable[[Any], None] | None = None,
+                      only: Any = None) -> None:
         """At the start and then daily (worker thread): remove what is due; a run that must ask (first
         activation, clock looks wrong) asks on the UI thread instead of deleting."""
         from callrec import retention
@@ -750,10 +790,8 @@ class AppActions:
         def worker() -> None:
             rt = self.cfg.retention
             try:
-                res = retention.run(self.cfg.recordings_path(), self.cfg,
-                                    lambda rec, scope, mode: self.controller.remove(
-                                        rec, scope, mode, by="retention", reason=f"älter als {rt.max_age_days} Tage"),
-                                    busy=self.controller.is_busy, confirmed=confirmed)
+                res = retention.run(self.cfg.recordings_path(), self.cfg, self._retention_remove,
+                                    busy=self.retention_busy, confirmed=confirmed, only=only)
                 plan = self.retention_plan()
             except Exception:
                 log.exception("Automatisches Löschen fehlgeschlagen")
@@ -768,6 +806,8 @@ class AppActions:
                 text = retention.notify_due_today(plan)
                 if text:
                     self.ui.notify("Automatisches Löschen", text + " – „Behalten“ verhindert das.")
+                    soon = retention.Plan(plan.enabled, plan.scope, upcoming=plan.next_24h(datetime_now()))
+                    retention.mark_surfaced(soon)  # the notification showed these
             if done is not None:
                 done(res)
 
@@ -792,8 +832,8 @@ class AppActions:
             return ""
         choice = self.dialogs.ask_retention(kind, text, [(i.title, i.when_text(datetime_now())) for i in plan.removable],
                                             self.cfg.retention)
-        if choice == "delete":
-            self.run_retention(confirmed=True)
+        if choice == "delete":  # exactly the recordings the question listed
+            self.run_retention(confirmed=True, only=[i.id for i in plan.removable])
         elif choice == "keep":
             retention.pin_all(plan.removable)
             retention.acknowledge()

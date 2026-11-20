@@ -27,9 +27,8 @@ from __future__ import annotations
 
 import json
 import logging
-import os
-import shutil
-from collections.abc import Callable
+import threading
+from collections.abc import Callable, Collection
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -87,10 +86,19 @@ def has_transcript_material(meta: dict[str, Any]) -> bool:
     return removed_scope(meta) != SCOPE_AUDIO_TRANSCRIPT
 
 
+def pending_scope(meta: dict[str, Any]) -> str:
+    """A deletion that started but did not finish (a file was locked): its scope, else ""."""
+    r = meta.get("retention")
+    return str(r.get("removing") or "") if isinstance(r, dict) and not r.get("removed") else ""
+
+
 def removed_text(meta: dict[str, Any]) -> str:
     """ "Nur Zusammenfassung (Audio und Transkript gelöscht am 20.11.2026)" / "Audio gelöscht am …"."""
     raw = meta.get("retention")
     r: dict[str, Any] = raw if isinstance(raw, dict) else {}
+    if pending_scope(meta):
+        return ("Löschen unvollständig (eine Datei war gesperrt, z. B. durch einen Player) – wird erneut versucht; "
+                "die Aufnahme kann nicht mehr verarbeitet werden")
     scope = removed_scope(meta)
     if not scope:
         return ""
@@ -107,23 +115,6 @@ def removed_text(meta: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 # the one delete path
 # ---------------------------------------------------------------------------
-def _unlink_tree(p: Path) -> None:
-    if p.is_dir():
-        for dirpath, _dirs, files in os.walk(p):  # read-only files (e.g. copied from a share)
-            for name in files:
-                try:
-                    os.chmod(os.path.join(dirpath, name), 0o600)
-                except OSError:
-                    pass
-        shutil.rmtree(p)
-    elif p.exists():
-        try:
-            os.chmod(p, 0o600)
-        except OSError:
-            pass
-        p.unlink()
-
-
 def targets(rec: Recording, scope: str) -> list[Path]:
     """The files/folders ``scope`` removes from a recording (for ``recording``: the folder)."""
     f = rec.folder
@@ -133,8 +124,9 @@ def targets(rec: Recording, scope: str) -> list[Path]:
     out += sorted(p for p in f.iterdir() if p.is_file() and p.suffix.lower() in (".wav", ".flac", ".opus", ".ogg"))
     if scope == SCOPE_AUDIO_TRANSCRIPT:
         out += sorted(f.glob("transcript*.md"))
+        out += sorted(f.glob("transcript*.tmp"))  # left over by an interrupted atomic write
         out.append(f / "data")
-    return [p for p in out if p.exists()]
+    return [p for p in out if p.exists() or p.is_symlink()]
 
 
 def reduced_meta(meta: dict[str, Any]) -> dict[str, Any]:
@@ -158,44 +150,83 @@ def remove(rec: Recording, root: Path, scope: str, mode: str = "permanent", by: 
         _send_to_recycle_bin,
         delete_recording,
         recycle_bin_available,
+        unlink_tree,
     )
+    from callrec.recording import _meta_lock
 
     if scope not in SCOPE_TEXT:
         raise RetentionError(f"Unbekannter Umfang: {scope}")
     folder = _check_deletable(rec, root)
     title = _title(rec)
-    if scope == SCOPE_RECORDING:
-        how = delete_recording(rec, root, permanent=mode == "permanent", recycler=recycler)
-        write_log({"folder": folder.name, "scope": scope, "mode": how, "by": by, "reason": reason})
-        return "in den Papierkorb verschoben" if how == "recycled" else "endgültig gelöscht"
     meta = rec.load_meta()
-    if removed_scope(meta) == SCOPE_AUDIO_TRANSCRIPT or (scope == SCOPE_AUDIO and removed_scope(meta) == SCOPE_AUDIO):
+    if scope != SCOPE_RECORDING and (removed_scope(meta) == SCOPE_AUDIO_TRANSCRIPT
+                                     or (scope == SCOPE_AUDIO and removed_scope(meta) == SCOPE_AUDIO)):
         return "bereits entfernt"
-    items = targets(rec, scope)
+    items = targets(rec, scope) if scope != SCOPE_RECORDING else []
     if mode != "permanent" and recycler is None:
         if not recycle_bin_available():
             raise RetentionError("Kein Papierkorb verfügbar - nur endgültiges Löschen möglich.")
         recycler = _send_to_recycle_bin
-    removed = []
-    for p in items:
-        if mode == "permanent":
-            _unlink_tree(p)
-        else:
-            assert recycler is not None
-            recycler(p)
-        removed.append(p.name)
     now = datetime.now().astimezone().isoformat(timespec="seconds")
+    old_entry = meta.get("retention")
+    # first record that a deletion is under way: should a file be locked (player, virus scanner), the
+    # recording ends up clearly marked as incompletely deleted (never processed again, deleted again
+    # by the next run) - not half-deleted with a meta.json that looks untouched
+    # (not for the whole folder into the recycle bin: one move, and a folder restored from there must
+    # not carry the mark)
+    marked = not (scope == SCOPE_RECORDING and mode != "permanent")
+    before = sorted(folder.iterdir()) if scope == SCOPE_RECORDING else []
+    if marked:
+        _set_retention(rec, _meta_lock, {"removing": scope, "started": now, "by": by, "mode": mode})
+    removed: list[str] = []
+    try:
+        if scope == SCOPE_RECORDING:
+            how = delete_recording(rec, root, permanent=mode == "permanent", recycler=recycler)
+            write_log({"folder": folder.name, "scope": scope, "mode": how, "by": by, "reason": reason})
+            return "in den Papierkorb verschoben" if how == "recycled" else "endgültig gelöscht"
+        for p in items:
+            if mode == "permanent":
+                unlink_tree(p)
+            else:
+                assert recycler is not None
+                recycler(p)
+            removed.append(p.name)
+    except BaseException as exc:
+        gone = bool(removed) or any(not (p.exists() or p.is_symlink()) for p in (before or items))
+        if marked and rec.meta_path.exists():
+            if gone:
+                _set_retention(rec, _meta_lock, {"removing": scope, "started": now, "by": by, "mode": mode,
+                                                 "failed": str(exc)[:200], "items": removed})
+            else:  # nothing was removed: the recording is unchanged
+                _set_retention(rec, _meta_lock, old_entry)
+        write_log({"folder": folder.name, "scope": scope, "mode": mode, "by": by, "reason": reason,
+                   "error": str(exc)[:200]})
+        if isinstance(exc, Exception) and not isinstance(exc, LibraryError):
+            raise RetentionError(f"Löschen unvollständig: {exc}") from exc
+        raise
     entry = {"removed": scope, "at": now, "by": by, "mode": mode, "items": removed}
     if reason:
         entry["reason"] = reason
-    new = reduced_meta(meta) if scope == SCOPE_AUDIO_TRANSCRIPT else dict(meta)
-    new["retention"] = entry
-    if scope == SCOPE_AUDIO and isinstance(new.get("audio"), dict):
-        new["audio"] = {**new["audio"], "deleted": True}
-    rec.save_meta(new)
+    with _meta_lock:  # the newest meta.json (a rename meanwhile), reduced in one step
+        meta = rec.load_meta()
+        new = reduced_meta(meta) if scope == SCOPE_AUDIO_TRANSCRIPT else dict(meta)
+        new["retention"] = entry
+        if scope == SCOPE_AUDIO and isinstance(new.get("audio"), dict):
+            new["audio"] = {**new["audio"], "deleted": True}
+        rec.save_meta(new)
     write_log({"folder": folder.name, "scope": scope, "mode": mode, "by": by, "reason": reason})
     log.info("%s: %s entfernt (%s, %s)", folder.name, scope, mode, by)
     return f"{SCOPE_TEXT[scope].split(' (')[0]} von „{title}“ gelöscht"
+
+
+def _set_retention(rec: Recording, lock: Any, entry: Any) -> None:
+    with lock:
+        meta = rec.load_meta()
+        if entry is None:
+            meta.pop("retention", None)
+        else:
+            meta["retention"] = entry
+        rec.save_meta(meta)
 
 
 def _title(rec: Recording) -> str:
@@ -273,6 +304,8 @@ class Item:
     due: bool  # past the age now
     waiting: str = ""  # why it is not removed yet although due ("" = removable)
     warning: str = ""  # e.g. "Zusammenfassung fehlt – vor dem Löschen erstellen?"
+    scope: str = ""  # an incompletely deleted recording: the scope of that deletion (finished first)
+    mode: str = ""
 
     @property
     def id(self) -> str:
@@ -293,6 +326,7 @@ class Plan:
     enabled: bool
     scope: str
     total: int = 0
+    candidates: int = 0  # recordings that still have something this scope would remove (not pinned)
     removable: list[Item] = field(default_factory=list)  # removed by a run now
     waiting: list[Item] = field(default_factory=list)  # due, but held back (shown first / busy)
     upcoming: list[Item] = field(default_factory=list)  # due within PRE_NOTICE_DAYS
@@ -329,6 +363,19 @@ def _warning(meta: dict[str, Any], rec: Recording, scope: str) -> str:
     return ""
 
 
+def _busy_by_meta(meta: dict[str, Any]) -> bool:
+    """Recorded, processed or in a post-call chain according to meta.json - also when another process
+    (``callrec process`` on the command line, a second app) does it."""
+    rs = str((meta.get("recording") or {}).get("status") or "")
+    proc = meta.get("processing") or {}
+    chain = proc.get("chain") if isinstance(proc.get("chain"), dict) else {}
+    return rs == "recording" or str(proc.get("status") or "") == "running" or \
+        str((chain or {}).get("stage") or "") in ("process", "review", "summary", "handoff")
+
+
+LONG_GAP = timedelta(days=2)  # no run for longer than this: judge a large run against the remaining recordings
+
+
 def plan(root: Path, cfg: Any, now: datetime | None = None, busy: Callable[[Recording], bool] = lambda r: False,
          state: dict[str, Any] | None = None) -> Plan:
     rt = cfg.retention
@@ -345,26 +392,38 @@ def plan(root: Path, cfg: Any, now: datetime | None = None, busy: Callable[[Reco
     for rec in recs:
         try:
             meta = rec.load_meta()
-            start = rec.started_at()
-        except (OSError, ValueError):
+            if "schema" not in meta:  # not written by CallRecorder (a recordings folder set to e.g. Documents)
+                continue
+            raw = (meta.get("recording") or {}).get("started_at")
+            start = datetime.fromisoformat(raw) if isinstance(raw, str) and raw else None
+            if start is None:  # no (readable) start: never treated as old
+                continue
+            start = start if start.tzinfo else start.astimezone()
+            newest = start if newest is None or start > newest else newest
+            done = removed_scope(meta)
+            pending = pending_scope(meta)
+            if is_pinned(meta) or (not pending and (done == SCOPE_AUDIO_TRANSCRIPT
+                                                     or (rt.scope == SCOPE_AUDIO and done == SCOPE_AUDIO))):
+                continue
+            out.candidates += 1
+            item = Item(rec, _title(rec), start, start + age, now >= start + age, warning=_warning(meta, rec, rt.scope))
+            if pending:  # finish an incompletely deleted recording with that deletion's scope
+                item.scope = pending
+                r = meta.get("retention") or {}
+                item.mode = "permanent" if r.get("mode") == "permanent" else rt.delete_mode
+                item.warning = ""
+            hold = busy(rec) or _busy_by_meta(meta)
+            unfinished = not pending and _unfinished(meta, rec)
+        except (OSError, ValueError, TypeError, AttributeError):  # malformed meta.json: skipped, never deleted
+            log.warning("Automatisches Löschen: %s übersprungen (meta.json unvollständig)", rec.folder.name)
             continue
-        if start is None:
-            continue
-        start = start if start.tzinfo else start.astimezone()
-        newest = start if newest is None or start > newest else newest
-        done = removed_scope(meta)
-        if is_pinned(meta) or done == SCOPE_AUDIO_TRANSCRIPT or (rt.scope == SCOPE_AUDIO and done == SCOPE_AUDIO):
-            continue
-        item = Item(rec, _title(rec), start, start + age, now >= start + age, warning=_warning(meta, rec, rt.scope))
         if not item.due:
             if item.due_at - now <= timedelta(days=PRE_NOTICE_DAYS):
                 out.upcoming.append(item)
             continue
-        rs = str((meta.get("recording") or {}).get("status") or "")
-        chain = ((meta.get("processing") or {}).get("chain") or {}).get("stage") or ""
-        if busy(rec) or rs == "recording" or chain in ("process", "review", "summary", "handoff"):
+        if hold:
             item.waiting = "wird gerade aufgenommen oder verarbeitet"
-        elif _unfinished(meta, rec):
+        elif unfinished:
             seen = surfaced.get(item.id)
             try:
                 shown_long = seen is not None and (now - datetime.fromisoformat(seen)).total_seconds() >= SURFACE_S
@@ -380,11 +439,27 @@ def plan(root: Path, cfg: Any, now: datetime | None = None, busy: Callable[[Reco
     elif not state.get("acknowledged") and out.removable:
         out.blocked, out.blocked_text = "first", (
             f"{len(out.removable)} vorhandene Aufnahme(n) sind älter als {rt.max_age_days} Tage.")
-    elif out.removable and out.total and len(out.removable) / out.total > rt.max_share_per_run and len(out.removable) > 1:
+    elif len(out.removable) > 1 and _unusual(len(out.removable), out, rt.max_share_per_run, state, now):
         out.blocked, out.blocked_text = "share", (
             f"Der Lauf würde {len(out.removable)} von {out.total} Aufnahmen löschen – mehr als üblich "
             "(stimmt die Systemuhr?).")
     return out
+
+
+def _unusual(n: int, p: Plan, share: float, state: dict[str, Any], now: datetime) -> bool:
+    """More than ``share`` of the library at once - or, after the app did not run for a while (or the
+    clock jumped ahead), of the recordings that still have something to remove: once most of the
+    library is only summaries, the share of the whole library says nothing about a wrong clock."""
+    if p.total and n / p.total > share:
+        return True
+    try:
+        last = datetime.fromisoformat(str(state.get("last_run")))
+        last = last if last.tzinfo else last.astimezone()
+        gap = now - last
+    except (TypeError, ValueError):
+        gap = None
+    long_gap = gap is None or gap > LONG_GAP or gap < -FUTURE_TOLERANCE
+    return long_gap and bool(p.candidates) and n / p.candidates > share
 
 
 def mark_surfaced(p: Plan, now: datetime | None = None, state: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -408,38 +483,48 @@ class RunResult:
     blocked_text: str = ""
 
 
+_run_lock = threading.Lock()  # the start run, the daily one and "Wie eingestellt löschen" never overlap
+
+
 def run(root: Path, cfg: Any, remover: Callable[[Recording, str, str], object], now: datetime | None = None,
-        busy: Callable[[Recording], bool] = lambda r: False, confirmed: bool = False) -> RunResult:
+        busy: Callable[[Recording], bool] = lambda r: False, confirmed: bool = False,
+        only: Collection[str] | None = None) -> RunResult:
     """Remove what is due. ``remover(rec, scope, mode)`` is the app's delete path (Controller.remove,
     which refuses busy recordings). ``confirmed``: the user answered the question of a blocked run
-    ("Wie eingestellt löschen")."""
+    ("Wie eingestellt löschen"); with ``only`` (the ids that question listed) nothing else is removed
+    by this run - a recording that became due while the question was open is not part of the answer.
+
+    The run itself does not count as "shown": an unprocessed recording is held back until a UI showed
+    it for :data:`SURFACE_S` (:func:`mark_surfaced`). The first deletion of all is always asked."""
     now = now or datetime.now().astimezone()
-    state = load_state()
-    if not state.get("acknowledged"):
-        p0 = plan(root, cfg, now, busy, state)
-        if not p0.removable:  # nothing old at the first activation: no question needed
+    with _run_lock:
+        state = load_state()
+        p = plan(root, cfg, now, busy, state)
+        if not state.get("acknowledged") and not p.candidates:
+            state["acknowledged"] = True  # nothing that could ever be deleted yet: no question needed
+            p = plan(root, cfg, now, busy, state)
+        res = RunResult()
+        if p.blocked and not (confirmed and p.blocked != "future"):
+            res.blocked, res.blocked_text = p.blocked, p.blocked_text
+            save_state(state)
+            return res
+        if confirmed:
             state["acknowledged"] = True
-    state = mark_surfaced(plan(root, cfg, now, busy, state), now, state)
-    p = plan(root, cfg, now, busy, state)
-    res = RunResult()
-    if p.blocked and not (confirmed and p.blocked != "future"):
-        res.blocked, res.blocked_text = p.blocked, p.blocked_text
+        wanted = set(only) if only is not None else None
+        for item in p.removable:
+            if wanted is not None and item.id not in wanted:
+                continue
+            try:
+                remover(item.rec, item.scope or cfg.retention.scope, item.mode or cfg.retention.delete_mode)
+                res.removed.append(item.id)
+                (state.get("surfaced") or {}).pop(item.id, None)
+            except Exception as exc:  # one failure must not stop the others
+                log.warning("Automatisches Löschen von %s fehlgeschlagen: %s", item.id, exc)
+                res.failed.append((item.id, str(exc)))
+                write_log({"folder": item.id, "scope": cfg.retention.scope, "by": "retention", "error": str(exc)[:200]})
+        state["last_run"] = now.isoformat(timespec="seconds")
         save_state(state)
         return res
-    if confirmed:
-        state["acknowledged"] = True
-    for item in p.removable:
-        try:
-            remover(item.rec, cfg.retention.scope, cfg.retention.delete_mode)
-            res.removed.append(item.id)
-            (state.get("surfaced") or {}).pop(item.id, None)
-        except Exception as exc:  # one failure must not stop the others
-            log.warning("Automatisches Löschen von %s fehlgeschlagen: %s", item.id, exc)
-            res.failed.append((item.id, str(exc)))
-            write_log({"folder": item.id, "scope": cfg.retention.scope, "by": "retention", "error": str(exc)[:200]})
-    state["last_run"] = now.isoformat(timespec="seconds")
-    save_state(state)
-    return res
 
 
 def pin_all(items: list[Item]) -> None:

@@ -134,8 +134,17 @@ def winforms_pump() -> Callable[[], None]:
     return WinForms.Application.DoEvents  # type: ignore[no-any-return]
 
 
-def install_tk(root: Any, session: SessionEnd) -> None:
-    """Tk: ``WM_SAVE_YOURSELF`` comes from ``WM_QUERYENDSESSION`` (Windows only)."""
+def install_tk(root: Any, session: SessionEnd, *others: Any) -> None:
+    """Tk: ``WM_SAVE_YOURSELF`` comes from ``WM_QUERYENDSESSION`` (Windows only).
+
+    Tk answers the message in the window procedure of a toplevel's *wrapper* and runs the protocol
+    handler of that toplevel (tkWinWm.c: ``GetTopLevel(hwnd)``) - so the handler must be on every
+    toplevel that can have a wrapper: the main window (a Toplevel, once it was shown) as well as the
+    root, which is withdrawn before it is ever mapped and may then have no wrapper at all."""
     if sys.platform != "win32":
         return
-    root.protocol("WM_SAVE_YOURSELF", session.handle)
+    for w in (root, *others):
+        try:
+            w.protocol("WM_SAVE_YOURSELF", session.handle)
+        except Exception:
+            log.warning("Sitzungsende-Erkennung für ein Fenster nicht eingerichtet", exc_info=True)

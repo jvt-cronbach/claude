@@ -472,6 +472,11 @@ def delete_question(infos: list[RecordingInfo], scope: str, permanent: bool) -> 
     how = ("ENDGÜLTIG gelöscht – das lässt sich nicht rückgängig machen" if permanent
            else "in den Windows-Papierkorb verschoben (dort wiederherstellbar, bis er geleert wird)")
     msg = f"{what}: {gone}.\n\nDie Dateien werden {how}."
+    if n > 1:  # name them: a selection can contain recordings that are scrolled or filtered away
+        names = "\n".join(f"• {i.title}" + (f" ({i.started_at:%d.%m.%Y %H:%M})" if i.started_at else "")
+                          for i in infos[:15])
+        msg = f"{what}:\n{names}" + (f"\n• … und {n - 15} weitere" if n > 15 else "") + "\n\n" + \
+            f"Gelöscht wird: {gone}.\n\nDie Dateien werden {how}."
     if any(i.handoff for i in infos):
         msg += "\n\nBereits an SharePoint übergebene Zusammenfassungen bleiben dort erhalten (CallRecorder löscht sie nicht)."
     if any(i.pinned for i in infos):
@@ -487,6 +492,8 @@ def retention_badge(info: RecordingInfo, due_text: str = "") -> str:
     if info.pinned:
         return "Behalten"
     if info.removed_text:
+        if info.removed_text.startswith("Löschen unvollständig"):
+            return "Löschen unvollständig"
         return "Nur Zusammenfassung" if info.reduced else "Audio gelöscht"
     return due_text
 

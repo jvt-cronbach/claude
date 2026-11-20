@@ -95,6 +95,10 @@ def test_shortcut_carries_icon_and_app_id():
     assert "9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3" in s and "k.pid = 5" in s  # PKEY_AppUserModel_ID
     assert "'C:\\Apps\\O''Brien'" in s  # quoted
     assert "\n'@" in s  # here-string terminator at the start of a line
+    # COM methods return their HRESULT (no hidden [out, retval] - matters for 32-bit PowerShell)
+    assert s.count("[PreserveSig] int") == 5
+    # a failing Add-Type/property write leaves a working shortcut and does not fail postinstall
+    assert s.index("$l.Save()") < s.index("try {") and "catch {" in s and "-ErrorAction Stop" in s
 
 
 def test_postinstall_shortcut_uses_the_identity(monkeypatch: pytest.MonkeyPatch):

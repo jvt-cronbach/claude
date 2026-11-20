@@ -67,6 +67,13 @@ def test_remove_audio_transcript_keeps_summary_and_strips_meta(tmp_path: Path):
     with pytest.raises(FileNotFoundError, match="gelöscht"):
         make_pipeline(ProfileStore(PlainFilePersistence(tmp_path / "x.json")))[0].run(rec, {"summarize"})
     assert rec.summary_path.exists()
+    # nor speaker data written back into the reduced folder (CLI "callrec assign", an open dialog)
+    from callrec.review import Assignment, apply_assignments
+
+    with pytest.raises(FileNotFoundError, match="gelöscht"):
+        apply_assignments(rec, [Assignment("S1", "Anna")], ProfileStore(PlainFilePersistence(tmp_path / "y.json")),
+                          lambda: None)
+    assert not (rec.folder / "data").exists()
     # "Löschen" then removes the rest
     retention.remove(rec, root, "recording", "permanent")
     assert not rec.folder.exists()
@@ -131,10 +138,17 @@ def test_busy_and_unfinished_recordings_wait(tmp_path: Path):
     log: list[tuple[str, str]] = []
     retention.run(root, cfg, remover(root, log), now=now, busy=lambda r: r.folder == recs[3].folder)
     assert log == [(recs[0].folder.name, "audio_transcript")]
-    # shown as "wird gelöscht" for 24 h: then the unprocessed one goes too
-    p = retention.plan(root, cfg, now + timedelta(hours=12), busy=lambda r: r.folder == recs[3].folder)
+    # the runs alone (nobody saw the notice): the unprocessed one stays, however often it runs
+    for h in (25, 49, 73):
+        retention.run(root, cfg, remover(root, log), now=now + timedelta(hours=h),
+                      busy=lambda r: r.folder == recs[3].folder)
+    assert len(log) == 1
+    # shown as "wird gelöscht" (main window / notification) for 24 h: then the unprocessed one goes too
+    shown = now + timedelta(hours=80)
+    retention.mark_surfaced(retention.plan(root, cfg, shown), shown)
+    p = retention.plan(root, cfg, shown + timedelta(hours=12), busy=lambda r: r.folder == recs[3].folder)
     assert any(i.rec.folder == recs[1].folder and "24 h" in i.waiting for i in p.waiting)
-    retention.run(root, cfg, remover(root, log), now=now + timedelta(hours=25),
+    retention.run(root, cfg, remover(root, log), now=shown + timedelta(hours=25),
                   busy=lambda r: r.folder == recs[3].folder)
     assert (recs[1].folder.name, "audio_transcript") in log and len(log) == 2
 
@@ -155,14 +169,27 @@ def test_first_activation_asks_instead_of_deleting(tmp_path: Path):
     assert read_info(recs[0].folder).pinned
 
 
-def test_first_activation_without_old_recordings_needs_no_question(tmp_path: Path):
+def test_first_activation_without_old_recordings_asks_at_the_first_deletion(tmp_path: Path):
+    """An update brings retention to a library of recent recordings: nothing is due now, so nothing
+    is asked - but the very first deletion still needs the user's answer."""
     now = START + timedelta(days=30)
     root, recs = library(tmp_path, now, [1])
     log: list[tuple[str, str]] = []
     assert retention.run(root, Config(), remover(root, log), now=now).blocked == ""
-    assert retention.load_state()["acknowledged"] is True
+    assert not retention.load_state().get("acknowledged")
     res = retention.run(root, Config(), remover(root, log), now=now + timedelta(days=8))
+    assert res.blocked == "first" and log == []
+    res = retention.run(root, Config(), remover(root, log), now=now + timedelta(days=8), confirmed=True,
+                        only=[recs[0].folder.name])
     assert res.removed == [recs[0].folder.name]
+    assert retention.load_state()["acknowledged"] is True
+
+
+def test_empty_library_needs_no_question(tmp_path: Path):
+    root = tmp_path / "lib"
+    root.mkdir()
+    assert retention.run(root, Config(), remover(root, []), now=START).blocked == ""
+    assert retention.load_state()["acknowledged"] is True
 
 
 def test_clock_safety(tmp_path: Path):
@@ -217,6 +244,10 @@ def test_delete_question_names_what_goes_and_sharepoint():
     assert "Zusammenfassung bleibt" in title and "ENDGÜLTIG" in msg and "SharePoint" in msg and button == "Endgültig löschen"
     _t, msg2, b2 = delete_question([info, info], "recording", False)
     assert "2 Aufnahmen" in msg2 and "Papierkorb" in msg2 and b2 == "In den Papierkorb"
+    # a multi-selection names what it contains (items can be scrolled or filtered out of view)
+    other = RecordingInfo(Path("y"), "Kundentermin Müller", started_at=START)
+    _t, msg3, _b = delete_question([info, other], "recording", True)
+    assert "• Jour fixe" in msg3 and "• Kundentermin Müller (19.11.2026 14:00)" in msg3
 
 
 def test_cli_retention_status_pin_run(tmp_path: Path):
@@ -256,3 +287,274 @@ def test_profile_provenance_shows_deleted_and_reduced_recordings(tmp_path: Path)
     assert provenance_state(root, a.folder.name) == " (nur noch Zusammenfassung)"
     assert provenance_state(root, b.folder.name) == " (Aufnahme gelöscht)"
     assert provenance_state(None, b.folder.name) == ""
+
+
+# ---------------------------------------------------------------------------
+# review findings (0.3.1): things the automatic deletion must never do
+# ---------------------------------------------------------------------------
+def light(root: Path, name: str, start: Any, *, transcript: bool = True, **extra: Any) -> Recording:
+    """A small finished recording folder (no audio processing) with a free start value."""
+    import json
+
+    f = root / name
+    (f / "audio").mkdir(parents=True)
+    (f / "audio" / "mic.flac").write_bytes(b"x")
+    (f / "data").mkdir()
+    (f / "data" / "utterances.json").write_text('[{"text": "geheimer Inhalt"}]', encoding="utf-8")
+    if transcript:
+        (f / "transcript.md").write_text("geheimer Inhalt", encoding="utf-8")
+    (f / "summary.md").write_text("Zusammenfassung", encoding="utf-8")
+    meta: dict[str, Any] = {"schema": 1, "title": name, "recording": {"status": "stopped", "started_at": start},
+                            "processing": {"status": "done"}, **extra}
+    (f / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    return Recording(f)
+
+
+def iso(d: datetime) -> str:
+    return d.isoformat()
+
+
+def test_first_activation_with_only_held_back_old_recordings_still_asks(tmp_path: Path):
+    """Old recordings that are only *waiting* (unprocessed/busy) at the first run must not count as
+    "nothing old": later, when they become removable, the first deletion is still asked."""
+    now = START + timedelta(days=30)
+    root = tmp_path / "lib"
+    old = light(root, "a", iso(now - timedelta(days=10)), transcript=False)  # never processed
+    log: list[tuple[str, str]] = []
+    assert retention.run(root, Config(), remover(root, log), now=now).removed == []
+    assert not retention.load_state().get("acknowledged")
+    shown = now + timedelta(hours=1)
+    retention.mark_surfaced(retention.plan(root, Config(), shown), shown)
+    res = retention.run(root, Config(), remover(root, log), now=shown + timedelta(days=2))
+    assert res.blocked == "first" and log == [] and (old.folder / "data").exists()
+
+
+def test_confirmed_run_removes_only_what_the_question_listed(tmp_path: Path):
+    now = START + timedelta(days=30)
+    root = tmp_path / "lib"
+    a = light(root, "a", iso(now - timedelta(days=10)))
+    b = light(root, "b", iso(now - timedelta(days=6, hours=23)))  # due an hour later
+    light(root, "c", iso(now - timedelta(days=1)))
+    log: list[tuple[str, str]] = []
+    res = retention.run(root, Config(), remover(root, log), now=now)
+    assert res.blocked == "first"
+    listed = [i.id for i in retention.plan(root, Config(), now).removable]
+    assert listed == ["a"]
+    # the user answers two hours later: b is due by then but was not in the question
+    res = retention.run(root, Config(), remover(root, log), now=now + timedelta(hours=2), confirmed=True, only=listed)
+    assert res.removed == ["a"] and b.transcript_path.exists() and not a.transcript_path.exists()
+
+
+def test_clock_jump_is_caught_when_most_of_the_library_is_already_reduced(tmp_path: Path):
+    """After weeks of retention most recordings are summaries only: a clock that jumps a month ahead
+    must still not silently take all remaining audio/transcripts at once."""
+    now = START + timedelta(days=60)
+    root = tmp_path / "lib"
+    for i in range(20):
+        light(root, f"old{i:02d}", iso(now - timedelta(days=20 + i)),
+              retention={"removed": "audio_transcript", "at": iso(now)})
+    fresh = [light(root, f"new{i}", iso(now - timedelta(hours=h))) for i, h in enumerate((24, 2, 5))]
+    st = retention.load_state()
+    st.update({"acknowledged": True, "last_run": iso(now)})
+    retention.save_state(st)
+    log: list[tuple[str, str]] = []
+    res = retention.run(root, Config(), remover(root, log), now=now + timedelta(days=30))
+    assert res.blocked == "share" and log == [] and all(r.transcript_path.exists() for r in fresh)
+    # the normal daily rhythm still deletes the one that is due, without asking
+    st = retention.load_state()
+    st["last_run"] = iso(now + timedelta(days=5, hours=1))
+    retention.save_state(st)
+    res = retention.run(root, Config(), remover(root, log), now=now + timedelta(days=6, hours=1))
+    assert res.blocked == "" and res.removed == ["new0"]
+
+
+def test_missing_or_malformed_start_is_skipped_never_old(tmp_path: Path):
+    now = START + timedelta(days=30)
+    root = tmp_path / "lib"
+    bad = [light(root, "n1", None), light(root, "n2", 12345), light(root, "n3", "gestern"),
+           light(root, "n4", "")]
+    weird = light(root, "n5", iso(now - timedelta(days=30)), processing=["kaputt"])
+    naive = light(root, "n6", (now - timedelta(days=6, hours=20)).replace(tzinfo=None).isoformat())
+    foreign = light(root, "n7", iso(now - timedelta(days=30)))  # a folder of another program with a meta.json
+    foreign.save_meta({k: v for k, v in foreign.load_meta().items() if k != "schema"})
+    retention.acknowledge()
+    log: list[tuple[str, str]] = []
+    res = retention.run(root, Config(), remover(root, log), now=now)
+    assert res.removed == [] and log == []
+    assert all(r.transcript_path.exists() for r in [*bad, weird, naive, foreign])
+
+
+def test_processing_in_another_process_is_not_deleted(tmp_path: Path):
+    """``callrec process`` on the command line (or a second app) - the app's own queue cannot see it."""
+    now = START + timedelta(days=30)
+    root = tmp_path / "lib"
+    rec = light(root, "a", iso(now - timedelta(days=10)))
+    rec.update_meta(["processing", "status"], "running")
+    retention.acknowledge()
+    p = retention.plan(root, Config(), now)
+    assert p.removable == [] and p.waiting and "verarbeitet" in p.waiting[0].waiting
+
+
+def test_locked_file_leaves_a_labelled_recording_that_is_retried(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from callrec import library
+
+    now = START + timedelta(days=30)
+    root = tmp_path / "lib"
+    rec = light(root, "a", iso(now - timedelta(days=10)))
+    retention.acknowledge()
+    real = library.unlink_tree
+
+    def locked(p: Path) -> None:
+        if p.name == "data":
+            raise PermissionError("[WinError 32] Der Prozess kann nicht auf die Datei zugreifen")
+        real(p)
+
+    monkeypatch.setattr(library, "unlink_tree", locked)
+    log: list[tuple[str, str]] = []
+    res = retention.run(root, Config(), remover(root, log), now=now)
+    assert res.failed and not (rec.folder / "audio").exists() and (rec.folder / "data").exists()
+    meta = rec.load_meta()
+    assert retention.removed_scope(meta) == "" and retention.pending_scope(meta) == "audio_transcript"
+    info = read_info(rec.folder)
+    assert info.reduced and info.removed_text.startswith("Löschen unvollständig")
+    assert not action_states(info, False, False, True)["resummarize"]
+    with pytest.raises(FileNotFoundError, match="nicht vollständig gelöscht"):
+        make_pipeline(ProfileStore(PlainFilePersistence(tmp_path / "x.json")))[0].run(rec, {"render"})
+    # the next run finishes it (no 24 h hold although the transcript is gone already)
+    monkeypatch.setattr(library, "unlink_tree", real)
+    res = retention.run(root, Config(), remover(root, log), now=now + timedelta(hours=1))
+    assert res.removed == ["a"] and not (rec.folder / "data").exists() and rec.summary_path.exists()
+    assert retention.removed_scope(rec.load_meta()) == "audio_transcript"
+
+
+def test_nothing_removed_leaves_the_recording_unchanged(tmp_path: Path):
+    root = tmp_path / "lib"
+    rec = light(root, "a", iso(START))
+
+    def refuse(p: Path) -> None:
+        raise LibraryError("Löschen abgebrochen - die Aufnahme ist unverändert.")
+
+    with pytest.raises(LibraryError):
+        retention.remove(rec, root, "audio_transcript", "recycle_bin", recycler=refuse)
+    assert "retention" not in rec.load_meta() and read_info(rec.folder).removed_text == ""
+
+
+def test_whole_recording_keeps_meta_until_the_rest_is_gone(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from callrec import library
+
+    root = tmp_path / "lib"
+    rec = light(root, "a", iso(START))
+    real = library.unlink_tree
+
+    def locked(p: Path) -> None:
+        if p.name == "transcript.md":  # audio and data are gone already
+            raise PermissionError("gesperrt")
+        real(p)
+
+    monkeypatch.setattr(library, "unlink_tree", locked)
+    with pytest.raises(LibraryError):
+        retention.remove(rec, root, "recording", "permanent")
+    assert not (rec.folder / "audio").exists()
+    assert rec.meta_path.exists() and retention.pending_scope(rec.load_meta()) == "recording"
+    assert read_info(rec.folder).removed_text.startswith("Löschen unvollständig")
+    monkeypatch.setattr(library, "unlink_tree", real)
+    retention.remove(rec, root, "recording", "permanent")
+    assert not rec.folder.exists()
+
+
+@pytest.mark.skipif(not hasattr(__import__("os"), "symlink"), reason="symlinks")
+def test_links_inside_a_recording_are_removed_not_followed(tmp_path: Path):
+    import os
+    import stat
+
+    root = tmp_path / "lib"
+    outside = tmp_path / "Dokumente"
+    (outside / "sub").mkdir(parents=True)
+    (outside / "wichtig.txt").write_text("bleibt", encoding="utf-8")
+    (outside / "sub" / "x.txt").write_text("bleibt", encoding="utf-8")
+    os.chmod(outside / "wichtig.txt", 0o644)
+    rec = light(root, "a", iso(START))
+    import shutil
+
+    shutil.rmtree(rec.folder / "data")
+    os.symlink(outside, rec.folder / "data", target_is_directory=True)
+    os.symlink(outside / "wichtig.txt", rec.folder / "transcript.v1.md")
+    os.symlink(outside, rec.folder / "audio" / "link", target_is_directory=True)
+    retention.remove(rec, root, "audio_transcript", "permanent")
+    assert (outside / "wichtig.txt").read_text(encoding="utf-8") == "bleibt" and (outside / "sub" / "x.txt").exists()
+    assert stat.S_IMODE(os.stat(outside / "wichtig.txt").st_mode) == 0o644  # not even its mode changed
+    assert not (rec.folder / "data").exists() and not os.path.lexists(rec.folder / "data")
+    rec2 = light(root, "b", iso(START))
+    os.symlink(outside, rec2.folder / "data" / "link", target_is_directory=True)
+    retention.remove(rec2, root, "recording", "permanent")
+    assert not rec2.folder.exists() and (outside / "sub" / "x.txt").exists()
+
+
+def test_leftover_transcript_temp_files_go_with_the_transcript(tmp_path: Path):
+    root = tmp_path / "lib"
+    rec = light(root, "a", iso(START))
+    (rec.folder / "transcript.v2.md.tmp").write_text("geheimer Inhalt", encoding="utf-8")
+    (rec.folder / "summary.v1.md").write_text("Zusammenfassung v1", encoding="utf-8")
+    retention.remove(rec, root, "audio_transcript", "permanent")
+    assert sorted(p.name for p in rec.folder.iterdir()) == ["meta.json", "summary.md", "summary.v1.md"]
+
+
+def test_fake_clock_over_many_days(tmp_path: Path):
+    """Daily runs over five weeks with a recording every 3 days, one never processed and one pinned:
+    nothing goes before its age, the unprocessed one only after it was shown for 24 h, the pinned never."""
+    t0 = START
+    root = tmp_path / "lib"
+    retention.acknowledge()
+    removed_at: dict[str, datetime] = {}
+    starts: dict[str, datetime] = {}
+    cfg = Config()
+    for day in range(36):
+        now = t0 + timedelta(days=day, hours=9)
+        if day % 3 == 0 and day < 24:
+            name = f"r{day:02d}"
+            starts[name] = now - timedelta(hours=1)
+            light(root, name, iso(starts[name]), transcript=day != 6, keep=day == 9)
+        if day == 20:  # the user opens the main window once
+            retention.mark_surfaced(retention.plan(root, cfg, now), now)
+        res = retention.run(root, cfg, lambda rec, scope, mode: retention.remove(rec, root, scope, mode), now=now)
+        assert not res.blocked, (day, res.blocked_text)
+        for rid in res.removed:
+            removed_at[rid] = now
+    for name, at in removed_at.items():
+        assert at - starts[name] >= timedelta(days=7), name
+    assert "r09" not in removed_at  # pinned
+    assert removed_at["r06"] >= t0 + timedelta(days=21, hours=9)  # shown on day 20, held 24 h
+    assert {n for n in starts if starts[n] + timedelta(days=7) <= t0 + timedelta(days=35)} - {"r09"} == set(removed_at)
+
+
+def test_open_question_or_dialog_holds_a_recording_and_the_answer_is_exactly_the_list(tmp_path: Path):
+    """The after-recording question / speaker dialog of an old recording is open (not in the queue):
+    the automatic deletion must not take it meanwhile. "Wie eingestellt löschen" deletes only the
+    recordings the question listed."""
+    import threading
+    from types import SimpleNamespace
+
+    from callrec.ui.actions import AppActions
+
+    now = datetime.now().astimezone()
+    root = tmp_path / "lib"
+    a = light(root, "a", iso(now - timedelta(days=10)))
+    cfg = Config()
+    cfg.general.recordings_dir = str(root)
+    act = object.__new__(AppActions)
+    act.cfg = cfg
+    act._held, act._held_lock = {}, threading.Lock()
+    act.controller = SimpleNamespace(is_busy=lambda r: False,
+                                     remove=lambda rec, scope, mode, **k: retention.remove(rec, root, scope, mode))
+    with act.hold(a):
+        assert act.retention_busy(a)
+        assert retention.plan(root, cfg, busy=act.retention_busy).removable == []
+        with pytest.raises(LibraryError):
+            act._retention_remove(a, "audio_transcript", "permanent")
+    assert not act.retention_busy(a) and a.transcript_path.exists()
+    runs: list[Any] = []
+    act.run_retention = lambda confirmed=False, done=None, only=None: runs.append((confirmed, only))  # type: ignore[method-assign]
+    act.dialogs = SimpleNamespace(ask_retention=lambda *a, **k: "delete")
+    act.ui = SimpleNamespace(notify=lambda *a: None)
+    assert act.ask_retention("first", "x") == "delete"
+    assert runs == [(True, ["a"])]

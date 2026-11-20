@@ -200,10 +200,12 @@ def read_info(folder: Path) -> RecordingInfo:
     info.summary_outdated = info.has_summary and bool(smeta.get("speakers_outdated"))
     if info.has_summary and isinstance(smeta.get("missing_sections"), list):
         info.summary_missing = [str(x) for x in smeta["missing_sections"]]
-    from callrec.retention import is_pinned, removed_scope, removed_text
+    from callrec.retention import is_pinned, pending_scope, removed_scope, removed_text
 
     info.pinned = is_pinned(meta)
-    info.removed = removed_scope(meta)
+    pending = pending_scope(meta)
+    # an incompletely deleted recording counts as "only the summary left": nothing may process it again
+    info.removed = removed_scope(meta) or ({"audio": "audio"}.get(pending, "audio_transcript") if pending else "")
     info.removed_text = removed_text(meta)
     sp = proc.get("speakers")
     if info.reduced:
@@ -379,6 +381,8 @@ def status_description(info: RecordingInfo) -> str:
     parts = []
     if info.error:
         return info.error
+    if info.removed_text.startswith("Löschen unvollständig"):
+        return info.removed_text + "."
     if info.removed_text:
         return info.removed_text + (" – die Zusammenfassung bleibt lesbar und kann übergeben werden."
                                     if info.reduced else " – Transkript und Zusammenfassung bleiben.")
@@ -533,15 +537,61 @@ def delete_recording(rec: Recording, root: Path, permanent: bool = False,
         log.info("Aufnahme in den Papierkorb verschoben: %s", folder)
         return "recycled"
 
-    for dirpath, _dirs, files in os.walk(folder):  # read-only files (e.g. copied from a share)
-        for name in files:
-            try:
-                os.chmod(os.path.join(dirpath, name), 0o600)
-            except OSError:
-                pass
-    shutil.rmtree(folder)
+    # meta.json last: if a file is locked (player, virus scanner), the folder stays a recording that
+    # is listed (marked as incompletely deleted by the caller) and can be deleted again - never an
+    # invisible half-deleted folder without meta.json
+    clear_readonly(folder)
+    for entry in sorted(folder.iterdir()):
+        if entry.name != "meta.json":
+            unlink_tree(entry)
+    unlink_tree(folder / "meta.json")
+    folder.rmdir()
     log.info("Aufnahme endgültig gelöscht: %s", folder)
     return "deleted"
+
+
+def is_link(p: Path) -> bool:
+    """A symbolic link or (Windows) a directory junction - never followed when deleting."""
+    try:
+        return p.is_symlink() or bool(getattr(os.path, "isjunction", lambda _p: False)(p))
+    except OSError:
+        return False
+
+
+def clear_readonly(top: Path) -> None:
+    """Make the files below ``top`` deletable (read-only files, e.g. copied from a share) - without
+    following links or junctions out of the folder."""
+    if is_link(top) or not top.is_dir():
+        return
+    for dirpath, dirs, files in os.walk(top):
+        dirs[:] = [d for d in dirs if not is_link(Path(dirpath) / d)]
+        for name in files:
+            fp = os.path.join(dirpath, name)
+            if os.path.islink(fp):
+                continue
+            try:
+                os.chmod(fp, 0o600)
+            except OSError:
+                pass
+
+
+def unlink_tree(p: Path) -> None:
+    """Delete a file or folder for good. A link/junction is removed itself, never its target."""
+    if is_link(p):
+        try:
+            os.unlink(p)
+        except OSError:
+            os.rmdir(p)  # Windows: a directory symlink or junction
+        return
+    if p.is_dir():
+        clear_readonly(p)
+        shutil.rmtree(p)
+    elif p.exists():
+        try:
+            os.chmod(p, 0o600)
+        except OSError:
+            pass
+        p.unlink()
 
 
 def info_lines(info: RecordingInfo) -> str:

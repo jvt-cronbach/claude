@@ -202,9 +202,13 @@ class Pipeline:
         unknown = wanted - ALL_STEPS
         if unknown:
             raise ValueError(f"Unbekannte Schritte: {', '.join(sorted(unknown))}")
-        from callrec.retention import SCOPE_AUDIO, SCOPE_AUDIO_TRANSCRIPT, removed_scope
+        from callrec.retention import SCOPE_AUDIO, SCOPE_AUDIO_TRANSCRIPT, pending_scope, removed_scope
 
-        gone = removed_scope(rec.load_meta()) if rec.meta_path.exists() else ""
+        meta0 = rec.load_meta() if rec.meta_path.exists() else {}
+        gone = removed_scope(meta0)
+        if pending_scope(meta0):  # a deletion of this recording did not finish: never processed again
+            raise FileNotFoundError("Diese Aufnahme wurde nicht vollständig gelöscht (eine Datei war gesperrt) – "
+                                    "sie wird nicht mehr verarbeitet; Löschen erneut ausführen.")
         if gone == SCOPE_AUDIO_TRANSCRIPT:  # never an empty summary from a deleted transcript
             raise FileNotFoundError("Audio und Transkript dieser Aufnahme wurden gelöscht – nur die Zusammenfassung "
                                     "ist noch vorhanden.")
@@ -796,7 +800,7 @@ class Pipeline:
 
             embs, _model = rec.load_embeddings()
             plan = plan_fragments(turns, speakers, embs, self.cfg.speakers.match_threshold,
-                                  self.cfg.speakers.min_named_speech_s)
+                                  self.cfg.speakers.min_named_speech_s, margin=self.cfg.speakers.match_margin)
             rec.update_meta(["processing", "fragments"], plan.record)
             remote_u = assign_remote(remote, plan.turns, max_gap=gap, max_len=max_len, self_ids=self_ids,
                                      self_speaker=SELF_SPEAKER_ID, mic_words=words_of(mic) if self_ids else None)

@@ -122,3 +122,22 @@ def test_run_tray_app_second_start_exits_cleanly(monkeypatch):
     assert app_mod.run_tray_app() == 0
     monkeypatch.setattr(app_mod, "signal_running_instance", lambda: False)
     assert app_mod.run_tray_app() == 1
+
+
+def test_tk_session_end_handler_is_on_the_main_window_too(monkeypatch):
+    """Tk runs the WM_SAVE_YOURSELF handler of the toplevel whose wrapper got WM_QUERYENDSESSION -
+    the withdrawn root may have none, so the main window (a Toplevel) needs the handler as well."""
+    from callrec.ui import sessionend
+
+    class W:
+        def __init__(self) -> None:
+            self.protocols: dict[str, object] = {}
+
+        def protocol(self, name: str, fn: object) -> None:
+            self.protocols[name] = fn
+
+    monkeypatch.setattr(sessionend.sys, "platform", "win32")
+    root, main = W(), W()
+    s = sessionend.SessionEnd(lambda: None, lambda: None, inline=True)
+    sessionend.install_tk(root, s, main)
+    assert root.protocols["WM_SAVE_YOURSELF"] == s.handle and main.protocols["WM_SAVE_YOURSELF"] == s.handle

@@ -235,8 +235,12 @@ def apply_assignments(
       it never teaches a profile.
     """
     from callrec.config import SpeakerConfig
+    from callrec.retention import SCOPE_AUDIO_TRANSCRIPT, pending_scope, removed_scope
     from callrec.speakers.diarize import speech_seconds
 
+    meta = rec.load_meta()
+    if removed_scope(meta) == SCOPE_AUDIO_TRANSCRIPT or pending_scope(meta):  # would recreate data/ and the transcript
+        raise FileNotFoundError("Transkript und Sprecherdaten dieser Aufnahme wurden gelöscht – keine Zuordnung möglich.")
     min_learn = SpeakerConfig().min_learn_speech_s if min_learn_speech_s is None else min_learn_speech_s
     speakers = rec.load_speakers()
     before = {k: SpeakerInfo.from_dict(v.to_dict()) for k, v in speakers.items()}

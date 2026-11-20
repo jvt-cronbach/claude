@@ -93,3 +93,28 @@ def test_clip_unpublish_answers_404(tmp_path: Path):
         assert _get(url)[0] == 404
     finally:
         s.stop()
+
+
+def test_hidden_window_does_not_count_as_shown_and_retention_now_takes_only_announced(loop: AppLoop, tmp_path: Path):
+    """Start in the tray: the page loads in the hidden window - that is no "shown as wird gelöscht".
+    "Jetzt löschen" deletes only what is still announced (not a recording pinned meanwhile)."""
+    from datetime import datetime, timedelta
+
+    from callrec.ui.bridge import Bridge
+
+    old = datetime.now().astimezone() - timedelta(days=30)
+    a = processed(tmp_path / "recs", "2026-11-19_1400_A", "A")
+    b = processed(tmp_path / "recs", "2026-11-19_1500_B", "B")
+    for r in (a, b):
+        r.update_meta(["recording", "started_at"], old.isoformat())
+    core = core_with_actions(tmp_path, loop)
+    core.windows = SimpleNamespace(main_visible=False)
+    br = Bridge(core)
+    assert br.retention_overview()["items"]
+    assert "surfaced" not in retention.load_state() or not retention.load_state()["surfaced"]
+    core.windows.main_visible = True
+    br.retention_overview()
+    assert "2026-11-19_1400_A" in retention.load_state()["surfaced"]
+    retention.set_pinned(b, True)  # pinned in the other window after the notice was loaded
+    res = br.retention_now(["2026-11-19_1400_A", "2026-11-19_1500_B"])
+    assert res["done"] == 1 and b.transcript_path.exists() and not a.transcript_path.exists()

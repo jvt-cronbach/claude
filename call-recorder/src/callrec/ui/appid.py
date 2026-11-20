@@ -109,8 +109,9 @@ public static class CallRecAumid {
   [StructLayout(LayoutKind.Sequential, Pack = 4)] public struct PROPERTYKEY { public Guid fmtid; public uint pid; }
   [StructLayout(LayoutKind.Explicit)] public struct PROPVARIANT { [FieldOffset(0)] public ushort vt; [FieldOffset(8)] public IntPtr p; }
   [ComImport, Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-  interface IPropertyStore { int GetCount(out uint c); int GetAt(uint i, out PROPERTYKEY k);
-    int GetValue(ref PROPERTYKEY k, out PROPVARIANT v); int SetValue(ref PROPERTYKEY k, ref PROPVARIANT v); int Commit(); }
+  interface IPropertyStore { [PreserveSig] int GetCount(out uint c); [PreserveSig] int GetAt(uint i, out PROPERTYKEY k);
+    [PreserveSig] int GetValue(ref PROPERTYKEY k, out PROPVARIANT v);
+    [PreserveSig] int SetValue(ref PROPERTYKEY k, ref PROPVARIANT v); [PreserveSig] int Commit(); }
   [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
   static extern void SHGetPropertyStoreFromParsingName(string path, IntPtr bc, int flags, ref Guid riid,
     [MarshalAs(UnmanagedType.Interface)] out IPropertyStore store);
@@ -129,6 +130,8 @@ public static class CallRecAumid {
         f"$l.TargetPath = {ps_quote(target)}; $l.Arguments = {ps_quote(args)}; $l.WorkingDirectory = {ps_quote(workdir)}; "
         f"$l.IconLocation = {ps_quote(icon + ',0')}; "
         "$l.Description = 'CallRecorder - lokale Gesprächsaufnahme'; $l.Save(); "
-        f"Add-Type -TypeDefinition @'\n{cs}\n'@ -Language CSharp; "
-        f"[CallRecAumid]::Set($p, {ps_quote(app_id)})"
+        # the id is optional: without it the shortcut still works (only taskbar grouping/pinning differs)
+        f"try {{ Add-Type -TypeDefinition @'\n{cs}\n'@ -Language CSharp -ErrorAction Stop; "
+        f"[CallRecAumid]::Set($p, {ps_quote(app_id)}) }} "
+        "catch { Write-Output ('Verknüpfung ohne AppUserModelID: ' + $_.Exception.Message) }"
     )

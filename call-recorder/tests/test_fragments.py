@@ -48,14 +48,23 @@ def test_plan_fragments_similarity_adjacency_and_unclear():
     emb = {"S1": np.array([1.0, 0, 0]), "S2": np.array([0, 1.0, 0]), "S3": np.array([0, 0, 1.0])}
     plan = plan_fragments(turns, _sp(S3=True), emb, threshold=0.55, min_speech_s=5.0)
     got = [(t.start, t.speaker) for t in plan.turns if t.start in (20.4, 25.0, 29.5)]
-    assert got == [(20.4, "S1"), (25.0, "S3"), (29.5, "S2")]
+    # several voices and no voice evidence: the position alone does not name anybody
+    assert got == [(20.4, "S3"), (25.0, "S3"), (29.5, "S3")]
     rec = plan.record["speakers"]["S3"]
-    assert rec["attributed"] == {"S1": 0.6, "S2": 0.7} and rec["unclear_s"] == 0.5
-    assert {e["why"] for e in plan.record["turns"]} >= {"innerhalb/direkt neben einem Beitrag"}
+    assert rec["attributed"] == {} and rec["unclear_s"] == 1.8
+    assert any("gleichzeitig" in e["why"] for e in plan.record["turns"])  # 29.5-30.2 overlaps S2
+    # only one voice on the far side: right next to its turn -> that voice; overlapping it -> unclear
+    one = [SpeakerTurn(0, 20, "S1"), SpeakerTurn(20.4, 21.0, "S3"), SpeakerTurn(10.0, 10.4, "S3")]
+    plan = plan_fragments(one, _sp(S3=True), {}, threshold=0.55, min_speech_s=5.0)
+    assert {t.start: t.speaker for t in plan.turns if t.start in (20.4, 10.0)} == {20.4: "S1", 10.0: "S3"}
     # a voice that is clearly one of them wins over the position
     emb["S3"] = np.array([0.1, 0.99, 0])
     plan = plan_fragments(turns, _sp(S3=True), emb, threshold=0.55, min_speech_s=5.0)
     assert {t.speaker for t in plan.turns if t.start in (20.4, 25.0, 29.5)} == {"S2"}
+    # a voice about as close to both people is no evidence for either
+    emb["S3"] = np.array([0.7, 0.66, 0])
+    plan = plan_fragments(turns, _sp(S3=True), emb, threshold=0.55, min_speech_s=5.0, margin=0.08)
+    assert {t.speaker for t in plan.turns if t.start in (20.4, 25.0, 29.5)} == {"S3"}
     # between two people and no voice evidence: unclear
     turns2 = [SpeakerTurn(0, 10, "S1"), SpeakerTurn(10.6, 11.0, "S3"), SpeakerTurn(11.5, 20, "S2")]
     plan = plan_fragments(turns2, _sp(S3=True), {}, threshold=0.55, min_speech_s=5.0)
@@ -185,3 +194,23 @@ def test_clip_store_writes_cycles_and_cleans_up(tmp_path: Path):
     d = store_.folder
     store_.close()
     assert not d.exists()
+
+
+def test_stale_clip_folders_of_a_crash_are_removed(tmp_path: Path):
+    import os
+    import time
+
+    from callrec.ui.clips import STALE_S, remove_stale_clip_folders
+
+    old = tmp_path / "callrec_clips_abc"
+    old.mkdir()
+    (old / "x.wav").write_bytes(b"RIFF")
+    fresh = tmp_path / "callrec_clips_new"
+    fresh.mkdir()
+    other = tmp_path / "something_else"
+    other.mkdir()
+    past = time.time() - STALE_S - 60
+    os.utime(old, (past, past))
+    os.utime(other, (past, past))
+    assert remove_stale_clip_folders(tmp_path) == 1
+    assert not old.exists() and fresh.exists() and other.exists()

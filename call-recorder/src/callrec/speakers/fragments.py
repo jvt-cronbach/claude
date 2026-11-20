@@ -7,8 +7,10 @@ offered for naming, never counts as open, is never matched against or learned in
 
 Its text is never dropped. Each of its turns goes to the most plausible real speaker when that is
 well-founded - the fragment's voice is similar to that speaker (cosine >= the match threshold), or
-the turn lies inside or right next to (``ADJACENT_GAP_S``) turns of exactly one real speaker -
-and is otherwise labelled neutrally ("Unklar"). The plan only relabels the turns used for the
+there is only one real voice on the far side and the turn lies right next to (``ADJACENT_GAP_S``,
+not overlapping) one of its turns - and is otherwise labelled neutrally ("Unklar"). Position alone
+never decides between several people: a short "ja"/"mhm" inside or next to A's turn is as likely
+B's interjection, and a turn overlapping someone's speech is by definition another voice. The plan only relabels the turns used for the
 transcript; ``turns.json`` keeps the diarization as it was, so a fragment can still be revealed and
 named ("Kurze Fragmente anzeigen").
 """
@@ -47,8 +49,15 @@ def _gap(a: SpeakerTurn, b: SpeakerTurn) -> float:
     return max(0.0, max(a.start, b.start) - min(a.end, b.end))
 
 
+def _overlap(a: SpeakerTurn, b: SpeakerTurn) -> float:
+    return min(a.end, b.end) - max(a.start, b.start)
+
+
 def plan_fragments(turns: list[SpeakerTurn], speakers: dict[str, SpeakerInfo], embeddings: dict[str, Any],
-                   threshold: float, min_speech_s: float, gap_s: float = ADJACENT_GAP_S) -> FragmentPlan:
+                   threshold: float, min_speech_s: float, gap_s: float = ADJACENT_GAP_S,
+                   margin: float = 0.08) -> FragmentPlan:
+    """``margin``: with several voices the fragment's voice must be closer to the best one than to the
+    next by at least this much (``speakers.match_margin``) - the embedding of a few seconds is noisy."""
     minors = [sid for sid, s in speakers.items() if s.minor and not s.name and s.source not in USER_DECIDED]
     minors = [sid for sid in minors if any(t.speaker == sid for t in turns)]
     if not minors:
@@ -65,14 +74,14 @@ def plan_fragments(turns: list[SpeakerTurn], speakers: dict[str, SpeakerInfo], e
         if sid not in embeddings:
             continue
         v = l2_normalize(np.asarray(embeddings[sid]))
-        best: tuple[str, float] | None = None
-        for tid in targets:
-            if tid in embeddings:
-                cos = float(np.dot(v, l2_normalize(np.asarray(embeddings[tid]))))
-                if best is None or cos > best[1]:
-                    best = (tid, cos)
-        if best is not None and best[1] >= threshold:
-            similar[sid] = best
+        scores = sorted(((float(np.dot(v, l2_normalize(np.asarray(embeddings[tid])))), tid)
+                         for tid in targets if tid in embeddings), reverse=True)
+        if not scores:
+            continue
+        best_cos, best_id = scores[0]
+        runner_up = scores[1][0] if len(scores) > 1 else -1.0
+        if best_cos >= threshold and best_cos - runner_up >= margin:
+            similar[sid] = (best_id, best_cos)
     summary: dict[str, dict[str, Any]] = {}
     for t in sorted(turns, key=lambda t: (t.start, t.end)):
         if t.speaker not in minors:
@@ -85,11 +94,16 @@ def plan_fragments(turns: list[SpeakerTurn], speakers: dict[str, SpeakerInfo], e
             why = "ähnliche Stimme"
         else:
             near = {tid for tid, tl in by_target.items() if any(_gap(t, o) <= gap_s for o in tl)}
-            if len(near) == 1:
-                to = near.pop()
-                why = "innerhalb/direkt neben einem Beitrag"
+            over = {tid for tid, tl in by_target.items() if any(_overlap(t, o) > 0 for o in tl)}
+            if over:  # a second voice while somebody speaks: an interjection of another person or noise
+                why = "unklar: gleichzeitig mit einer anderen Stimme"
             elif len(near) > 1:
                 why = "unklar: zwischen mehreren Personen"
+            elif near and len(targets) == 1:  # the only voice on the far side, right next to its turn
+                to = near.pop()
+                why = "direkt neben einem Beitrag der einzigen Stimme der Gegenseite"
+            elif near:  # with several voices a short "ja"/"mhm" next to A is as likely B's: no guess
+                why = "unklar: neben einem Beitrag, aber mehrere Stimmen im Gespräch"
         out.append(SpeakerTurn(t.start, t.end, to or t.speaker))
         e: dict[str, Any] = {"start": round(t.start, 2), "end": round(t.end, 2), "to": to, "why": why}
         if sim is not None:

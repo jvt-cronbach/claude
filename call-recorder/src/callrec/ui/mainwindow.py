@@ -1201,7 +1201,8 @@ class MainWindow:
     def row_values(i: RecordingInfo) -> tuple[str, ...]:
         date = f"{i.started_at:%d.%m.%y %H:%M}" if i.started_at else i.folder.name[:10]
         t, s, z, h = stage_cells(i)
-        badge = " · Behalten" if i.pinned else (" · Nur Zusammenfassung" if i.reduced else
+        badge = " · Behalten" if i.pinned else (" · Löschen unvollständig" if i.removed_text.startswith(
+            "Löschen unvollständig") else " · Nur Zusammenfassung" if i.reduced else
                                                  " · Audio gelöscht" if i.removed else "")
         return (date, i.title + badge, fmt_duration(i.duration_s), fmt_language(i.language), t, s, z, h)
 
@@ -1489,11 +1490,12 @@ class MainWindow:
                     try:
                         self.app.delete(rec, permanent=permanent)
                     except LibraryError as exc:
+                        # asked for this recording only: the others still go to the recycle bin as confirmed
                         if permanent or "Papierkorb" not in str(exc) or not messagebox.askyesno(
-                                "Papierkorb nicht möglich", f"{exc}\n\nStattdessen ENDGÜLTIG löschen? Das lässt sich "
-                                "nicht rückgängig machen.", icon="warning", parent=self.win):
+                                "Papierkorb nicht möglich", f"„{info.title}“: {exc}\n\nDiese Aufnahme stattdessen "
+                                "ENDGÜLTIG löschen? Das lässt sich nicht rückgängig machen.", icon="warning",
+                                parent=self.win):
                             raise
-                        permanent = True
                         self.app.delete(rec, permanent=True)
                 else:
                     self.app.remove(rec, scope, permanent=True)
@@ -1551,6 +1553,10 @@ class MainWindow:
 
         now = datetime.now().astimezone()
         text = plan.notice(now) if plan is not None else ""
+        if text:
+            from callrec.retention import Plan, mark_surfaced
+
+            mark_surfaced(Plan(plan.enabled, plan.scope, upcoming=plan.next_24h(now)), now)  # shown now
         self._ret_next = [i.id for i in plan.next_24h(now)] if plan is not None else []
         warn = [i for i in (plan.next_24h(now) if plan is not None else []) if i.warning]
         if warn:

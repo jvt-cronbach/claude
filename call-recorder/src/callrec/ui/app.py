@@ -342,7 +342,7 @@ def _run_tk(cfg: Config, log_file: Any, start_minimized: bool, fallback_notice: 
     show_requests.start()
     from callrec.ui.sessionend import SessionEnd, install_tk
 
-    install_tk(ui.root, SessionEnd(actions.end_session, quit_app, inline=True))
+    install_tk(ui.root, SessionEnd(actions.end_session, quit_app, inline=True), window.win)
     tray_actions: dict[str, Any] = {
         "show_window": window.show,
         "toggle": actions.toggle,
