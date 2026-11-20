@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "version": "0.2.0",
-  "commit": null,
-  "date": "",
+  "commit": "37407104c2f4a10e6b0667e4770a51b97f487199",
+  "date": "2026-11-20",
   "notes": [
     "Sprecher werden automatisch nur noch Teilnehmenden des Termins zugeordnet; Sprecherzahl nach Teilnehmenden begrenzt.",
     "Eigene Spur mit Ihrem Vornamen; Prüfung der Mikrofonspur auf Echo und fehlende Sprache.",
