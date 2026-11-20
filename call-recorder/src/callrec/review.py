@@ -101,24 +101,37 @@ def self_overview(rec: Recording) -> SpeakerOverview:
     return SpeakerOverview(SELF_SPEAKER_ID, "Ich", name, None, "self", talk, len(mine), _sample_text(mine), span)
 
 
-def _is_me(p: Person, me: Person) -> bool:
-    from callrec.speakers.names import persons_match
+def _is_me(p: Person, me: Person | list[Person]) -> bool:
+    from callrec.speakers.names import is_one_of
 
-    return p.key() == me.key() or persons_match(p, me)
+    mine = me if isinstance(me, list) else [me]
+    return any(p.key() == m.key() for m in mine) or is_one_of(p, mine)
+
+
+def _my_identities(rec: Recording) -> list[Person]:
+    """You as stored with the recording and as cached from the Microsoft account (/me)."""
+    from callrec.selfname import FALLBACK, cached_me
+
+    out = [rec.self_person()]
+    out = [p for p in out if p.name != FALLBACK or p.email]
+    me = cached_me()
+    if me.get("name") or me.get("email"):
+        out.append(Person(str(me.get("name") or ""), str(me.get("email") or ""), "self"))
+    return out
 
 
 def name_choices(rec: Recording, profiles: ProfileStore, all_profiles: bool = False,
                  exclude_speaker: str = "") -> list[str]:
     """This call's participants (without you) - those not yet assigned first - then, only in the
     "all_profiles" mode, the other known voice profiles."""
-    me = rec.self_person()
+    me = _my_identities(rec)
     speakers = rec.load_speakers()
     taken = {s.name.casefold() for sid, s in speakers.items() if s.name and sid not in (SELF_SPEAKER_ID, exclude_speaker)}
     people = [p.name or p.email for p in rec.participants() if not _is_me(p, me)]
     people = [n for n in dict.fromkeys(people) if n]
     names = [n for n in people if n.casefold() not in taken] + [n for n in people if n.casefold() in taken]
     if all_profiles:
-        names += [p.name for p in profiles.all_profiles() if not p.matches_person(me)]
+        names += [p.name for p in profiles.all_profiles() if not _is_me(p.person, me)]
     return list(dict.fromkeys(n for n in names if n))
 
 
@@ -216,7 +229,7 @@ def apply_assignments(
         if unchanged_auto and not a.save_profile:
             continue  # stays an automatic (re-checkable) assignment
         person = _participant_for(name, participants + added)
-        if person is None and not _is_me(Person(name, a.email), me):
+        if person is None and not _is_me(Person(name, a.email), [me, *_my_identities(rec)]):
             person = Person(name, a.email, "assigned")
             added.append(person)
         corrected = bool(info.name) and info.name.casefold() != name.casefold()
@@ -283,6 +296,21 @@ def foreign_old_assignments(rec: Recording, participants: list[Person]) -> list[
         if not any(persons_match(Person(s.name, s.email), p) for p in participants):
             out.append((sid, s.label, s.name))
     return out
+
+
+LEGACY_AUTO_UPDATE_THRESHOLD = 0.70  # speakers.auto_update_threshold of versions before 0.2
+
+
+def legacy_profile_updates(rec: Recording) -> list[str]:
+    """Recordings identified by an earlier version: names of the profiles that version silently
+    sharpened with a voice of this recording (automatic match >= 0.70, origin not recorded). If such
+    a match was wrong, the profile still contains that voice - "Neu aufbauen" removes it."""
+    ident = (rec.load_meta().get("processing") or {}).get("identification")
+    if isinstance(ident, dict) and ident.get("rule"):
+        return []
+    return sorted({s.name for sid, s in rec.load_speakers().items()
+                   if sid != SELF_SPEAKER_ID and s.source == SOURCE_AUTO and s.name and s.score is not None
+                   and s.score >= LEGACY_AUTO_UPDATE_THRESHOLD})
 
 
 def reset_speakers(rec: Recording, sids: list[str], profiles: ProfileStore | None = None) -> None:

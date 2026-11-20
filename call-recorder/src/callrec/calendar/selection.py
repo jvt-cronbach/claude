@@ -48,7 +48,12 @@ def _distance(ev: CalendarEvent, now: datetime) -> float:
     return min(abs((ev.start - now).total_seconds()), abs((now - ev.end).total_seconds()))
 
 
-def _rank(ev: CalendarEvent, now: datetime) -> tuple[int, int, float, float, int, str]:
+def _with_others(ev: CalendarEvent) -> bool:
+    """Invites somebody (an entry only for yourself - "Rückreise", "Fokuszeit" - does not)."""
+    return bool(ev.attendees)
+
+
+def _rank(ev: CalendarEvent, now: datetime) -> tuple[int, int, int, float, float, int, str]:
     running = ev.start <= now <= ev.end
     # Distance between "now" and the event start: the meeting that started most
     # recently (or is about to start) is the one being joined.
@@ -56,6 +61,8 @@ def _rank(ev: CalendarEvent, now: datetime) -> tuple[int, int, float, float, int
     duration = (ev.end - ev.start).total_seconds()
     return (
         0 if ev.is_online else 1,
+        # a meeting with invitees beats a short personal entry that happens to be running
+        0 if _with_others(ev) else 1,
         0 if running else 1,
         start_distance,
         duration,  # shorter (more specific) wins over long blockers
@@ -76,7 +83,7 @@ def select_current_event(
       1. ignore cancelled, declined, all-day/multi-day, free/out-of-office and long blockers
          without participants (:func:`demotion`) - a blocker never wins over a real meeting
       2. event window extended by the tolerances must contain ``now``
-      3. prefer online meetings (Teams)
+      3. prefer online meetings (Teams), then meetings with invitees over entries only for you
       4. prefer meetings actually running over ones about to start / just ended
       5. prefer the one whose start is closest to ``now``
       6. prefer shorter meetings, then more attendees, then subject (stable)
@@ -128,9 +135,14 @@ def local_day(moment: datetime, tz: tzinfo | None = None) -> tuple[datetime, dat
     """Local midnight to midnight of the day of ``moment``. With a ZoneInfo zone the offsets are
     those of each midnight, so DST days have 23/25 hours."""
     local = moment.astimezone(tz) if tz is not None else moment.astimezone()
-    zone = local.tzinfo
     day = local.date()
     nxt = day + timedelta(days=1)
+    if tz is None:
+        # the PC's zone: naive local midnights, each converted with its own offset (astimezone()
+        # alone yields the fixed offset of ``moment``, one hour off at midnight on DST days)
+        return (datetime(day.year, day.month, day.day).astimezone(),
+                datetime(nxt.year, nxt.month, nxt.day).astimezone())
+    zone = local.tzinfo
     return datetime(day.year, day.month, day.day, tzinfo=zone), datetime(nxt.year, nxt.month, nxt.day, tzinfo=zone)
 
 

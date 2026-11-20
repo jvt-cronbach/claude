@@ -54,6 +54,9 @@ GIT_ENV = {
     "GIT_TERMINAL_PROMPT": "0",  # never hang on a console prompt (Git Credential Manager still shows its window)
     "GIT_HTTP_LOW_SPEED_LIMIT": "1000",  # abort a transfer slower than 1 kB/s ...
     "GIT_HTTP_LOW_SPEED_TIME": "30",  # ... for 30 s
+    # no hooks (global or in .git/hooks) and no fsmonitor daemon for the update's git commands
+    "GIT_CONFIG_COUNT": "2", "GIT_CONFIG_KEY_0": "core.hooksPath", "GIT_CONFIG_VALUE_0": os.devnull,
+    "GIT_CONFIG_KEY_1": "core.fsmonitor", "GIT_CONFIG_VALUE_1": "false",
 }
 _SHA = re.compile(r"^[0-9a-f]{40}$")
 _VERSION = re.compile(r"^\d+(\.\d+){1,3}$")

@@ -365,9 +365,14 @@ class AppActions:
             return False
         if not dialogs.confirm_recheck(self.root, rec, changes):
             return False
+        from callrec.review import legacy_profile_updates
+
+        sharpened = [n for n in legacy_profile_updates(rec) if any(before == n for _l, before, _a in changes)]
         archive_speakers(rec)
         self.controller.process(rec, frozenset({"identify", "render"}))
-        self.ui.notify("Sprecherzuordnung wird neu geprüft", rec.folder.name)
+        self.ui.notify("Sprecherzuordnung wird neu geprüft", rec.folder.name + (
+            f"\nDie frühere Version hat die Stimmprofile {', '.join(sharpened)} mit dieser Aufnahme nachgeschärft. "
+            "Waren diese Zuordnungen falsch: Stimmprofile verwalten → „Neu aufbauen“." if sharpened else ""))
         self._changed(rec)
         return True
 

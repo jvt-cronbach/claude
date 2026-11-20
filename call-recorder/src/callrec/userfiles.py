@@ -311,6 +311,12 @@ def validate_prompt(key: str, text: str) -> list[str]:
     if req and "{" + req + "}" not in text:
         out.append(f"Der Platzhalter {{{req}}} fehlt – ohne ihn sieht das Modell das Gespräch nicht (es würde nur "
                    "angehängt).")
+    if key == "final":
+        gone = [h for h in SUMMARY_SECTIONS
+                if not re.search(rf"^\s{{0,3}}#{{1,4}}\s*{re.escape(h)}\b", text, re.MULTILINE | re.IGNORECASE)]
+        if gone:
+            out.append("Diese Überschriften fehlen in der Vorlage: " + ", ".join(gone) + " – die Weiterverarbeitung "
+                       "erwartet sie; jede Zusammenfassung wird dann als unvollständig markiert.")
     known = PROMPT_PLACEHOLDERS.get(key, {})
     unknown = sorted({m.group(1) for m in _PLACEHOLDER.finditer(text)} - set(known))
     if unknown:

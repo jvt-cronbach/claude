@@ -136,3 +136,35 @@ def test_candidate_order_running_online_first():
     c = make_event("Teams später", NOW + timedelta(hours=2), minutes=30, is_online=True, id="c",
                    attendees=[Person("X")])
     assert [e.id for e in candidate_events([a, c, b], NOW)] == ["b", "a", "c"]
+
+
+def test_short_personal_entry_does_not_name_the_recording_of_a_meeting_about_to_start(tmp_path: Path):
+    # "Fahrt" 13:00-15:00 (busy, nobody invited, under the 4 h blocker limit) is running; the phone
+    # meeting with Karl (no Teams link) starts at 14:10 and the user starts recording at 14:05
+    trip = make_event("Fahrt", NOW.replace(hour=13, minute=0), minutes=120, attendees=[], organizer=None, id="trip")
+    call = make_event("Telefonat Karl", NOW.replace(hour=14, minute=10), minutes=30, id="karl")
+    assert not demotion(trip)
+    assert select_current_event([trip, call], NOW) is call
+    events, _msg, _src = _svc(tmp_path, [trip, call]).candidates()
+    assert [e.id for e in events] == ["karl", "trip"]
+    assert select_current_event([trip], NOW) is trip  # alone it is still offered
+
+
+def test_local_day_of_the_pc_zone_on_a_dst_day(monkeypatch):
+    import sys
+    import time
+
+    import pytest
+
+    if sys.platform == "win32" or not hasattr(time, "tzset"):
+        pytest.skip("TZ switch needs POSIX")
+    monkeypatch.setenv("TZ", "Europe/Berlin")
+    time.tzset()
+    try:
+        # 25 Oct 2026: clocks go back at 03:00 CEST; afternoon is CET (+01:00), midnight was CEST (+02:00)
+        lo, hi = local_day(datetime(2026, 10, 25, 15, 0, tzinfo=UTC))
+        assert lo.astimezone(UTC) == datetime(2026, 10, 24, 22, 0, tzinfo=UTC)
+        assert hi.astimezone(UTC) == datetime(2026, 10, 25, 23, 0, tzinfo=UTC)
+    finally:
+        monkeypatch.undo()
+        time.tzset()

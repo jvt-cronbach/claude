@@ -146,7 +146,7 @@ def _fake_python(tmp_path: Path, pip_rc: int = 0) -> Path:
     script = tmp_path / "fakepython"
     script.write_text(f"""#!/bin/sh
 if [ "$2" = "pip" ]; then exit {pip_rc}; fi
-PYTHONPATH=src exec "{sys.executable}" "$@"
+PYTHONPATH=src exec "{sys.executable}" -B "$@"
 """, encoding="utf-8")
     script.chmod(script.stat().st_mode | stat.S_IEXEC)
     return script
@@ -251,3 +251,106 @@ def test_update_waits_while_recording_or_processing(monkeypatch):
     monkeypatch.setattr(up, "launch_helper", lambda plan: launched.append(plan))
     assert a.start_update(object(), wait=False) is False and "verarbeitet" in notes[-1][1]
     assert a.start_update(object(), wait=True) is False and later and launched == []
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX fake interpreter")
+def test_restore_back_and_forth_keeps_each_commit_with_its_own_environment(world, tmp_path: Path):
+    """update old->reviewed (new packages), restore to old, restore again to reviewed: never the wrong venv."""
+    world["u"].check()
+    py = _fake_python(tmp_path)
+    plan = _plan(world, tmp_path, py, world["reviewed"], "0.2.0", req=True)
+    venv = Path(plan["venv_dir"])
+    assert Helper(plan).main() is True
+    (venv / "marker").write_text("neu", encoding="utf-8")  # what pip installed for "reviewed"
+    back = {**plan, "mode": "restore", "target": world["old"], "previous": world["reviewed"], "version": "0.1.0"}
+    assert Helper(back).main() is True
+    assert g(world["inst"], "rev-parse", "HEAD") == world["old"]
+    assert (venv / "marker").read_text(encoding="utf-8") == "alt"
+    again = {**plan, "mode": "restore", "target": world["reviewed"], "previous": world["old"], "version": "0.2.0"}
+    assert Helper(again).main() is True
+    assert g(world["inst"], "rev-parse", "HEAD") == world["reviewed"]
+    assert (venv / "marker").read_text(encoding="utf-8") == "neu"  # before: the old environment was copied in
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX fake interpreter")
+def test_failed_restore_puts_the_environment_back(world, tmp_path: Path):
+    world["u"].check()
+    plan = _plan(world, tmp_path, _fake_python(tmp_path), world["reviewed"], "0.2.0", req=True)
+    venv = Path(plan["venv_dir"])
+    assert Helper(plan).main() is True
+    (venv / "marker").write_text("neu", encoding="utf-8")
+    (world["inst"] / "call-recorder" / "postinstall_rc").write_text("1", encoding="utf-8")  # old version fails
+    back = {**plan, "mode": "restore", "target": world["old"], "previous": world["reviewed"], "version": "0.1.0"}
+    assert Helper(back).main() is False
+    assert g(world["inst"], "rev-parse", "HEAD") == world["reviewed"]
+    assert (venv / "marker").read_text(encoding="utf-8") == "neu"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX fake interpreter")
+def test_interrupted_helper_leaves_a_message_and_hooks_never_run(world, tmp_path: Path):
+    world["u"].check()
+    hook = world["inst"] / ".git" / "hooks" / "post-checkout"
+    hook.write_text(f"#!/bin/sh\ntouch '{tmp_path / 'hook_ran'}'\n", encoding="utf-8")
+    hook.chmod(0o755)
+    plan = _plan(world, tmp_path, _fake_python(tmp_path), world["reviewed"], "0.2.0")
+    h = Helper(plan)
+
+    def killed() -> None:
+        raise SystemExit("power cut")  # not an Exception: like a process that dies mid-way
+
+    h.post_install = killed  # type: ignore[method-assign]
+    with pytest.raises(SystemExit):
+        h.main()
+    st = json.loads(Path(plan["status"]).read_text(encoding="utf-8"))
+    assert not st["ok"] and "unterbrochen" in st["message"]
+    assert not (tmp_path / "hook_ran").exists()
+
+
+def test_console_update_waits_for_itself_and_refuses_while_the_app_runs(monkeypatch, isolated_home: Path):
+    from callrec import cli
+    from callrec.ui import app as app_mod
+
+    rel = up.Release("0.2.0", "b" * 40)
+    res = up.UpdateCheck("0.1.0", "a" * 40, rel, True, "verfügbar", repo_root="/x", target="b" * 40)
+
+    class U:
+        def __init__(self, *a):
+            pass
+
+        def check(self):
+            return res
+
+        def local_changes(self):
+            return []
+
+    launched: list[dict] = []
+    monkeypatch.setattr(up, "Updater", U)
+    monkeypatch.setattr(up, "launch_helper", lambda plan: launched.append(plan) or Path("/x"))
+    monkeypatch.setattr(app_mod, "acquire_single_instance", lambda: False)
+    args = type("A", (), {"action": "install"})()
+    assert cli.cmd_update(args) == 1 and launched == []
+    monkeypatch.setattr(app_mod, "acquire_single_instance", lambda: True)
+    assert cli.cmd_update(args) == 0
+    assert launched[0]["app_pid"] == os.getpid() and launched[0]["restart"] == []
+
+
+def test_shortcut_paths_are_quoted_for_powershell():
+    from callrec.cli import ps_quote
+
+    assert ps_quote(r"C:\Users\O'Brien\Jörg Müller") == r"'C:\Users\O''Brien\Jörg Müller'"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX fake interpreter")
+def test_rollback_restores_the_install_record(world, tmp_path: Path):
+    world["u"].check()
+    plan = _plan(world, tmp_path, _fake_python(tmp_path), world["reviewed"], "0.2.0")
+    Path(plan["install"]).write_text(json.dumps({"commit": world["old"]}), encoding="utf-8")
+    h = Helper(plan)
+
+    def post_install_records_then_fails() -> None:
+        Path(plan["install"]).write_text(json.dumps({"commit": world["reviewed"]}), encoding="utf-8")
+        raise RuntimeError("smoke test failed")
+
+    h.post_install = post_install_records_then_fails  # type: ignore[method-assign]
+    assert h.main() is False
+    assert json.loads(Path(plan["install"]).read_text(encoding="utf-8"))["commit"] == world["old"]

@@ -1158,6 +1158,9 @@ Einträge werden ignoriert und gemeldet.
 **Was verlässt den Rechner?**
 - Anfragen an `login.microsoftonline.com` und `graph.microsoft.com` (Anmeldung,
   Termin-Metadaten, Ihr Name),
+- einmal täglich (abschaltbar: *Einstellungen → Allgemein*, `update.check_daily = false`) und bei
+  *Nach Updates suchen*: ein `git fetch` des Update-Zweigs von `github.com` (es wird nichts von Ihnen
+  gesendet außer der Anfrage selbst bzw. bei einem privaten Repository Ihrer GitHub-Anmeldung),
 - Modell-Downloads von `huggingface.co` (Whisper; nur solange das Modell noch nicht lokal
   liegt), `github.com` (Sprechertrennung,
   SHA-256-geprüft) und – auf Ihren Klick – die Ollama-Modellbibliothek (Sprachmodelle laden/aktualisieren),

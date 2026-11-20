@@ -298,6 +298,10 @@ class SettingsDialog:
         self.field(t, 15, "… Vorauswahl Übergabe an SharePoint:", "processing", "default_handoff")
         self.field(t, 16, "… bei „full“: Zusammenfassung ohne Rückfrage an SharePoint übergeben:", "processing",
                    "handoff_without_asking")
+        self.field(t, 17, "Einmal täglich bei GitHub nach Updates sehen (nur Hinweis):", "update", "check_daily")
+        ttk.Label(t, text="Die tägliche Suche fragt nur den freigegebenen Stand bei github.com ab (keine Aufnahmen, "
+                  "Namen oder Einstellungen); installiert wird nie ohne Ihren Klick.", wraplength=520,
+                  foreground="#555").grid(row=18, column=0, columnspan=3, sticky="w", **PAD)
 
     def _autostop(self) -> None:
         t = self._tab("Aufnahme-Ende")

@@ -294,8 +294,14 @@ class Config:
             raise ConfigError("speakers.match_scope muss 'participants' oder 'all_profiles' sein")
         if not 0.0 <= sp.match_margin < 0.5 or min(sp.min_match_speech_s, sp.min_learn_speech_s) < 0:
             raise ConfigError("speakers.match_margin muss zwischen 0 und 0,5 liegen, min_*_speech_s >= 0")
-        if not sp.match_threshold <= sp.auto_update_threshold < 1.0:
-            raise ConfigError("speakers.auto_update_threshold muss zwischen match_threshold und 1 liegen")
+        if not sp.auto_update_threshold < 1.0:
+            raise ConfigError("speakers.auto_update_threshold muss kleiner als 1 sein")
+        if sp.auto_update_threshold < sp.match_threshold:
+            # earlier versions accepted this (e.g. match_threshold raised to 0.72, auto_update left at 0.70):
+            # a config.toml that worked before must not stop the app from starting after an update
+            self.warnings.append(f"speakers.auto_update_threshold ({sp.auto_update_threshold}) lag unter "
+                                 f"match_threshold ({sp.match_threshold}) und wird wie match_threshold behandelt.")
+            sp.auto_update_threshold = sp.match_threshold
         from callrec.updater import UpdateError, validate_source
 
         try:

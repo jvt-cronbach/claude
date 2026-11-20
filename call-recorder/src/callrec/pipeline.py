@@ -45,6 +45,9 @@ from callrec.versions import adopt_legacy, fingerprint, latest, write_version
 log = logging.getLogger(__name__)
 
 IDENTIFY_RULE = "participants-v2"  # meta.json processing.identification.rule of this version
+# below this similarity, clusters merged by the participant limit are probably different people:
+# the merged speaker is still named after the only participant, but teaches no voice profile
+SOLE_MIN_MERGE_SIMILARITY = 0.3
 STEPS = ("finalize", "transcribe", "diarize", "identify", "render", "summarize")
 ALL_STEPS = frozenset(STEPS)
 # Named step sets, shared by the CLI, the tray and the main window (one source of truth).
@@ -480,12 +483,12 @@ class Pipeline:
     def _participants(self, rec: Recording) -> list[Person]:
         """This recording's participants without you."""
         from callrec.selfname import self_people
-        from callrec.speakers.names import persons_match
+        from callrec.speakers.names import is_one_of, persons_match
 
         me_all = self_people(self.cfg, rec.self_person())
         out: list[Person] = []
         for p in rec.participants():
-            if not any(persons_match(p, x) for x in me_all) and not any(persons_match(p, q) for q in out):
+            if not is_one_of(p, me_all) and not any(persons_match(p, q) for q in out):
                 out.append(p)
         return out
 
@@ -516,7 +519,8 @@ class Pipeline:
         keep = carry_over_assignments(cur_turns, cur_sp, raw_turns)
         keep_apart = {sid: i.name for sid, i in keep.items() if i.source == SOURCE_MANUAL}
         exclude = set(report.self_suspects) | {sid for sid, i in keep.items() if i.source == SOURCE_SELF_ECHO}
-        res = merge_to_bound(raw_turns, raw_emb, speech_seconds(raw_turns), bound, keep_apart, exclude)
+        res = merge_to_bound(raw_turns, raw_emb, speech_seconds(raw_turns), bound, keep_apart, exclude,
+                             named_merge_min=sc.match_threshold)
         raw_n = len({t.speaker for t in raw_turns})
         info: dict[str, Any] = {"participants": len(participants), "bound": bound, "lifted": lifted,
                                 "raw_speakers": raw_n, "speakers": len({t.speaker for t in res.turns}),
@@ -527,6 +531,13 @@ class Pipeline:
             return cur_turns, cur_emb, model_id, cur_sp, info
         info["changed"] = True
         carried = carry_over_assignments(cur_turns, cur_sp, res.turns) if cur_turns else {}
+        # a decision of yours follows its cluster into the merged one, whatever its share of the time
+        import dataclasses
+
+        for raw_sid, decided in keep.items():
+            new_sid = res.mapping.get(raw_sid)
+            if new_sid is not None and new_sid not in carried:
+                carried[new_sid] = dataclasses.replace(decided, id=new_sid)
         return res.turns, res.embeddings, raw_model or model_id, carried, info
 
     def compute_identification(self, rec: Recording, diar: tuple[Any, ...] | None = None,
@@ -593,7 +604,10 @@ class Pipeline:
             info.name, info.email, info.source, info.score = person.name or person.email, person.email, SOURCE_AUTO, None
             info.note = "einzige eingeladene Person der Gegenseite"
             open_ids = [x for x in open_ids if x != sid]
-            if (model_id and sid in embeddings and speech.get(sid, 0.0) >= sc.min_learn_speech_s
+            doubt = self._sole_doubt(rec, person, embeddings.get(sid), model_id, me_all, meta)
+            if doubt:
+                info.note += f" – {doubt}; Stimmprofil nicht aktualisiert"
+            elif (model_id and sid in embeddings and speech.get(sid, 0.0) >= sc.min_learn_speech_s
                     and not report.mic_unreliable):
                 learn.append((Person(info.name, info.email), sid, embeddings[sid], speech.get(sid, 0.0), "sole"))
             to_match = {}
@@ -649,6 +663,33 @@ class Pipeline:
         }
         return speakers, ident, learn
 
+    def _sole_doubt(self, rec: Recording, person: Person, emb: np.ndarray | None, model_id: str,
+                    me_all: list[Person], meta: dict[str, Any]) -> str:
+        """Why the voice of the only remote speaker must not teach that participant's profile ("" = fine).
+
+        The name follows from the invitation; a voice profile must not: somebody else may have come
+        instead (the voice then differs from the participant's profile or sounds like another known
+        person), or the limit merged clearly different voices into one speaker."""
+        from callrec.speakers.profiles import cosine
+
+        sc = self.cfg.speakers
+        merged = (((meta.get("processing") or {}).get("diarization") or {}).get("bound") or {}).get("merged") or []
+        if any(len(m) >= 3 and float(m[2]) < SOLE_MIN_MERGE_SIMILARITY for m in merged):
+            return "mehrere unterschiedliche Stimmen zusammengefasst"
+        if emb is None or not model_id:
+            return ""
+        own = self.c.profiles.find(person.name, person.email, model_id)
+        if own is not None and own.embedding.shape == np.asarray(emb).reshape(-1).shape:
+            if all(c.recording == rec.uid for c in own.contributions):
+                own = None  # learned only from this recording: no independent evidence
+            elif cosine(np.asarray(emb).reshape(-1), own.embedding) < sc.match_threshold:
+                return f"Stimme passt nicht zum Stimmprofil von {own.name}"
+        dec = self.c.profiles.decide({"x": emb}, model_id, participants=None, threshold=sc.match_threshold,
+                                     margin=sc.match_margin, exclude=me_all, ignore_recording=rec.uid).get("x")
+        if dec is not None and dec.match is not None and not dec.match.profile.matches_person(person):
+            return f"klingt wie {dec.match.profile.name}"
+        return ""
+
     def _step_identify(self, rec: Recording, result: ProcessResult, progress: Callable[..., None]) -> None:
         import time
 
@@ -698,6 +739,10 @@ class Pipeline:
             b = before.display if before is not None else info.label
             if b != info.display:
                 out.append((info.label, b, info.display + (f" – {info.note}" if info.note and not info.name else "")))
+        # speakers that the limit to the participants merges away must not vanish from the preview
+        for sid, info in old.items():
+            if sid != SELF_SPEAKER_ID and sid not in new:
+                out.append((info.label, info.display, "mit einem anderen Sprecher zusammengelegt (gleiche Person)"))
         return out
 
     def _step_render(self, rec: Recording, result: ProcessResult, progress: Callable[..., None]) -> None:

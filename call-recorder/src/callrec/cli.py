@@ -219,7 +219,12 @@ def cmd_profiles(args: argparse.Namespace) -> int:
 
         for p in found:
             if args.action == "reset":
+                from callrec.speakers.profiles import only_legacy_unconfirmed
+
                 left = store.reset_to_confirmed(p.id)
+                if left is not None and only_legacy_unconfirmed(left):
+                    print(f"{p.name}: nur Einträge einer früheren Version - unverändert (rebuild oder delete)")
+                    continue
                 print(f"{p.name}: nur Bestätigtes behalten" + ("" if left else " - nichts bestätigt, Profil gelöscht"))
                 continue
             if args.action == "rebuild":
@@ -270,17 +275,22 @@ def cmd_postinstall(args: argparse.Namespace) -> int:
     return 0
 
 
+def ps_quote(text: str) -> str:
+    """A PowerShell single-quoted literal (a path like C:\\Users\\O'Brien must not end the string)."""
+    return "'" + text.replace("'", "''") + "'"
+
+
 def create_start_menu_shortcut() -> None:  # pragma: no cover - Windows only
     import subprocess
 
     from callrec.autostart import pythonw_for
     from callrec.updater import app_root
 
-    target = str(pythonw_for())
+    target = ps_quote(str(pythonw_for()))
     script = (
         "$s = New-Object -ComObject WScript.Shell; "
         "$l = $s.CreateShortcut([IO.Path]::Combine([Environment]::GetFolderPath('Programs'), 'CallRecorder.lnk')); "
-        f"$l.TargetPath = '{target}'; $l.Arguments = '-m callrec tray'; $l.WorkingDirectory = '{app_root()}'; "
+        f"$l.TargetPath = {target}; $l.Arguments = '-m callrec tray'; $l.WorkingDirectory = {ps_quote(str(app_root()))}; "
         "$l.Description = 'CallRecorder - lokale Gesprächsaufnahme'; $l.Save()"
     )
     subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script], check=True,  # noqa: S603, S607
@@ -304,8 +314,10 @@ def cmd_update(args: argparse.Namespace) -> int:
         if args.action == "restore":
             info = read_install_info()
             res = restore_check(up, str(info.get("previous_commit") or ""), str(info.get("previous_version") or ""))
+            if not _app_closed():
+                return 1
             plan = helper_plan(res, str(info["previous_commit"]), str(info.get("previous_version") or ""), "restore")
-            plan["app_pid"], plan["restart"] = 0, []
+            plan["restart"] = []  # app_pid = this console process: the helper waits until it has exited
             launch_helper(plan)
             print("Wiederherstellung gestartet – Protokoll: " + plan["log"])
             return 0
@@ -323,12 +335,24 @@ def cmd_update(args: argparse.Namespace) -> int:
     if up.local_changes():
         print("Im Programmordner gibt es lokale Änderungen – Update abgelehnt.")
         return 1
+    if not _app_closed():
+        return 1
     plan = helper_plan(res, res.release.commit, res.release.version)
-    plan["app_pid"] = 0  # from the console: nothing to wait for (quit the tray app first!)
-    plan["restart"] = []
+    plan["restart"] = []  # app_pid = this console process: the helper waits until it has exited
     launch_helper(plan)
     print("Update-Helfer gestartet – Fortschritt im eigenen Fenster, Protokoll: " + plan["log"])
     return 0
+
+
+def _app_closed() -> bool:
+    """From the console: the tray app must not run while its program folder and venv are replaced."""
+    from callrec.ui.app import acquire_single_instance
+
+    if acquire_single_instance():  # held until this process exits (the helper waits for that)
+        return True
+    print("CallRecorder läuft noch – bitte zuerst beenden (Infobereich: Rechtsklick > Beenden) oder in der App "
+          "Hilfe > Nach Updates suchen verwenden.")
+    return False
 
 
 def cmd_recheck(args: argparse.Namespace) -> int:
@@ -360,9 +384,15 @@ def cmd_recheck(args: argparse.Namespace) -> int:
     if not args.yes and input("Übernehmen? (ja/nein) ").strip().lower() != "ja":
         print("Nichts geändert.")
         return 1
+    from callrec.review import legacy_profile_updates
+
+    sharpened = [n for n in legacy_profile_updates(rec) if any(before == n for _l, before, _a in changes)]
     archive_speakers(rec)
     pipeline.run(rec, {"identify", "render"}, _print_progress)
     print(f"Transkript aktualisiert: {rec.transcript_path}")
+    if sharpened:
+        print("Die frühere Version hat diese Stimmprofile mit der Aufnahme nachgeschärft: " + ", ".join(sharpened)
+              + ". Waren die Zuordnungen falsch: callrec profiles rebuild \"<Name>\"")
     return 0
 
 

@@ -29,6 +29,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+# PowerShell 5.1 passes "C:\Mein Ordner\" to git as ...Ordner\" (the backslash escapes the closing quote)
+if ($InstallDir.Length -gt 3) { $InstallDir = $InstallDir.TrimEnd('\', '/') }
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $env:GIT_HTTP_LOW_SPEED_LIMIT = "1000"
 $env:GIT_HTTP_LOW_SPEED_TIME = "30"
@@ -72,10 +74,10 @@ if ($oldAuto) {
 }
 
 # --- 2. Klonen / holen ------------------------------------------------------------
-if (Test-Path (Join-Path $InstallDir ".git")) {
+if (Test-Path -LiteralPath (Join-Path $InstallDir ".git")) {
     Write-Step "Vorhandenen Git-Ordner verwenden: $InstallDir"
 } else {
-    if ((Test-Path $InstallDir) -and (Get-ChildItem $InstallDir -Force | Select-Object -First 1)) {
+    if ((Test-Path -LiteralPath $InstallDir) -and (Get-ChildItem -LiteralPath $InstallDir -Force | Select-Object -First 1)) {
         throw "$InstallDir existiert und ist nicht leer. Bitte einen leeren oder neuen Ordner angeben (-InstallDir)."
     }
     Write-Step "Klone $RepoUrl ($Branch) nach $InstallDir"

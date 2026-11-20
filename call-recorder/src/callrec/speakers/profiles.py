@@ -26,7 +26,7 @@ from typing import Any, Protocol
 import numpy as np
 
 from callrec.models import Person
-from callrec.speakers.names import persons_match, same_person
+from callrec.speakers.names import is_one_of, persons_match, same_person
 
 log = logging.getLogger(__name__)
 
@@ -382,12 +382,18 @@ class ProfileStore:
             return p
 
     def reset_to_confirmed(self, profile_id: str) -> VoiceProfile | None:
-        """Keep only what you assigned or confirmed (drops automatic and legacy contributions)."""
+        """Keep only what you assigned or confirmed (drops automatic and legacy contributions).
+
+        A profile with nothing confirmed is deleted - unless it holds entries of an earlier version:
+        those were mostly your own assignments (of unknown origin), so it is then left unchanged
+        (see :func:`only_legacy`; "Neu aufbauen" or "Löschen" decide)."""
         with self._lock:
             p = self._load().get(profile_id)
             if p is None:
                 return None
             keep = [c for c in p.contributions if c.source in USER_SOURCES]
+            if not keep and any(c.source == "legacy" for c in p.contributions):
+                return p
             if not keep:
                 del self._load()[profile_id]
                 self._save()
@@ -472,7 +478,7 @@ class ProfileStore:
         with self._lock:
             profiles = []
             for p in self._load().values():
-                if p.model_id != model_id or any(p.matches_person(x) for x in excluded):
+                if p.model_id != model_id or is_one_of(p.person, excluded):
                     continue
                 if ignore_recording and any(c.recording == ignore_recording for c in p.contributions):
                     rest = [c for c in p.contributions if c.recording != ignore_recording]
@@ -549,6 +555,12 @@ class ProfileStore:
                           threshold=threshold, margin=margin, exclude=exclude, bonus=invitee_bonus,
                           preferred=None if participants_only else list(candidates))
         return {k: d.match for k, d in dec.items() if d.match is not None}
+
+
+def only_legacy_unconfirmed(p: VoiceProfile) -> bool:
+    """Nothing you confirmed with a known origin, but entries of an earlier version."""
+    return not any(c.source in USER_SOURCES for c in p.contributions) and any(
+        c.source == "legacy" for c in p.contributions)
 
 
 def person_in(person: Person, people: list[Person]) -> bool:

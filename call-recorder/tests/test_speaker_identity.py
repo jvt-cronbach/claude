@@ -26,7 +26,7 @@ from callrec.review import (
 from callrec.speakers import names, threads, trackcheck
 from callrec.speakers.assign import assign_remote
 from callrec.speakers.diarize import clean_intervals, speech_seconds
-from callrec.speakers.profiles import PlainFilePersistence, ProfileStore
+from callrec.speakers.profiles import PlainFilePersistence, ProfileStore, only_legacy_unconfirmed
 from tests.conftest import make_recording
 from tests.test_pipeline import make_pipeline, recording_with_voices, short_cfg
 
@@ -134,6 +134,15 @@ def test_legacy_profile_is_readable_and_resettable(tmp_path: Path):
     p2 = s.learn("Alt", "", onehot(4, 0.1), "m", recording="r", speaker="S1", source="manual")
     assert p2.samples == 8 and np.dot(p2.embedding, onehot(4)) > 0.9
     assert s.reset_to_confirmed("x1") is not None and [c.source for c in s.get("x1").contributions] == ["manual"]  # type: ignore[union-attr]
+    # a profile of an earlier version with nothing confirmed since is not deleted by "Zurücksetzen"
+    path.write_text(json.dumps({"version": 1, "profiles": [{
+        "id": "x2", "name": "Nur Alt", "email": "", "model_id": "m", "embedding": onehot(5).tolist(), "samples": 3,
+        "created_at": "", "updated_at": ""}]}), encoding="utf-8")
+    s = ProfileStore(PlainFilePersistence(path))
+    s.learn("Nur Alt", "", onehot(5, 0.1), "m", recording="r", speaker="S1", source="auto")
+    left = s.reset_to_confirmed("x2")
+    assert left is not None and only_legacy_unconfirmed(left) and len(left.contributions) == 2
+    assert ProfileStore(PlainFilePersistence(path)).get("x2") is not None
 
 
 # -- pipeline ------------------------------------------------------------------------------------
@@ -412,13 +421,34 @@ def test_two_participant_call_has_one_remote_speaker_named_after_the_participant
     assert any("Kunde, Karl:" in line for line in summ.seen[-1])
     meta = rec.load_meta()["processing"]["diarization"]["bound"]
     assert meta["bound"] == 1 and meta["raw_speakers"] == 2 and meta["speakers"] == 1
+    # the two merged clusters sound exactly like Bernd and Anna: named Karl, but Karl's profile learns nothing
+    assert store.find("Karl Kunde", "karl@kunde.de", "fake-embedder") is None
+    assert "Stimmprofil nicht aktualisiert" in remote["S1"].note
+
+
+def test_sole_participant_learns_only_a_voice_that_is_plausibly_theirs(tmp_path: Path, store: ProfileStore):
+    _two_known_voices(tmp_path, store)  # Anna (330 Hz) and Bernd (550 Hz)
+    karl_rec = recording_with_voices(tmp_path / "k1", 760, 770)  # one unknown voice, split in two clusters
+    set_participants(karl_rec, [Person("Kunde, Karl", "karl@kunde.de")])
+    pipeline, _, _ = make_pipeline(store)
+    pipeline.run(karl_rec)
     karl = store.find("Karl Kunde", "karl@kunde.de", "fake-embedder")  # min_learn_speech_s = 0 in the fake
-    assert karl is not None and karl.contributions[0].source == "sole"
+    assert karl is not None and [c.source for c in karl.contributions] == ["sole"]
     # "Weitere Sprecher zulassen": back to the unbounded diarization (cached, no audio)
-    rec.update_meta(["speaker_limit"], {"lifted": True})
-    pipeline.run(rec, {"identify", "render"})
-    assert {sid for sid in rec.load_speakers() if sid != "ME"} == {"S1", "S2"}
+    karl_rec.update_meta(["speaker_limit"], {"lifted": True})
+    pipeline.run(karl_rec, {"identify", "render"})
+    assert {sid for sid in karl_rec.load_speakers() if sid != "ME"} == {"S1", "S2"}
     assert store.find("Karl Kunde", "karl@kunde.de", "fake-embedder") is None  # the "sole" sample is undone
+    karl_rec.update_meta(["speaker_limit"], {"lifted": False})
+    pipeline.run(karl_rec, {"identify", "render"})
+    assert store.find("Karl Kunde", "karl@kunde.de", "fake-embedder") is not None
+    # Karl invited, but his colleague Bernd came instead: named Karl (the invitation), Karl's profile untouched
+    sub = recording_with_voices(tmp_path / "k2", 550, 560)
+    set_participants(sub, [Person("Kunde, Karl", "karl@kunde.de")])
+    pipeline.run(sub)
+    s1 = sub.load_speakers()["S1"]
+    assert s1.name == "Kunde, Karl" and "Stimme passt nicht zum Stimmprofil" in s1.note
+    assert all(c.recording != sub.uid for c in store.find("Karl Kunde", "karl@kunde.de", "fake-embedder").contributions)  # type: ignore[union-attr]
 
 
 def test_bound_is_participants_minus_one_and_no_list_keeps_the_count():
@@ -469,6 +499,7 @@ def test_recheck_fixes_an_old_recording_with_foreign_names(tmp_path: Path, store
     rec.update_meta(["processing", "identification"], None)
     changes = pipeline.preview_identification(rec)
     assert ("Sprecher 1", "Bernd Muster", "Kunde, Karl") in changes
+    assert any(c[0] == "Sprecher 2" and c[1] == "Anna Beispiel" and "zusammengelegt" in c[2] for c in changes)
     pipeline.run(rec, {"identify", "render"})
     assert {s.name for sid, s in rec.load_speakers().items() if sid != "ME"} == {"Kunde, Karl"}
     assert rec.load_raw_diarization() is not None  # the original diarization is kept for "Weitere Sprecher"
@@ -532,3 +563,94 @@ def test_prompt_defaults_leave_out_private_talk_and_upgrade_unchanged_files(tmp_
     warn = uf.validate_prompt("final", "Fasse zusammen: {transkript}")
     assert any("{material}" in w for w in warn) and any("{transkript}" in w for w in warn)
     assert uf.validate_prompt("chunk", "Teil {i}") and uf.default_prompt("chunk") == uf.SUMMARY_CHUNK_TEMPLATE
+
+
+def test_you_listed_under_another_address_are_not_a_remote_participant(tmp_path: Path, store: ProfileStore,
+                                                                       isolated_home: Path):
+    """The invitation lists you under an alias (or the UPN), /me and the recording know another address."""
+    rec = recording_with_voices(tmp_path / "r", 550, 330)
+    rec.update_meta(["self"], Person("Joost van Treeck", "jvt@firma.de", "self").to_dict())
+    set_participants(rec, [Person("van Treeck, Joost", "joost.vantreeck@firma.de", "organizer"),
+                           Person("Kunde, Karl", "karl@kunde.de")])
+    pipeline, _, _ = make_pipeline(store)
+    assert [p.name for p in pipeline._participants(rec)] == ["Kunde, Karl"]
+    pipeline.run(rec)
+    remote = {sid: s for sid, s in rec.load_speakers().items() if sid != "ME"}
+    assert list(remote) == ["S1"] and remote["S1"].name == "Kunde, Karl"
+    assert name_choices(rec, store) == ["Kunde, Karl"]
+    # different people with the same surname or a shared first name are still told apart
+    assert not names.same_identity_loose(Person("Anna Müller", "anna@a.de"), Person("Bernd Müller", "bernd@a.de"))
+    assert not names.same_identity_loose(Person("Anna", "anna@a.de"), Person("Anna", "anna@b.de"))
+    assert names.same_identity_loose(Person("Joost van Treeck", ""), Person("", "joost.van.treeck@firma.de"))
+
+
+def test_sole_participant_without_profile_whose_voice_is_somebody_known(tmp_path: Path, store: ProfileStore):
+    _two_known_voices(tmp_path, store)
+    rec = recording_with_voices(tmp_path / "n", 550, 560)  # sounds like Bernd
+    set_participants(rec, [Person("Neu, Nora", "nora@kunde.de")])
+    pipeline, _, _ = make_pipeline(store)
+    pipeline.run(rec)
+    s1 = rec.load_speakers()["S1"]
+    assert s1.name == "Neu, Nora" and "klingt wie Bernd Muster" in s1.note
+    assert store.find("Nora Neu", "nora@kunde.de", "fake-embedder") is None
+
+
+def test_limit_never_files_a_different_voice_under_your_decision():
+    from callrec.speakers.bound import merge_to_bound
+
+    turns = [SpeakerTurn(0, 50, "S1"), SpeakerTurn(50, 55, "S2"), SpeakerTurn(55, 60, "S3")]
+    emb = {"S1": onehot(1), "S2": onehot(2), "S3": onehot(2, 0.05, 1)}
+    speech = {"S1": 50.0, "S2": 5.0, "S3": 5.0}
+    # S2 = Petra (your assignment, a short contribution of an uninvited guest), bound 1 (only Karl invited)
+    res = merge_to_bound(turns, emb, speech, 1, keep_apart={"S2": "Petra"}, named_merge_min=0.55)
+    assert res.mapping["S2"] == res.mapping["S3"] != res.mapping["S1"]  # similar fragment joins, Karl stays apart
+
+
+def test_manual_assignment_of_an_uninvited_guest_survives_the_participant_limit(tmp_path: Path, store: ProfileStore):
+    rec = recording_with_voices(tmp_path / "g", 550, 760)
+    set_participants(rec, [Person("Kunde, Karl", "karl@kunde.de")])
+    rec.update_meta(["speaker_limit"], {"lifted": True})
+    pipeline, _, _ = make_pipeline(store)
+    pipeline.run(rec)
+    apply_assignments(rec, [Assignment("S2", "Petra Gast", save_profile=False)], store,
+                      lambda: pipeline.run(rec, {"render"}), min_learn_speech_s=0)
+    set_participants(rec, [Person("Kunde, Karl", "karl@kunde.de")])  # Petra removed again
+    rec.update_meta(["speaker_limit"], {"lifted": False})
+    pipeline.run(rec, {"identify", "render"})
+    remote = {sid: s for sid, s in rec.load_speakers().items() if sid != "ME"}
+    assert len(remote) == 2 and [s.name for s in remote.values()].count("Petra Gast") == 1  # Karl's voice is not hers
+    karl_sid = next(sid for sid, s in remote.items() if s.name != "Petra Gast")
+    assert remote[karl_sid].preselect_name == "Kunde, Karl"
+
+
+def test_profiles_sharpened_by_an_earlier_version_are_named(tmp_path: Path, store: ProfileStore):
+    from callrec.review import legacy_profile_updates
+
+    rec = recording_with_voices(tmp_path / "r", 550, 330)
+    rec.save_speakers({"ME": SpeakerInfo("ME", "Ich", name="Ich", source="self"),
+                       "S1": SpeakerInfo("S1", "Sprecher 1", name="Bernd Muster", source="auto", score=0.93),
+                       "S2": SpeakerInfo("S2", "Sprecher 2", name="Anna Beispiel", source="auto", score=0.62)})
+    assert legacy_profile_updates(rec) == ["Bernd Muster"]  # 0.62 was below the old threshold of 0.70
+    rec.update_meta(["processing", "identification"], {"rule": "participants-v2"})
+    assert legacy_profile_updates(rec) == []
+
+
+def test_prompt_editor_warns_when_a_section_heading_is_removed(tmp_path: Path):
+    from callrec.library import read_info, status_description
+    from callrec.userfiles import default_prompt, validate_prompt
+
+    assert validate_prompt("final", default_prompt("final")) == []
+    edited = default_prompt("final").replace("## Offene Fragen", "## Sonstiges")
+    assert any("Offene Fragen" in w for w in validate_prompt("final", edited))
+    rec = recording_with_voices(tmp_path / "r", 550, 330)
+    rec.summary_path.write_text("# x\n", encoding="utf-8")
+    rec.update_meta(["processing", "summary"], {"missing_sections": ["Offene Fragen"]})
+    assert "fehlen Abschnitte (Offene Fragen)" in status_description(read_info(rec.folder))
+
+
+def test_config_of_an_earlier_version_with_strict_matching_still_loads(tmp_path: Path):
+    p = tmp_path / "config.toml"
+    p.write_text("[speakers]\nmatch_threshold = 0.72\ninvitee_bonus = 0.05\nauto_update_on_match = true\n"
+                 "auto_update_threshold = 0.70\n\n[diarization]\nnum_threads = 2\n", encoding="utf-8")
+    cfg = load_config(p, preset="")
+    assert cfg.speakers.auto_update_threshold == 0.72 and any("auto_update_threshold" in w for w in cfg.warnings)

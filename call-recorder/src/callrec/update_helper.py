@@ -28,8 +28,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-GIT_ENV = {"GIT_TERMINAL_PROMPT": "0", "GIT_HTTP_LOW_SPEED_LIMIT": "1000", "GIT_HTTP_LOW_SPEED_TIME": "30"}
+GIT_ENV = {"GIT_TERMINAL_PROMPT": "0", "GIT_HTTP_LOW_SPEED_LIMIT": "1000", "GIT_HTTP_LOW_SPEED_TIME": "30",
+           # no hooks (global or in .git/hooks) and no fsmonitor daemon during checkout/status
+           "GIT_CONFIG_COUNT": "2", "GIT_CONFIG_KEY_0": "core.hooksPath", "GIT_CONFIG_VALUE_0": os.devnull,
+           "GIT_CONFIG_KEY_1": "core.fsmonitor", "GIT_CONFIG_VALUE_1": "false"}
 NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
+ENV_MARKER = ".callrec_env_commit"  # inside a venv copy: the program commit this environment belongs to
+SINGLE_INSTANCE_MUTEX = "Local\\CallRecorderSingleInstance"  # the app's (callrec.ui.app.acquire_single_instance)
 
 
 class Failed(RuntimeError):
@@ -43,6 +48,8 @@ class Helper:
         self.log_path = Path(plan["log"])
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         self.venv_replaced = False
+        self.venv_swapped = False
+        self._mutex: Any = None
 
     # -- helpers ---------------------------------------------------------
     def log(self, text: str) -> None:
@@ -89,16 +96,26 @@ class Helper:
         if dirty:
             raise Failed("Der Programmordner enthält nach dem Auschecken Änderungen – abgebrochen.")
 
+    def _prev(self) -> Path:
+        return Path(self.p["venv_dir"] + ".previous")
+
+    def prev_env_commit(self) -> str:
+        try:
+            return (self._prev() / ENV_MARKER).read_text(encoding="utf-8").strip()
+        except OSError:
+            return ""
+
     def backup_venv(self) -> None:
-        venv, prev = Path(self.p["venv_dir"]), Path(self.p["venv_dir"] + ".previous")
+        venv, prev = Path(self.p["venv_dir"]), self._prev()
         if prev.exists():
             shutil.rmtree(prev)
         self.step("Sichere die bisherige Python-Umgebung …")
         shutil.copytree(venv, prev, symlinks=True)
+        (prev / ENV_MARKER).write_text(self.p["previous"], encoding="utf-8")
         self.venv_replaced = True
 
     def restore_venv(self) -> None:
-        venv, prev = Path(self.p["venv_dir"]), Path(self.p["venv_dir"] + ".previous")
+        venv, prev = Path(self.p["venv_dir"]), self._prev()
         if not prev.exists():
             return
         broken = Path(self.p["venv_dir"] + ".failed")
@@ -108,6 +125,23 @@ class Helper:
             venv.rename(broken)
         shutil.copytree(prev, venv, symlinks=True)
         shutil.rmtree(broken, ignore_errors=True)
+
+    def swap_venv(self) -> None:
+        """Restore: the saved environment becomes the active one and vice versa (both stay usable)."""
+        venv, prev = Path(self.p["venv_dir"]), self._prev()
+        tmp = Path(self.p["venv_dir"] + ".swap")
+        if tmp.exists():
+            shutil.rmtree(tmp)
+        venv.rename(tmp)
+        try:
+            prev.rename(venv)
+        except OSError:
+            tmp.rename(venv)
+            raise
+        tmp.rename(prev)
+        # the saved copy now holds the environment of the commit that was active before this swap
+        (prev / ENV_MARKER).write_text(self.p["target"] if self.venv_swapped else self.p["previous"], encoding="utf-8")
+        self.venv_swapped = not self.venv_swapped
 
     def install_requirements(self) -> None:
         py, root = self.p["venv_python"], self.p["app_root"]
@@ -132,7 +166,32 @@ class Helper:
         Path(self.p["status"]).parent.mkdir(parents=True, exist_ok=True)
         Path(self.p["status"]).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    def hold_app_closed(self) -> None:
+        """Windows: hold the app's single-instance mutex, so CallRecorder cannot be started mid-update."""
+        if sys.platform != "win32":
+            return
+        try:
+            import ctypes
+
+            k32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined]
+            k32.CreateMutexW.restype = ctypes.c_void_p
+            k32.CreateMutexW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_wchar_p]
+            self._mutex = k32.CreateMutexW(None, False, SINGLE_INSTANCE_MUTEX)
+        except Exception as exc:  # noqa: BLE001 - only a safeguard
+            self.log(f"Sperre gegen einen Programmstart nicht gesetzt: {exc}")
+
+    def release_app(self) -> None:
+        if self._mutex:
+            try:
+                import ctypes
+
+                ctypes.windll.kernel32.CloseHandle(ctypes.c_void_p(self._mutex))  # type: ignore[attr-defined]
+            except Exception:  # noqa: BLE001, S110
+                pass
+            self._mutex = None
+
     def restart(self) -> None:
+        self.release_app()
         if not self.p.get("restart"):
             return
         try:
@@ -151,13 +210,24 @@ class Helper:
         except Failed as exc:
             self.write_status(False, str(exc))
             return False
+        self.hold_app_closed()
+        install = Path(self.p["install"]) if self.p.get("install") else None
+        try:
+            install_before = install.read_bytes() if install is not None and install.exists() else None
+        except OSError:
+            install_before = None
+        # if this process dies mid-way (power cut, killed), the next start says so instead of nothing
+        self.write_status(False, f"{what} auf {self.p.get('version', '')} wurde unterbrochen. Falls CallRecorder nicht "
+                                 "richtig funktioniert: Hilfe → Nach Updates suchen → „Vorherige Version "
+                                 "wiederherstellen“ oder install-callrecorder.ps1 erneut ausführen. "
+                                 f"Einzelheiten: {self.log_path}")
         try:
             self.step(f"Wechsle auf Version {self.p.get('version', '')} ({target[:10]}) …")
             self.checkout(target)
-            if self.p.get("mode") == "restore" and Path(self.p["venv_dir"] + ".previous").exists() \
-                    and self.p.get("requirements_changed"):
+            if self.p.get("mode") == "restore" and self.p.get("requirements_changed") \
+                    and self.prev_env_commit() == target:
                 self.step("Stelle die vorherige Python-Umgebung wieder her …")
-                self.restore_venv()
+                self.swap_venv()
             elif self.p.get("requirements_changed"):
                 self.backup_venv()
                 self.install_requirements()
@@ -167,8 +237,12 @@ class Helper:
             reason = str(exc)
             try:
                 self.git("-c", "advice.detachedHead=false", "checkout", "--detach", previous)
-                if self.venv_replaced:
+                if self.venv_swapped:
+                    self.swap_venv()
+                elif self.venv_replaced:
                     self.restore_venv()
+                if install is not None and install_before is not None:
+                    install.write_bytes(install_before)  # the new version's postinstall may have recorded itself
                 rolled = "Der vorherige Stand wurde wiederhergestellt."
             except Exception as exc2:  # noqa: BLE001
                 rolled = f"Auch die Wiederherstellung schlug fehl ({exc2}) – bitte install-callrecorder.ps1 erneut ausführen."

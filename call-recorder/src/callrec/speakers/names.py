@@ -95,3 +95,24 @@ def first_name(display_name: str) -> str:
         if _fold(tok).strip(".") not in _TITLES:
             return tok.strip(",")
     return name.split()[0]
+
+
+def same_identity_loose(a: Person, b: Person) -> bool:
+    """For keeping YOU out of the remote side only: like :func:`persons_match`, but a full name
+    (at least two tokens) or an address local part also counts when the two addresses differ -
+    the calendar may list you under an alias or the user principal name instead of the mail
+    address of /me. (For other people different addresses mean different people.)"""
+    if persons_match(a, b):
+        return True
+    ta = name_tokens(a.name) or email_tokens(a.email)
+    tb = name_tokens(b.name) or email_tokens(b.email)
+    if len(ta) >= 2 and ta == tb:
+        return True
+    for name_side, mail_side in ((ta, b.email), (tb, a.email)):
+        if len(name_side) >= 2 and mail_side and email_tokens(mail_side) == name_side:
+            return True
+    return False
+
+
+def is_one_of(person: Person, people: list[Person]) -> bool:
+    return any(same_identity_loose(person, p) for p in people)

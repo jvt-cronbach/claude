@@ -63,6 +63,7 @@ class RecordingInfo:
     chain_stage: str = ""  # guided processing after the recording (processing.chain.stage)
     handoff_skipped: str = ""  # why the chain did not hand over
     summary_outdated: bool = False  # the summary names speakers that were re-assigned since
+    summary_missing: list[str] = field(default_factory=list)  # expected sections the summary lacks
     old_identification: bool = False  # speakers matched automatically under the rule of earlier versions
     capture_warnings: list[str] = field(default_factory=list)  # mic track checks (processing.identification)
 
@@ -185,6 +186,8 @@ def read_info(folder: Path) -> RecordingInfo:
     if not info.has_summary and smeta.get("skipped"):
         info.summary_problem = str(smeta["skipped"])
     info.summary_outdated = info.has_summary and bool(smeta.get("speakers_outdated"))
+    if info.has_summary and isinstance(smeta.get("missing_sections"), list):
+        info.summary_missing = [str(x) for x in smeta["missing_sections"]]
     sp = proc.get("speakers")
     if isinstance(sp, dict) and "unassigned" in sp:
         info.speakers_unassigned = int(sp.get("unassigned") or 0)
@@ -388,6 +391,8 @@ def status_description(info: RecordingInfo) -> str:
     if info.summary_outdated:
         parts.append("Die Zusammenfassung beruht auf alten Sprechernamen – „Zusammenfassung neu erstellen“"
                      + (" und danach erneut an SharePoint übergeben." if info.handoff else "."))
+    if info.summary_missing:
+        parts.append("Der Zusammenfassung fehlen Abschnitte (" + ", ".join(info.summary_missing) + ") – Prompt prüfen.")
     if info.old_identification:
         parts.append("Die Sprecher wurden von einer früheren Version zugeordnet, die auch nicht eingeladene Personen "
                      "erkannt hat – „Weitere … → Sprecherzuordnung neu prüfen“.")

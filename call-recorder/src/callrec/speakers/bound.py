@@ -39,10 +39,13 @@ def merge_to_bound(
     bound: int | None,
     keep_apart: dict[str, str] | None = None,
     exclude: set[str] | None = None,
+    named_merge_min: float = -1.0,
 ) -> BoundResult:
     """``bound``: maximum number of remote speakers (None = no limit). ``keep_apart``: raw id ->
     name you assigned (clusters with different names are never merged). ``exclude``: raw ids that
-    are neither counted nor merged (your own voice on the remote track)."""
+    are neither counted nor merged (your own voice on the remote track). ``named_merge_min``: an
+    unnamed cluster joins a cluster you named only with at least this similarity - a different
+    voice must not be filed under your decision (the bound is then not reached)."""
     keep_apart = keep_apart or {}
     exclude = exclude or set()
     order = list(dict.fromkeys(t.speaker for t in sorted(turns, key=lambda t: (t.start, t.end))))
@@ -66,6 +69,8 @@ def merge_to_bound(
                     sim = float(np.dot(cent[a], cent[b]))
                 else:
                     sim = -2.0  # no embedding: merge only if nothing else is possible
+                if bool(names[a]) != bool(names[b]) and sim < named_merge_min:
+                    continue
                 if best is None or sim > best[0]:
                     best = (sim, a, b)
         if best is None:

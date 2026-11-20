@@ -494,9 +494,16 @@ def manage_profiles(root: tk.Tk, profiles: ProfileStore, rebuild: Callable[[str]
         if pid and messagebox.askyesno("Zurücksetzen", "Nur behalten, was Sie selbst zugeordnet oder bestätigt haben? "
                                        "Automatisch Gelerntes und Einträge früherer Versionen werden entfernt.",
                                        parent=win):
-            if profiles.reset_to_confirmed(pid) is None:
+            from callrec.speakers.profiles import only_legacy_unconfirmed
+
+            left = profiles.reset_to_confirmed(pid)
+            if left is None:
                 messagebox.showinfo("Zurücksetzen", "Das Profil enthielt nichts Bestätigtes und wurde gelöscht.",
                                     parent=win)
+            elif only_legacy_unconfirmed(left):
+                messagebox.showinfo("Zurücksetzen", "Das Profil stammt aus einer früheren Version (Herkunft der Einträge "
+                                    "unbekannt) und bleibt unverändert. „Neu aufbauen“ übernimmt nur Ihre Zuordnungen "
+                                    "aus den Aufnahmen; „Löschen“ entfernt es ganz.", parent=win)
             refresh()
 
     def do_rebuild() -> None:
