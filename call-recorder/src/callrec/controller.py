@@ -74,6 +74,12 @@ class Controller:
         self._starting = False
         self._notified: set[str] = set()
         self._stopped_at = float("-inf")  # time.monotonic() of the last stop
+        self._session = 0  # increases with every started recording (stale auto-stops are ignored)
+        self._event_end: datetime | None = None
+        # extra data for meta.json "recording.autostop" at the stop (set by the app: AutoStopRunner.info)
+        self.stop_info: Callable[[int], dict[str, Any]] | None = None
+        # what happens with a stopped recording (the app asks first; default: process right away)
+        self.after_stop: Callable[[Recording, str], None] | None = None
 
     @property
     def is_recording(self) -> bool:
@@ -87,6 +93,18 @@ class Controller:
     def levels(self) -> dict[str, float]:
         r = self.recorder
         return r.levels() if r is not None else {"mic": 0.0, "remote": 0.0}
+
+    @property
+    def session_id(self) -> int:
+        """Id of the running recording (0 = none)."""
+        return self._session if self.recorder is not None else 0
+
+    def silence_durations(self) -> dict[str, float]:
+        r = self.recorder
+        return r.silence_durations() if r is not None else {"mic": 0.0, "remote": 0.0}
+
+    def current_event_end(self) -> datetime | None:
+        return self._event_end if self.recorder is not None else None
 
     def current_title(self) -> str:
         rec = self.current
@@ -169,7 +187,8 @@ class Controller:
             )
         )
         recorder = DualTrackRecorder(
-            backend, folder, mic, loop, self.cfg.audio.gap_threshold_s, self.cfg.audio.frames_per_buffer
+            backend, folder, mic, loop, self.cfg.audio.gap_threshold_s, self.cfg.audio.frames_per_buffer,
+            silence_dbfs=self.cfg.autostop.silence_dbfs,
         )
         try:
             recorder.start(consent)
@@ -178,41 +197,80 @@ class Controller:
             backend.close()
             self.ui.notify("Aufnahme fehlgeschlagen", str(exc))
             return False
-        self.recorder, self.backend, self.current = recorder, backend, rec
+        with self._lock:
+            self._session += 1
+            self.recorder, self.backend, self.current = recorder, backend, rec
+            self._event_end = decision.event.end if decision.event is not None else None
         self._notified = set()
         self.ui.set_recording_state(True, decision.title)
         self.ui.notify("Aufnahme läuft", f"{decision.title}\nMikrofon: {mic.name}\nGegenseite: {loop.name}")
         return True
 
-    def stop(self) -> Recording | None:
+    def stop(self, reason: str = "manual", *, session: int | None = None, by: str = "user",
+             detail: str = "") -> Recording | None:
+        """The one stop path (button, hotkey, tray, overlay, app exit and the automatic end).
+
+        ``reason``: manual | call_ended | silence | max_duration | app_quit (stored in meta.json).
+        ``session``: only stop if this recording is still the running one - an automatic stop that
+        was decided for a recording the user stopped meanwhile does nothing (returns None)."""
+        from callrec.autostop import REASON_TEXT
+
         with self._lock:
             recorder, rec, backend = self.recorder, self.current, self.backend
             if recorder is None or rec is None:
                 return None
+            if session is not None and session != self._session:
+                return None
+            stopped_session = self._session
             self.recorder = None
             self.current = None
             self.backend = None
+            self._event_end = None
             self._stopped_at = time.monotonic()
         result = recorder.stop()
         if backend is not None:
             backend.close()
+        stopped_at = self.clock().astimezone().isoformat()
+        info: dict[str, Any] = {}
+        if self.stop_info is not None:
+            try:
+                info = self.stop_info(stopped_session)
+            except Exception:
+                log.exception("Angaben zum automatischen Ende nicht ermittelbar")
+        stop_entry = {"reason": reason, "reason_text": REASON_TEXT.get(reason, reason), "by": by, "at": stopped_at}
+        if detail:
+            stop_entry["detail"] = detail
         rec.update_meta(
             ["recording"],
             {
                 **(rec.load_meta().get("recording") or {}),
                 "status": "stopped",
-                "stopped_at": self.clock().astimezone().isoformat(),
+                "stopped_at": stopped_at,
                 "duration_s": round(result.duration_s, 3),
                 "inserted_silence_s": {
                     "mic": round(result.mic.inserted_silence_s, 3),
                     "remote": round(result.remote.inserted_silence_s, 3),
                 },
                 "warnings": result.warnings,
+                "stop": stop_entry,
+                **({"autostop": info} if info else {}),
             },
         )
+        log.info("Aufnahme beendet: %s (%s)%s", reason, by, f" - {detail}" if detail else "")
         self.ui.set_recording_state(False, "")
-        self.ui.notify("Aufnahme beendet", "Die Verarbeitung läuft im Hintergrund.")
-        self.process(rec)
+        next_text = "Die Verarbeitung läuft im Hintergrund." if self.after_stop is None else "Die Aufnahme ist gespeichert."
+        if by == "automatic":
+            self.ui.notify("Aufnahme automatisch beendet", f"{REASON_TEXT.get(reason, reason)}. {detail} {next_text}".strip())
+        else:
+            self.ui.notify("Aufnahme beendet", next_text)
+        if self.after_stop is not None:
+            try:
+                self.after_stop(rec, reason)
+            except Exception:
+                log.exception("Nach der Aufnahme: Verarbeitung konnte nicht angestoßen werden")
+                self.process(rec)
+        else:
+            self.process(rec)
         self._stopped_at = time.monotonic()  # again: recorder.stop() can take a moment
         return rec
 
