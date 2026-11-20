@@ -426,7 +426,7 @@ class Pipeline:
         if rec.speakers_path.exists():
             rec.speakers_path.unlink()
         # automatic contributions of the old clusters to voice profiles are no longer valid
-        self.c.profiles.forget(rec.folder.name, sources=("auto",))
+        self.c.profiles.forget(rec.uid, sources=("auto",))
         if carried:
             rec.save_speakers(carried)
             result.messages.append(f"{len(carried)} manuelle Sprecherzuordnung(en) übernommen.")
@@ -532,7 +532,7 @@ class Pipeline:
                 to_match, model_id, participants=participants if strict else None, threshold=sc.match_threshold,
                 margin=sc.match_margin, exclude=me_all, not_eligible=not_eligible,
                 bonus=0.0 if strict else sc.invitee_bonus, preferred=None if strict else participants,
-                ignore_recording=rec.folder.name,
+                ignore_recording=rec.uid,
             )
         learn: list[Any] = []
         for sid in open_ids:
@@ -571,13 +571,13 @@ class Pipeline:
 
         t0 = time.monotonic()
         speakers, ident, learn = self.compute_identification(rec)
-        rid = rec.folder.name
+        rid = rec.uid
         # automatic contributions of an earlier run of this recording are replaced, never repeated
         self.c.profiles.forget(rid, sources=("auto",))
         _emb, model_id = rec.load_embeddings()
         for prof, sid, emb, secs in learn:
             self.c.profiles.learn(prof.name, prof.email, emb, model_id, recording=rid, speaker=sid, source="auto",
-                                  seconds=secs, title=rec.title())
+                                  seconds=secs, title=rec.title(), folder=rec.folder.name)
         rec.save_speakers(speakers)
         ident["timing"] = {"identify_s": round(time.monotonic() - t0, 3)}
         ident["at"] = _now_iso()

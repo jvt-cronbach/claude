@@ -143,6 +143,21 @@ class Recording:
     def duration(self) -> float:
         return float((self.load_meta().get("recording") or {}).get("duration_s") or 0.0)
 
+    @property
+    def uid(self) -> str:
+        """Stable unique id of this recording (created on first use, kept in meta.json).
+
+        Folder names are unique only within one recordings folder; voice profiles remember what
+        they learned from which recording by this id."""
+        meta = self.load_meta()
+        uid = str(meta.get("uid") or "")
+        if not uid:
+            import uuid
+
+            uid = uuid.uuid4().hex
+            self.update_meta(["uid"], uid)
+        return uid
+
     def participants(self) -> list[Person]:
         return [Person.from_dict(p) for p in self.load_meta().get("participants", [])]
 

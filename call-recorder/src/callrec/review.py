@@ -188,7 +188,7 @@ def apply_assignments(
     participants = rec.participants()
     me = rec.self_person()
     speech = speech_seconds(load_turns(rec))
-    rid = rec.folder.name
+    rid = rec.uid
     messages: list[str] = []
     added: list[Person] = []
     for a in assignments:
@@ -235,7 +235,7 @@ def apply_assignments(
             else:
                 prof = profiles.learn(name, info.email, emb, model_id, recording=rid, speaker=a.speaker_id,
                                       source="confirmed" if unchanged_auto else "manual", seconds=secs,
-                                      title=rec.title())
+                                      title=rec.title(), folder=rec.folder.name)
                 info.profile_id = prof.id
                 messages.append(f"Stimmprofil für {name} gespeichert ({prof.samples} Probe(n)).")
         elif corrected or info.profile_id:
@@ -355,8 +355,8 @@ def rebuild_profile(profiles: ProfileStore, profile_id: str, recordings_root: An
                 continue
             if speech is None:
                 speech = speech_seconds(load_turns(rec))
-            found.append(Contribution(rec.folder.name, sid, "manual", embeddings[sid], SOURCE_WEIGHT["manual"],
-                                      speech.get(sid, 0.0), title=rec.title()))
+            found.append(Contribution(rec.uid, sid, "manual", embeddings[sid], SOURCE_WEIGHT["manual"],
+                                      speech.get(sid, 0.0), title=rec.title(), folder=rec.folder.name))
     if not found:
         return (f"Für {prof.name} gibt es keine von Ihnen zugeordneten Stimmen mit gespeicherten Stimmmerkmalen - "
                 "das Profil bleibt unverändert.")

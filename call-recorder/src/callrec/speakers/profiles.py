@@ -125,25 +125,27 @@ def _normalize(v: np.ndarray) -> np.ndarray:
 class Contribution:
     """One embedding a profile learned, with its origin."""
 
-    recording: str  # recording folder name; "" = learned before origins were recorded
+    recording: str  # Recording.uid; "" = learned before origins were recorded
     speaker: str  # speaker id in that recording ("S2"); "" for legacy
     source: str  # manual | confirmed | auto | legacy
     embedding: np.ndarray
     weight: float
     seconds: float = 0.0
     at: str = ""
-    title: str = ""
+    title: str = ""  # title of the recording at that time (for display)
+    folder: str = ""  # recording folder name (for display)
 
     def to_dict(self) -> dict[str, Any]:
         return {"recording": self.recording, "speaker": self.speaker, "source": self.source,
                 "embedding": [round(float(x), 6) for x in self.embedding], "weight": round(self.weight, 4),
-                "seconds": round(self.seconds, 1), "at": self.at, "title": self.title}
+                "seconds": round(self.seconds, 1), "at": self.at, "title": self.title, "folder": self.folder}
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> Contribution:
         return Contribution(str(d.get("recording", "")), str(d.get("speaker", "")), str(d.get("source", "manual")),
                             np.asarray(d["embedding"], dtype=np.float32), float(d.get("weight", 1.0)),
-                            float(d.get("seconds", 0.0)), str(d.get("at", "")), str(d.get("title", "")))
+                            float(d.get("seconds", 0.0)), str(d.get("at", "")), str(d.get("title", "")),
+                            str(d.get("folder", "")))
 
 
 @dataclass
@@ -296,7 +298,7 @@ class ProfileStore:
         return changed
 
     def learn(self, name: str, email: str, embedding: np.ndarray, model_id: str, *, recording: str,
-              speaker: str, source: str, seconds: float = 0.0, title: str = "") -> VoiceProfile:
+              speaker: str, source: str, seconds: float = 0.0, title: str = "", folder: str = "") -> VoiceProfile:
         """Record what speaker ``speaker`` of ``recording`` sounds like, for the person ``name``.
 
         An earlier contribution of the same recording+speaker (to any profile) is replaced, so a
@@ -311,7 +313,7 @@ class ProfileStore:
                 self._drop(recording, speaker, None if source in USER_SOURCES else ("auto",))
             existing = self.find(name, email, model_id)
             now = _now()
-            contrib = Contribution(recording, speaker, source, emb, SOURCE_WEIGHT[source], seconds, now, title)
+            contrib = Contribution(recording, speaker, source, emb, SOURCE_WEIGHT[source], seconds, now, title, folder)
             if existing is None:
                 if source not in USER_SOURCES:
                     raise ValueError("Ein Stimmprofil wird nur aus einer Zuordnung durch Sie angelegt")
