@@ -101,7 +101,7 @@ class DiarizationConfig:
     num_speakers: int = 0  # 0 = determine automatically
     min_duration_on: float = 0.3
     min_duration_off: float = 0.5
-    num_threads: int = 2
+    num_threads: int = 0  # 0 = automatic from the physical cores (see callrec.speakers.threads)
 
 
 @dataclass
@@ -112,14 +112,26 @@ class TranscriptRenderConfig:
     split_pause_s: float = 2.0  # start a new paragraph after this pause
     max_paragraph_s: float = 60.0
     apply_replacements: bool = True  # replacements.txt
+    # Name for your own (mic track) contributions in transcript and summary.
+    # "" = automatic: first name from the Microsoft account (/me), else from general.user_name, else "Ich".
+    self_display_name: str = ""
 
 
 @dataclass
 class SpeakerConfig:
+    # "participants" (default): automatic assignment only to people of this recording (calendar
+    # invitation or entered by you); "all_profiles": every known profile (behaviour of earlier
+    # versions). Only config.toml / the settings dialog may change it, never a preset.
+    match_scope: str = "participants"
     match_threshold: float = 0.55
-    invitee_bonus: float = 0.05
+    # the best profile must beat every other profile by this much (else: no automatic assignment)
+    match_margin: float = 0.08
+    # clean speech (s) a speaker needs before it is matched automatically / may change a profile
+    min_match_speech_s: float = 8.0
+    min_learn_speech_s: float = 20.0
+    invitee_bonus: float = 0.05  # only in match_scope = "all_profiles"
     auto_update_on_match: bool = True
-    auto_update_threshold: float = 0.70
+    auto_update_threshold: float = 0.75
 
 
 @dataclass
@@ -262,8 +274,17 @@ class Config:
             raise ConfigError(f"audio.format muss 'flac' oder 'opus' sein, nicht {self.audio.format!r}")
         if self.transcription.device not in ("auto", "cuda", "cpu"):
             raise ConfigError("transcription.device muss 'auto', 'cuda' oder 'cpu' sein")
-        if not 0.0 < self.speakers.match_threshold < 1.0:
+        sp = self.speakers
+        if not 0.0 < sp.match_threshold < 1.0:
             raise ConfigError("speakers.match_threshold muss zwischen 0 und 1 liegen")
+        if sp.match_scope not in MATCH_SCOPES:
+            raise ConfigError("speakers.match_scope muss 'participants' oder 'all_profiles' sein")
+        if not 0.0 <= sp.match_margin < 0.5 or min(sp.min_match_speech_s, sp.min_learn_speech_s) < 0:
+            raise ConfigError("speakers.match_margin muss zwischen 0 und 0,5 liegen, min_*_speech_s >= 0")
+        if not sp.match_threshold <= sp.auto_update_threshold < 1.0:
+            raise ConfigError("speakers.auto_update_threshold muss zwischen match_threshold und 1 liegen")
+        if not 0 <= self.diarization.num_threads <= 64:
+            raise ConfigError("diarization.num_threads muss zwischen 0 (automatisch) und 64 liegen")
         if self.audio.gap_threshold_s <= 0:
             raise ConfigError("audio.gap_threshold_s muss > 0 sein")
         if self.transcript.timestamp_format not in TIMESTAMP_FORMATS:
@@ -321,6 +342,7 @@ class Config:
 
 _LANG_RE = re.compile(r"[a-z]{2,3}")
 TIMESTAMP_FORMATS = ("hh:mm:ss", "mm:ss", "none")
+MATCH_SCOPES = ("participants", "all_profiles")
 AFTER_RECORDING_MODES = ("ask", "full")
 SUMMARY_PROVIDERS = ("ollama", "openai", "anthropic")
 CLOUD_PROVIDERS = ("anthropic",)  # providers that send the transcript to a third party by design
@@ -380,6 +402,8 @@ PRESET_FORBIDDEN_KEYS = {
         "allow_remote_endpoint_data_leaves_this_computer", "ollama_url", "openai_url", "openai_api_key",
         "anthropic_transcripts_leave_this_computer_confirmed",
     ),
+    # who may be assigned automatically is a decision about this PC's data, not a tuning value
+    "speakers": ("match_scope",),
 }
 # Values a preset may not select: a preset must never switch the summary to a cloud provider.
 PRESET_FORBIDDEN_VALUES = {("summary", "provider"): CLOUD_PROVIDERS}
@@ -526,6 +550,11 @@ def load_config(path: Path | None = None, preset: str | None = None) -> Config:
             except (OSError, ValueError):
                 log.warning("config.toml konnte nicht auf automatische Spracherkennung umgestellt werden", exc_info=True)
             log.info("transcription.language = \"de\" (alter Standardwert) -> \"auto\" mit Kandidaten de, en")
+        di, sp = data.get("diarization"), data.get("speakers")
+        if isinstance(di, dict) and di.get("num_threads") == 2 and not (isinstance(sp, dict) and "match_scope" in sp):
+            # 2 was the template default of earlier versions (written into every config.toml), not a choice
+            di["num_threads"] = 0
+            log.info("diarization.num_threads = 2 (alter Standardwert) -> automatisch")
         cfg = config_from_dict(data)
         if migrated:
             cfg.warnings.append(LEGACY_LANGUAGE_NOTE)
@@ -663,15 +692,24 @@ cluster_threshold = 0.4
 num_speakers = 0
 min_duration_on = 0.3
 min_duration_off = 0.5
-num_threads = 2
+# 0 = automatisch nach Anzahl der physischen Prozessorkerne (ein Kern bleibt frei, weniger während einer Aufnahme)
+num_threads = 0
 
 [speakers]
+# "participants": automatisch nur Personen dieses Termins (Einladung oder von Ihnen eingetragen);
+# "all_profiles": alle bekannten Stimmprofile (Verhalten früherer Versionen). Nicht per Preset änderbar.
+match_scope = "participants"
 # Ab welcher Ähnlichkeit (Kosinus, 0..1) eine Stimme einem Profil zugeordnet wird
 match_threshold = 0.55
-# Bonus für Personen, die in der Einladung stehen
+# Abstand zum zweitbesten Profil, sonst keine automatische Zuordnung
+match_margin = 0.08
+# Mindest-Sprechzeit (s) für die automatische Zuordnung bzw. für das Lernen eines Profils
+min_match_speech_s = 8.0
+min_learn_speech_s = 20.0
+# Bonus für Eingeladene (nur bei match_scope = "all_profiles")
 invitee_bonus = 0.05
 auto_update_on_match = true
-auto_update_threshold = 0.70
+auto_update_threshold = 0.75
 
 [transcript]
 # Zeitstempel: "hh:mm:ss", "mm:ss" oder "none"
@@ -684,6 +722,9 @@ split_pause_s = 2.0
 max_paragraph_s = 60.0
 # Korrekturliste %APPDATA%\CallRecorder\replacements.txt anwenden
 apply_replacements = true
+# Ihr Name für die eigenen Beiträge (Mikrofonspur); leer = Vorname aus dem Microsoft-Konto,
+# sonst aus "Ihr Name", sonst "Ich"
+self_display_name = ""
 
 [summary]
 enabled = true

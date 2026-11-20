@@ -35,6 +35,8 @@ def build_components(cfg: Config, profiles: ProfileStore | None = None) -> Compo
         from callrec.speakers.diarize import SherpaDiarizer
         from callrec.speakers.modelstore import SEGMENTATION, embedding_model, ensure_model
 
+        from callrec.speakers.threads import effective_threads
+
         d = cfg.diarization
         return SherpaDiarizer(
             ensure_model(SEGMENTATION, models),
@@ -43,15 +45,16 @@ def build_components(cfg: Config, profiles: ProfileStore | None = None) -> Compo
             num_speakers=d.num_speakers,
             min_duration_on=d.min_duration_on,
             min_duration_off=d.min_duration_off,
-            num_threads=d.num_threads,
+            num_threads=effective_threads(d.num_threads),
         )
 
     def embedder():  # type: ignore[no-untyped-def]
         from callrec.speakers.diarize import SherpaEmbedder
         from callrec.speakers.modelstore import embedding_model, ensure_model
+        from callrec.speakers.threads import effective_threads
 
         m = embedding_model(cfg.diarization.embedding_model)
-        return SherpaEmbedder(ensure_model(m, models), m.key, cfg.diarization.num_threads)
+        return SherpaEmbedder(ensure_model(m, models), m.key, effective_threads(cfg.diarization.num_threads))
 
     def summarizer():  # type: ignore[no-untyped-def]
         from callrec.summary import LlmSummarizer

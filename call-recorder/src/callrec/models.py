@@ -7,6 +7,12 @@ from datetime import datetime
 from typing import Any
 
 SELF_SPEAKER_ID = "ME"
+# SpeakerInfo.source values
+SOURCE_AUTO = "auto"  # automatic match of a voice profile (may be re-evaluated)
+SOURCE_MANUAL = "manual"  # assigned or confirmed by the user (always wins, survives re-runs)
+SOURCE_SELF = "self"  # the mic track
+SOURCE_SELF_ECHO = "self_echo"  # a remote cluster the user marked "das bin ich"
+USER_DECIDED = (SOURCE_MANUAL, SOURCE_SELF_ECHO)
 
 
 @dataclass(frozen=True)
@@ -193,11 +199,21 @@ class SpeakerInfo:
     email: str = ""
     profile_id: str = ""
     score: float | None = None  # similarity of an automatic match
-    source: str = ""  # auto | manual | self
+    source: str = ""  # auto | manual | self | self_echo
+    # shown in the assignment dialog only, never applied automatically:
+    suggested_name: str = ""  # "klingt wie ..." (e.g. a profile of a non-participant)
+    suggested_email: str = ""
+    suggested_score: float | None = None
+    note: str = ""  # why there is no automatic assignment
+    self_suspect: bool = False  # probably the user's own voice on the remote track
 
     @property
     def display(self) -> str:
         return self.name or self.label
+
+    def clear_hints(self) -> None:
+        self.suggested_name, self.suggested_email, self.suggested_score, self.note = "", "", None, ""
+        self.self_suspect = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -213,4 +229,9 @@ class SpeakerInfo:
             profile_id=str(d.get("profile_id", "")),
             score=float(score) if score is not None else None,
             source=str(d.get("source", "")),
+            suggested_name=str(d.get("suggested_name", "")),
+            suggested_email=str(d.get("suggested_email", "")),
+            suggested_score=float(d["suggested_score"]) if d.get("suggested_score") is not None else None,
+            note=str(d.get("note", "")),
+            self_suspect=bool(d.get("self_suspect", False)),
         )

@@ -3,6 +3,12 @@
 Profiles are stored in one file under %LOCALAPPDATA%\\CallRecorder, encrypted
 with DPAPI on Windows (via msal-extensions' FilePersistenceWithDataProtection),
 so only the same Windows user on the same machine can read them.
+
+What a profile learned is kept per origin (``Contribution``: recording + speaker id + source),
+so a wrong assignment can be undone exactly: correcting a speaker removes the embedding it had
+added, re-running the identification replaces (never repeats) the automatic contribution of that
+recording, and the profile dialog shows and resets what was learned from which recording.
+Profiles of versions before this one carry one "legacy" contribution of unknown origin.
 """
 
 from __future__ import annotations
@@ -12,7 +18,7 @@ import logging
 import sys
 import threading
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -20,10 +26,15 @@ from typing import Any, Protocol
 import numpy as np
 
 from callrec.models import Person
+from callrec.speakers.names import persons_match, same_person
 
 log = logging.getLogger(__name__)
 
-MAX_CENTROID_WEIGHT = 20  # new samples always move the centroid by >= 1/21
+MAX_CENTROID_WEIGHT = 20  # weight cap of the legacy centroid (profiles of earlier versions)
+MAX_CONTRIBUTIONS = 40  # older contributions are folded into the legacy centroid (origin then lost)
+# weight of one contribution in the centroid: an automatic match counts half of a user decision
+SOURCE_WEIGHT = {"manual": 1.0, "confirmed": 1.0, "auto": 0.5}
+USER_SOURCES = ("manual", "confirmed")
 
 
 class Persistence(Protocol):
@@ -111,6 +122,31 @@ def _normalize(v: np.ndarray) -> np.ndarray:
 
 
 @dataclass
+class Contribution:
+    """One embedding a profile learned, with its origin."""
+
+    recording: str  # recording folder name; "" = learned before origins were recorded
+    speaker: str  # speaker id in that recording ("S2"); "" for legacy
+    source: str  # manual | confirmed | auto | legacy
+    embedding: np.ndarray
+    weight: float
+    seconds: float = 0.0
+    at: str = ""
+    title: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"recording": self.recording, "speaker": self.speaker, "source": self.source,
+                "embedding": [round(float(x), 6) for x in self.embedding], "weight": round(self.weight, 4),
+                "seconds": round(self.seconds, 1), "at": self.at, "title": self.title}
+
+    @staticmethod
+    def from_dict(d: dict[str, Any]) -> Contribution:
+        return Contribution(str(d.get("recording", "")), str(d.get("speaker", "")), str(d.get("source", "manual")),
+                            np.asarray(d["embedding"], dtype=np.float32), float(d.get("weight", 1.0)),
+                            float(d.get("seconds", 0.0)), str(d.get("at", "")), str(d.get("title", "")))
+
+
+@dataclass
 class VoiceProfile:
     id: str
     name: str
@@ -120,6 +156,16 @@ class VoiceProfile:
     samples: int
     created_at: str
     updated_at: str
+    contributions: list[Contribution] = field(default_factory=list)
+
+    def recompute(self) -> None:
+        if not self.contributions:
+            return
+        acc = np.zeros_like(self.contributions[0].embedding, dtype=np.float32)
+        for c in self.contributions:
+            acc += c.weight * _normalize(c.embedding)
+        self.embedding = _normalize(acc)
+        self.samples = sum(int(round(c.weight)) if c.source == "legacy" else 1 for c in self.contributions)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -131,11 +177,12 @@ class VoiceProfile:
             "samples": self.samples,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
+            "contributions": [c.to_dict() for c in self.contributions],
         }
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> VoiceProfile:
-        return VoiceProfile(
+        p = VoiceProfile(
             id=str(d["id"]),
             name=str(d["name"]),
             email=str(d.get("email", "")),
@@ -144,19 +191,41 @@ class VoiceProfile:
             samples=int(d.get("samples", 1)),
             created_at=str(d.get("created_at", "")),
             updated_at=str(d.get("updated_at", "")),
+            contributions=[Contribution.from_dict(c) for c in d.get("contributions") or []],
         )
+        if not p.contributions:
+            # profile of an earlier version: everything it learned, origin unknown
+            p.contributions = [Contribution("", "", "legacy", p.embedding.copy(),
+                                            float(min(max(p.samples, 1), MAX_CENTROID_WEIGHT)), at=p.updated_at)]
+            p.samples = max(p.samples, 1)
+        return p
 
     def matches_person(self, person: Person) -> bool:
-        if person.email and self.email and person.email.lower() == self.email.lower():
-            return True
-        return bool(person.name) and person.name.casefold() == self.name.casefold()
+        return same_person(self.name, self.email, person.name, person.email)
+
+    @property
+    def person(self) -> Person:
+        return Person(self.name, self.email)
+
+    def origins(self) -> list[Contribution]:
+        return list(self.contributions)
 
 
 @dataclass
 class Match:
     profile: VoiceProfile
     similarity: float  # raw cosine similarity
-    score: float  # similarity incl. invitee bonus
+    score: float  # similarity (+ participant bonus in the "all profiles" mode)
+
+
+@dataclass
+class Decision:
+    """Outcome of the matching for one diarized speaker."""
+
+    match: Match | None = None  # automatic assignment
+    suggestion: Match | None = None  # shown in the dialog only ("klingt wie ..."), never applied
+    reason: str = ""  # why there is no automatic assignment (German, for dialog/log)
+    candidates: list[tuple[str, float]] = field(default_factory=list)  # (name, similarity) best first
 
 
 class ProfileStore:
@@ -183,7 +252,7 @@ class ProfileStore:
 
     def _save(self) -> None:
         profiles = self._load()
-        payload = {"version": 1, "profiles": [p.to_dict() for p in profiles.values()]}
+        payload = {"version": 2, "profiles": [p.to_dict() for p in profiles.values()]}
         self._p.save(json.dumps(payload, ensure_ascii=False))
 
     # -- queries -----------------------------------------------------------
@@ -203,31 +272,140 @@ class ProfileStore:
                     return p
         return None
 
+    def learned_from(self, recording: str) -> list[tuple[VoiceProfile, Contribution]]:
+        with self._lock:
+            return [(p, c) for p in self._load().values() for c in p.contributions if c.recording == recording]
+
     # -- mutation ----------------------------------------------------------
-    def add_sample(self, name: str, email: str, embedding: np.ndarray, model_id: str) -> VoiceProfile:
-        """Create the profile or move its centroid towards the new embedding."""
+    def _drop(self, recording: str, speaker: str | None, sources: tuple[str, ...] | None = None) -> list[str]:
+        """Remove contributions of ``recording`` (and ``speaker``); empty profiles are deleted."""
+        changed: list[str] = []
+        profiles = self._load()
+        for p in list(profiles.values()):
+            keep = [c for c in p.contributions
+                    if not (c.recording == recording and (speaker is None or c.speaker == speaker)
+                            and (sources is None or c.source in sources))]
+            if len(keep) != len(p.contributions):
+                changed.append(p.name)
+                p.contributions = keep
+                if not keep:
+                    del profiles[p.id]  # learned only from what was just undone
+                else:
+                    p.recompute()
+                    p.updated_at = _now()
+        return changed
+
+    def learn(self, name: str, email: str, embedding: np.ndarray, model_id: str, *, recording: str,
+              speaker: str, source: str, seconds: float = 0.0, title: str = "") -> VoiceProfile:
+        """Record what speaker ``speaker`` of ``recording`` sounds like, for the person ``name``.
+
+        An earlier contribution of the same recording+speaker (to any profile) is replaced, so a
+        correction undoes the earlier update and re-running never counts one recording twice."""
+        if source not in SOURCE_WEIGHT:
+            raise ValueError(f"Unbekannte Herkunft {source!r}")
         emb = _normalize(embedding)
         with self._lock:
+            if recording:
+                self._drop(recording, speaker)
             existing = self.find(name, email, model_id)
             now = _now()
+            contrib = Contribution(recording, speaker, source, emb, SOURCE_WEIGHT[source], seconds, now, title)
             if existing is None:
+                if source not in USER_SOURCES:
+                    raise ValueError("Ein Stimmprofil wird nur aus einer Zuordnung durch Sie angelegt")
                 prof = VoiceProfile(
                     id=uuid.uuid4().hex, name=name, email=email, model_id=model_id,
-                    embedding=emb, samples=1, created_at=now, updated_at=now,
+                    embedding=emb, samples=1, created_at=now, updated_at=now, contributions=[contrib],
                 )
                 self._load()[prof.id] = prof
             else:
                 if existing.embedding.shape != emb.shape:
                     raise ValueError("Embedding-Dimension passt nicht zum Profil")
-                w = min(existing.samples, MAX_CENTROID_WEIGHT)
-                existing.embedding = _normalize(existing.embedding * w + emb)
-                existing.samples += 1
+                existing.contributions.append(contrib)
+                self._fold_old(existing)
                 existing.updated_at = now
                 if email and not existing.email:
                     existing.email = email
                 prof = existing
+            prof.recompute()
             self._save()
             return prof
+
+    @staticmethod
+    def _fold_old(p: VoiceProfile) -> None:
+        extra = len(p.contributions) - MAX_CONTRIBUTIONS
+        if extra <= 0:
+            return
+        movable = [c for c in p.contributions if c.source != "legacy"][:extra]
+        legacy = next((c for c in p.contributions if c.source == "legacy"), None)
+        acc = (legacy.embedding * legacy.weight) if legacy is not None else np.zeros_like(movable[0].embedding)
+        weight = legacy.weight if legacy is not None else 0.0
+        for c in movable:
+            acc = acc + c.weight * _normalize(c.embedding)
+            weight += c.weight
+        new_legacy = Contribution("", "", "legacy", _normalize(acc), min(weight, float(MAX_CENTROID_WEIGHT)), at=_now())
+        p.contributions = [new_legacy] + [c for c in p.contributions if c is not legacy and c not in movable]
+
+    def add_sample(self, name: str, email: str, embedding: np.ndarray, model_id: str) -> VoiceProfile:
+        """A user-made assignment without a known origin (CLI/tests)."""
+        return self.learn(name, email, embedding, model_id, recording="", speaker=uuid.uuid4().hex[:8], source="manual")
+
+    def forget(self, recording: str, speaker: str | None = None, sources: tuple[str, ...] | None = None) -> list[str]:
+        """Undo what ``recording`` (one ``speaker`` or all) taught the profiles. Returns profile names."""
+        with self._lock:
+            changed = self._drop(recording, speaker, sources)
+            if changed:
+                self._save()
+            return changed
+
+    def remove_contribution(self, profile_id: str, index: int) -> VoiceProfile | None:
+        """Remove one contribution; returns the profile, or None if it became empty and was deleted."""
+        with self._lock:
+            p = self._load().get(profile_id)
+            if p is None or not 0 <= index < len(p.contributions):
+                return p
+            del p.contributions[index]
+            if not p.contributions:
+                del self._load()[profile_id]
+                self._save()
+                return None
+            p.recompute()
+            p.updated_at = _now()
+            self._save()
+            return p
+
+    def reset_to_confirmed(self, profile_id: str) -> VoiceProfile | None:
+        """Keep only what you assigned or confirmed (drops automatic and legacy contributions)."""
+        with self._lock:
+            p = self._load().get(profile_id)
+            if p is None:
+                return None
+            keep = [c for c in p.contributions if c.source in USER_SOURCES]
+            if not keep:
+                del self._load()[profile_id]
+                self._save()
+                return None
+            p.contributions = keep
+            p.recompute()
+            p.updated_at = _now()
+            self._save()
+            return p
+
+    def replace_contributions(self, profile_id: str, contributions: list[Contribution]) -> VoiceProfile | None:
+        with self._lock:
+            p = self._load().get(profile_id)
+            if p is None:
+                return None
+            if not contributions:
+                del self._load()[profile_id]
+                self._save()
+                return None
+            p.contributions = list(contributions)
+            self._fold_old(p)
+            p.recompute()
+            p.updated_at = _now()
+            self._save()
+            return p
 
     def delete(self, key: str) -> list[VoiceProfile]:
         """Delete by id, name (case-insensitive) or email. Returns the deleted profiles."""
@@ -249,50 +427,108 @@ class ProfileStore:
             return n
 
     # -- matching ----------------------------------------------------------
+    def decide(
+        self,
+        embeddings: dict[str, np.ndarray],
+        model_id: str,
+        *,
+        participants: list[Person] | None,
+        threshold: float,
+        margin: float = 0.0,
+        exclude: list[Person] | None = None,
+        not_eligible: dict[str, str] | None = None,
+        bonus: float = 0.0,
+        preferred: list[Person] | None = None,
+    ) -> dict[str, Decision]:
+        """Decide for each diarized speaker: automatic assignment, suggestion, or nothing.
+
+        ``participants`` = the people of this call; only their profiles may be assigned
+        automatically. ``None`` = every profile may be assigned (relaxed mode of earlier
+        versions; participants then get ``bonus``). The best profile is assigned only if
+
+        * its similarity reaches ``threshold``,
+        * it is better than every *other* profile (participant or not) by at least ``margin`` -
+          a voice that sounds as much like somebody else is not decided automatically,
+        * no other speaker of this call is closer to it (one profile per call; diarization
+          splitting one person into two clusters is left to the user, who sees a suggestion).
+
+        A non-participant profile that is the closest one is returned as ``suggestion`` only.
+        ``not_eligible`` maps speakers to a reason (e.g. too little speech) - no assignment.
+        Profiles matching ``exclude`` (the user, on the mic track) are never considered.
+        """
+        excluded = exclude or []
+        with self._lock:
+            profiles = [p for p in self._load().values()
+                        if p.model_id == model_id and not any(p.matches_person(x) for x in excluded)]
+        allowed_ids = {p.id for p in profiles
+                       if participants is None or any(p.matches_person(x) for x in participants)}
+        preferred_ids = {p.id for p in profiles if participants is None and any(
+            p.matches_person(x) for x in (preferred or []))}
+        out: dict[str, Decision] = {}
+        claims: list[tuple[float, str, Match]] = []
+        for spk, emb in embeddings.items():
+            d = Decision()
+            out[spk] = d
+            vec = np.asarray(emb).reshape(-1)
+            sims = sorted(((cosine(vec, p.embedding), p) for p in profiles if p.embedding.shape == vec.shape),
+                          key=lambda x: (-x[0], x[1].name))
+            d.candidates = [(p.name, round(s, 4)) for s, p in sims[:3]]
+            if not sims:
+                d.reason = "keine passenden Stimmprofile"
+                continue
+            if not_eligible and spk in not_eligible:
+                d.reason = not_eligible[spk]
+                continue
+            best_sim, best = sims[0]
+            allowed = [(s, p) for s, p in sims if p.id in allowed_ids]
+            if best.id not in allowed_ids:
+                if best_sim >= threshold:
+                    d.suggestion = Match(best, best_sim, best_sim)
+                    d.reason = f"klingt wie {best.name} (kein Teilnehmer dieses Termins)"
+                    continue
+            if not allowed:
+                d.reason = "keine Stimmprofile von Teilnehmenden dieses Termins"
+                continue
+            sim, prof = allowed[0]
+            score = sim + (bonus if prof.id in preferred_ids else 0.0)
+            if score < threshold:
+                d.reason = f"keine sichere Übereinstimmung (beste: {prof.name} {sim:.2f})"
+                continue
+            others = [s for s, p in sims if p.id != prof.id]
+            if others and sim - others[0] < margin:
+                rival = next(p for s, p in sims if p.id != prof.id)
+                d.reason = f"nicht eindeutig ({prof.name} {sim:.2f} / {rival.name} {others[0]:.2f})"
+                d.suggestion = Match(prof, sim, score)
+                continue
+            claims.append((score, spk, Match(prof, sim, score)))
+        used: dict[str, str] = {}
+        for score, spk, m in sorted(claims, key=lambda x: (-x[0], x[1])):
+            if m.profile.id in used:
+                out[spk].suggestion = m
+                out[spk].reason = f"gleiche Stimme wie {used[m.profile.id]}? ({m.profile.name} {m.similarity:.2f})"
+                continue
+            used[m.profile.id] = spk
+            out[spk].match = m
+        return out
+
     def match(
         self,
         embeddings: dict[str, np.ndarray],
         model_id: str,
         candidates: list[Person],
         threshold: float,
-        invitee_bonus: float = 0.05,
+        invitee_bonus: float = 0.0,
         exclude: list[Person] | None = None,
-        reuse_margin: float = 0.1,
+        margin: float = 0.0,
+        participants_only: bool = False,
     ) -> dict[str, Match]:
-        """Assign diarized speakers to profiles.
+        """Automatic assignments only (see :meth:`decide`). ``participants_only`` restricts the
+        profiles to ``candidates``; otherwise ``candidates`` only get ``invitee_bonus``."""
+        dec = self.decide(embeddings, model_id, participants=list(candidates) if participants_only else None,
+                          threshold=threshold, margin=margin, exclude=exclude, bonus=invitee_bonus,
+                          preferred=None if participants_only else list(candidates))
+        return {k: d.match for k, d in dec.items() if d.match is not None}
 
-        Greedy one-to-one by score first. Because diarization sometimes splits
-        one person into two clusters, a remaining cluster may still reuse an
-        already assigned profile if its score exceeds ``threshold + reuse_margin``.
-        Profiles of invited people get ``invitee_bonus`` added to their
-        similarity; profiles matching ``exclude`` (the user, who is on the
-        mic track) are never assigned to remote speakers.
-        """
-        excluded: list[Person] = exclude or []
-        with self._lock:
-            profiles = [
-                p for p in self._load().values()
-                if p.model_id == model_id and not any(p.matches_person(x) for x in excluded)
-            ]
-        pairs: list[tuple[float, float, str, VoiceProfile]] = []
-        for spk, emb in embeddings.items():
-            for p in profiles:
-                if p.embedding.shape != np.asarray(emb).reshape(-1).shape:
-                    continue
-                sim = cosine(np.asarray(emb).reshape(-1), p.embedding)
-                bonus = invitee_bonus if any(p.matches_person(c) for c in candidates) else 0.0
-                score = sim + bonus
-                if score >= threshold:
-                    pairs.append((score, sim, spk, p))
-        pairs.sort(key=lambda x: (-x[0], x[2], x[3].name))
-        result: dict[str, Match] = {}
-        used: set[str] = set()
-        for score, sim, spk, p in pairs:
-            if spk in result or p.id in used:
-                continue
-            result[spk] = Match(profile=p, similarity=sim, score=score)
-            used.add(p.id)
-        for score, sim, spk, p in pairs:  # second pass: split clusters of one person
-            if spk not in result and score >= threshold + reuse_margin:
-                result[spk] = Match(profile=p, similarity=sim, score=score)
-        return result
+
+def person_in(person: Person, people: list[Person]) -> bool:
+    return any(persons_match(person, p) for p in people)

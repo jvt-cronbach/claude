@@ -43,6 +43,82 @@ def l2_normalize(v: np.ndarray) -> np.ndarray:
     return v / n if n > 0 else v
 
 
+def clean_intervals(turns: list[SpeakerTurn]) -> dict[str, list[tuple[float, float]]]:
+    """Per speaker: the parts of its turns where no *other* speaker's turn overlaps.
+
+    sherpa-onnx reports overlapping speech as overlapping turns. An embedding taken over an
+    overlap is a mix of two voices - it pulls the speaker's embedding (and any profile learned
+    from it) towards the other person, which is one way profiles end up matching the wrong people.
+    """
+    out: dict[str, list[tuple[float, float]]] = {}
+    for t in turns:
+        pieces = [(t.start, t.end)]
+        for o in turns:
+            if o.speaker == t.speaker or o.end <= t.start or o.start >= t.end:
+                continue
+            nxt: list[tuple[float, float]] = []
+            for s, e in pieces:
+                if o.end <= s or o.start >= e:
+                    nxt.append((s, e))
+                    continue
+                if o.start > s:
+                    nxt.append((s, o.start))
+                if o.end < e:
+                    nxt.append((o.end, e))
+            pieces = nxt
+        out.setdefault(t.speaker, []).extend(p for p in pieces if p[1] - p[0] > 0.05)
+    return out
+
+
+def speech_seconds(turns: list[SpeakerTurn]) -> dict[str, float]:
+    """Seconds of clean (non-overlapped) speech per speaker."""
+    return {spk: round(sum(e - s for s, e in iv), 2) for spk, iv in clean_intervals(turns).items()}
+
+
+def embed_spans(
+    spans: list[tuple[float, float]],
+    samples: np.ndarray,
+    sample_rate: int,
+    embedder: Embedder,
+    min_segment_s: float = 1.0,
+    max_segment_s: float = 10.0,
+    max_total_s: float = 90.0,
+    label: str = "",
+) -> np.ndarray | None:
+    """L2-normalised mean embedding over ``spans`` (longest first, up to ``max_total_s``).
+
+    If there are only short spans, they are concatenated so that there is still enough audio."""
+    vectors: list[np.ndarray] = []
+    total = 0.0
+    short_parts: list[np.ndarray] = []
+    for s0, e0 in sorted(spans, key=lambda x: x[1] - x[0], reverse=True):
+        dur = e0 - s0
+        s = int(s0 * sample_rate)
+        e = int(min(e0, s0 + max_segment_s) * sample_rate)
+        clip = samples[s:e]
+        if clip.size == 0:
+            continue
+        if dur >= min_segment_s:
+            if total >= max_total_s:
+                break
+            try:
+                vectors.append(l2_normalize(embedder.embed(clip, sample_rate)))
+                total += min(dur, max_segment_s)
+            except Exception:
+                log.debug("Embedding für %s fehlgeschlagen", label, exc_info=True)
+        else:
+            short_parts.append(clip)
+    if not vectors and short_parts:
+        joined = np.concatenate(short_parts)[: int(max_segment_s * sample_rate)]
+        try:
+            vectors.append(l2_normalize(embedder.embed(joined, sample_rate)))
+        except Exception:
+            log.info("Zu wenig Audio für ein Stimmprofil von %s", label)
+    if not vectors:
+        return None
+    return l2_normalize(np.mean(np.stack(vectors), axis=0))
+
+
 def speaker_embeddings(
     turns: list[SpeakerTurn],
     samples: np.ndarray,
@@ -52,43 +128,13 @@ def speaker_embeddings(
     max_segment_s: float = 10.0,
     max_total_s: float = 90.0,
 ) -> dict[str, np.ndarray]:
-    """One L2-normalised embedding per speaker (mean of per-turn embeddings).
-
-    Long turns are preferred; if a speaker only has short turns, they are
-    concatenated so that there is still enough audio for one embedding.
-    """
-    by_speaker: dict[str, list[SpeakerTurn]] = {}
-    for t in turns:
-        by_speaker.setdefault(t.speaker, []).append(t)
+    """One L2-normalised embedding per speaker (mean of per-turn embeddings), computed only
+    over speech where no other speaker overlaps (see :func:`clean_intervals`)."""
     result: dict[str, np.ndarray] = {}
-    for spk, spk_turns in by_speaker.items():
-        spk_turns = sorted(spk_turns, key=lambda t: t.end - t.start, reverse=True)
-        vectors: list[np.ndarray] = []
-        total = 0.0
-        short_parts: list[np.ndarray] = []
-        for t in spk_turns:
-            dur = t.end - t.start
-            s = int(t.start * sample_rate)
-            e = int(min(t.end, t.start + max_segment_s) * sample_rate)
-            clip = samples[s:e]
-            if clip.size == 0:
-                continue
-            if dur >= min_segment_s and total < max_total_s:
-                try:
-                    vectors.append(l2_normalize(embedder.embed(clip, sample_rate)))
-                    total += min(dur, max_segment_s)
-                except Exception:
-                    log.debug("Embedding für %s fehlgeschlagen", spk, exc_info=True)
-            else:
-                short_parts.append(clip)
-        if not vectors and short_parts:
-            joined = np.concatenate(short_parts)[: int(max_segment_s * sample_rate)]
-            try:
-                vectors.append(l2_normalize(embedder.embed(joined, sample_rate)))
-            except Exception:
-                log.info("Zu wenig Audio für ein Stimmprofil von %s", spk)
-        if vectors:
-            result[spk] = l2_normalize(np.mean(np.stack(vectors), axis=0))
+    for spk, spans in clean_intervals(turns).items():
+        v = embed_spans(spans, samples, sample_rate, embedder, min_segment_s, max_segment_s, max_total_s, spk)
+        if v is not None:
+            result[spk] = v
     return result
 
 
@@ -103,6 +149,7 @@ class SherpaEmbedder:
             raise RuntimeError(f"Ungültige Embedding-Konfiguration: {model_path}")
         self._extractor = sherpa_onnx.SpeakerEmbeddingExtractor(config)
         self.model_id = model_id
+        self.num_threads = num_threads
 
     def embed(self, samples: np.ndarray, sample_rate: int) -> np.ndarray:
         stream = self._extractor.create_stream()
@@ -141,6 +188,7 @@ class SherpaDiarizer:
         if not config.validate():
             raise RuntimeError("Ungültige Diarisierungs-Konfiguration (Modelldateien prüfen)")
         self._sd = sherpa_onnx.OfflineSpeakerDiarization(config)
+        self.num_threads = num_threads
 
     @property
     def sample_rate(self) -> int:

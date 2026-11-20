@@ -203,6 +203,9 @@ class Controller:
             self._event_end = decision.event.end if decision.event is not None else None
         self._notified = set()
         self.ui.set_recording_state(True, decision.title)
+        from callrec.speakers.threads import set_recording_active
+
+        set_recording_active(True)  # background speaker separation uses fewer cores meanwhile
         self.ui.notify("Aufnahme läuft", f"{decision.title}\nMikrofon: {mic.name}\nGegenseite: {loop.name}")
         return True
 
@@ -258,6 +261,9 @@ class Controller:
         )
         log.info("Aufnahme beendet: %s (%s)%s", reason, by, f" - {detail}" if detail else "")
         self.ui.set_recording_state(False, "")
+        from callrec.speakers.threads import set_recording_active
+
+        set_recording_active(False)
         next_text = "Die Verarbeitung läuft im Hintergrund." if self.after_stop is None else "Die Aufnahme ist gespeichert."
         if by == "automatic":
             self.ui.notify("Aufnahme automatisch beendet", f"{REASON_TEXT.get(reason, reason)}. {detail} {next_text}".strip())

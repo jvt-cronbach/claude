@@ -97,6 +97,8 @@ def render_markdown(
     version_note: str = "",
     language_note: str = "",
     warnings: list[str] | None = None,
+    self_line: str = "",
+    capture_notes: list[str] | None = None,
 ) -> str:
     names = display_names(speakers)
     parts = [f"# Transkript: {title}", ""]
@@ -108,6 +110,10 @@ def render_markdown(
     spoken, unassigned, silent = speaker_lists(utterances, speakers)
     if spoken:
         parts.append("- **Sprechende:** " + ", ".join(spoken))
+    if self_line:
+        parts.append(f"- **Eigene Spur:** {self_line}")
+    for note in capture_notes or []:
+        parts.append(f"- **Mikrofon prüfen:** {note}")
     if unassigned:
         parts.append(
             "- **Hinweis:** " + ", ".join(s.label for s in unassigned)

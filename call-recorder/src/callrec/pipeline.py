@@ -20,7 +20,17 @@ from callrec.asr import quality
 from callrec.audio.finalize import finalize_recording, find_audio, has_unfinished_parts
 from callrec.config import Config
 from callrec.consent import cloud_summary_covered
-from callrec.models import SELF_SPEAKER_ID, AsrResult, Person, SpeakerInfo, SpeakerTurn
+from callrec.models import (
+    SELF_SPEAKER_ID,
+    SOURCE_AUTO,
+    SOURCE_SELF,
+    SOURCE_SELF_ECHO,
+    USER_DECIDED,
+    AsrResult,
+    Person,
+    SpeakerInfo,
+    SpeakerTurn,
+)
 from callrec.recording import Recording
 from callrec.review import carry_over_assignments, load_turns
 from callrec.speakers.assign import UNKNOWN, assign_remote, assign_single
@@ -33,6 +43,7 @@ from callrec.versions import adopt_legacy, fingerprint, latest, write_version
 
 log = logging.getLogger(__name__)
 
+IDENTIFY_RULE = "participants-v2"  # meta.json processing.identification.rule of this version
 STEPS = ("finalize", "transcribe", "diarize", "identify", "render", "summarize")
 ALL_STEPS = frozenset(STEPS)
 # Named step sets, shared by the CLI, the tray and the main window (one source of truth).
@@ -109,6 +120,15 @@ def initial_prompt_for(participants: list[Person], self_person: Person) -> str:
     if not names:
         return ""
     return "Gespräch mit " + ", ".join(names) + "."
+
+
+def self_track_line(utterances: list[Any], speakers: dict[str, SpeakerInfo]) -> str:
+    """ "Joost (Mikrofonspur): 12 Beiträge, 04:31 Sprechzeit" for the transcript header."""
+    mine = [u for u in utterances if u.speaker == SELF_SPEAKER_ID]
+    me = speakers.get(SELF_SPEAKER_ID)
+    name = me.display if me is not None else "Ich"
+    talk = sum(u.end - u.start for u in mine)
+    return f"{name} (Mikrofonspur, nicht in der Sprecherzuordnung): {len(mine)} Beiträge, {fmt_ts(talk, 'mm:ss')} Sprechzeit"
 
 
 def _run_id() -> str:
@@ -353,34 +373,60 @@ class Pipeline:
 
     def _step_diarize(self, rec: Recording, result: ProcessResult, progress: Callable[..., None]) -> None:
         import json
+        import time
 
         old_turns = load_turns(rec)
         old_speakers = rec.load_speakers()
         turns: list[SpeakerTurn] = []
         embeddings: dict[str, np.ndarray] = {}
+        self_embedding: np.ndarray | None = None
         model_id = ""
+        timing: dict[str, Any] = {}
+        signal: dict[str, Any] = {}
         if self.cfg.diarization.enabled and self.c.diarizer_factory is not None:
             fa = self._audio(rec)
+            t0 = time.monotonic()
             samples, sr = self.c.audio_loader(fa.remote, 16000)
+            timing["audio_s"] = round(samples.size / sr, 1) if sr else 0.0
             if samples.size and float(np.max(np.abs(samples))) > 1e-4:
+                t1 = time.monotonic()
                 diarizer = self.c.diarizer_factory()
+                timing["num_threads"] = getattr(diarizer, "num_threads", None)
+                t2 = time.monotonic()
                 turns = diarizer.diarize(samples, sr, lambda f: progress(0.8 * f, "Sprechertrennung"))
+                t3 = time.monotonic()
+                timing.update(load_s=round(t2 - t1, 2), diarize_s=round(t3 - t2, 2))
+                embedder = None
                 if self.c.embedder_factory is not None and turns:
                     embedder = self.c.embedder_factory()
                     model_id = embedder.model_id
+                    progress(0.85, "Stimmmerkmale")
                     embeddings = speaker_embeddings(turns, samples, sr, embedder)
+                timing["embed_s"] = round(time.monotonic() - t3, 2)
+                t4 = time.monotonic()
+                progress(0.92, "Mikrofonspur prüfen")
+                self_embedding, signal = self._track_signals(rec, fa, samples, sr, embedder)
+                timing["trackcheck_s"] = round(time.monotonic() - t4, 2)
             else:
                 result.messages.append("Gegenseite ist stumm - keine Sprechertrennung.")
+            del samples
+            timing["total_s"] = round(time.monotonic() - t0, 2)
+            if timing.get("audio_s"):
+                timing["rtf"] = round(timing["total_s"] / timing["audio_s"], 3)
+            log.info("Sprechertrennung %s: %s", rec.folder.name, timing)
         rec.data_dir.mkdir(parents=True, exist_ok=True)
         rec.turns_path.write_text(
             json.dumps([t.__dict__ for t in turns], ensure_ascii=False), encoding="utf-8"
         )
-        rec.save_embeddings(embeddings, model_id)
+        rec.save_embeddings(embeddings, model_id, self_embedding)
+        rec.save_trackcheck({"signal": signal} if signal else {})
         # Speaker ids of the earlier diarization are no longer valid; manual assignments are
         # carried over to the new clusters where the speaking times clearly overlap.
         carried = carry_over_assignments(old_turns, old_speakers, turns)
         if rec.speakers_path.exists():
             rec.speakers_path.unlink()
+        # automatic contributions of the old clusters to voice profiles are no longer valid
+        self.c.profiles.forget(rec.folder.name, sources=("auto",))
         if carried:
             rec.save_speakers(carried)
             result.messages.append(f"{len(carried)} manuelle Sprecherzuordnung(en) übernommen.")
@@ -392,40 +438,168 @@ class Pipeline:
                 "speakers": len({t.speaker for t in turns}),
                 "run_id": _run_id(),
                 "settings": self.diarization_settings(),
+                "timing": timing,
                 "finished_at": _now_iso(),
             },
         )
 
-    def _step_identify(self, rec: Recording, result: ProcessResult, progress: Callable[..., None]) -> None:
+    def _track_signals(self, rec: Recording, fa: Any, remote: np.ndarray | None, sr: int,
+                       embedder: Embedder | None) -> tuple[np.ndarray | None, dict[str, Any]]:
+        """Loudness-envelope correlation of both tracks and the embedding of the mic track.
+
+        Computed once per diarization (both need the audio) and cached in the recording; the
+        identification only reads them, so re-checking the assignment never touches the audio."""
+        from callrec.speakers import trackcheck
+        from callrec.speakers.diarize import embed_spans
+
+        try:
+            if remote is None:
+                remote, sr = self.c.audio_loader(fa.remote, 16000)
+            remote_env = trackcheck.envelope(remote, sr)
+            mic, msr = self.c.audio_loader(fa.mic, 16000)
+            corr, lag = trackcheck.envelope_correlation(trackcheck.envelope(mic, msr), remote_env)
+            signal = {"envelope_corr": round(corr, 3), "lag_s": round(lag, 2)}
+            emb = None
+            if embedder is not None:
+                spans = trackcheck.speech_spans(rec.load_asr("mic"))
+                if spans:
+                    emb = embed_spans(spans, mic, msr, embedder, max_total_s=60.0, label="Mikrofonspur")
+            return emb, signal
+        except Exception:  # noqa: BLE001 - a diagnostic must never fail the processing
+            log.warning("Prüfung der Mikrofonspur fehlgeschlagen (%s)", rec.folder.name, exc_info=True)
+            return None, {}
+
+    # -- identification ------------------------------------------------------
+    def self_name(self, rec: Recording) -> str:
+        from callrec.selfname import display_name
+
+        return display_name(self.cfg, rec.self_person())
+
+    def compute_identification(self, rec: Recording) -> tuple[dict[str, SpeakerInfo], dict[str, Any], list[Any]]:
+        """(speakers, identification meta, profile updates) - reads only, changes nothing.
+
+        Rule ("participants", default): a remote speaker is assigned automatically only to a voice
+        profile of a participant of THIS recording (calendar invitation, entered at the start, via
+        "Teilnehmende bearbeiten"/"Termin zuordnen", or assigned by you). Without any participant
+        nothing is assigned automatically. Assignments you made (source "manual"/"self_echo")
+        are always kept."""
+        from callrec.selfname import self_people
+        from callrec.speakers import trackcheck
+        from callrec.speakers.diarize import speech_seconds
+        from callrec.speakers.names import persons_match
+
         turns = load_turns(rec)
         embeddings, model_id = rec.load_embeddings()
         old = rec.load_speakers()
         me = rec.self_person()
+        sc = self.cfg.speakers
         speakers: dict[str, SpeakerInfo] = {
-            SELF_SPEAKER_ID: SpeakerInfo(id=SELF_SPEAKER_ID, label="Ich", name=me.name or "Ich", email=me.email, source="self")
+            SELF_SPEAKER_ID: SpeakerInfo(id=SELF_SPEAKER_ID, label="Ich", name=self.self_name(rec), email=me.email,
+                                         source=SOURCE_SELF)
         }
         ids = list(dict.fromkeys(t.speaker for t in sorted(turns, key=lambda t: t.start)))
         for n, sid in enumerate(ids, 1):
             speakers[sid] = SpeakerInfo(id=sid, label=f"Sprecher {n}")
-        # keep manual assignments from an earlier review if the diarization is unchanged
         for sid, info in old.items():
-            if sid in speakers and info.source == "manual":
+            if sid in speakers and sid != SELF_SPEAKER_ID and info.source in USER_DECIDED:
                 info.label = speakers[sid].label
+                info.clear_hints()
                 speakers[sid] = info
-        to_match = {sid: e for sid, e in embeddings.items() if sid in speakers and speakers[sid].source != "manual"}
-        if to_match and model_id:
-            sc = self.cfg.speakers
-            matches = self.c.profiles.match(
-                to_match, model_id, rec.participants(), sc.match_threshold, sc.invitee_bonus, exclude=[me]
+        meta = rec.load_meta()
+        report = trackcheck.check(rec.load_asr("mic"), rec.load_asr("remote"), turns, embeddings,
+                                  rec.load_self_embedding(), rec.load_trackcheck().get("signal"), meta.get("devices"))
+        speech = speech_seconds(turns)
+        me_all = self_people(self.cfg, me)
+        participants = [p for p in rec.participants() if not any(persons_match(p, x) for x in me_all)]
+        strict = sc.match_scope == "participants"
+        open_ids = [sid for sid in ids if speakers[sid].source not in USER_DECIDED]
+        not_eligible: dict[str, str] = {}
+        for sid in open_ids:
+            if sid in report.self_suspects:
+                speakers[sid].self_suspect = True
+                not_eligible[sid] = "vermutlich Ihre eigene Stimme (auf der Spur der Gegenseite)"
+            elif speech.get(sid, 0.0) < sc.min_match_speech_s:
+                not_eligible[sid] = (f"zu wenig Sprache für eine automatische Erkennung ({speech.get(sid, 0.0):.0f} s, "
+                                     f"mindestens {sc.min_match_speech_s:.0f} s)")
+        to_match = {sid: embeddings[sid] for sid in open_ids if sid in embeddings}
+        decisions: dict[str, Any] = {}
+        if strict and not participants:
+            for sid in open_ids:
+                speakers[sid].note = ("keine Teilnehmerliste für diese Aufnahme – nichts automatisch zugeordnet "
+                                      "(Teilnehmende eintragen oder Termin zuordnen)")
+        elif to_match and model_id:
+            decisions = self.c.profiles.decide(
+                to_match, model_id, participants=participants if strict else None, threshold=sc.match_threshold,
+                margin=sc.match_margin, exclude=me_all, not_eligible=not_eligible,
+                bonus=0.0 if strict else sc.invitee_bonus, preferred=None if strict else participants,
+                ignore_recording=rec.folder.name,
             )
-            for sid, m in matches.items():
-                info = speakers[sid]
+        learn: list[Any] = []
+        for sid in open_ids:
+            info, d = speakers[sid], decisions.get(sid)
+            if d is None:
+                info.note = info.note or not_eligible.get(sid, "")
+                continue
+            if d.match is not None:
+                m = d.match
                 info.name, info.email, info.profile_id = m.profile.name, m.profile.email, m.profile.id
-                info.score, info.source = round(m.similarity, 4), "auto"
-                if sc.auto_update_on_match and m.similarity >= sc.auto_update_threshold:
-                    self.c.profiles.add_sample(m.profile.name, m.profile.email, embeddings[sid], model_id)
+                info.score, info.source = round(m.similarity, 4), SOURCE_AUTO
+                if (sc.auto_update_on_match and m.similarity >= sc.auto_update_threshold
+                        and speech.get(sid, 0.0) >= sc.min_learn_speech_s):
+                    learn.append((m.profile, sid, embeddings[sid], speech.get(sid, 0.0)))
+            else:
+                info.note = d.reason
+                if d.suggestion is not None:
+                    s = d.suggestion
+                    info.suggested_name, info.suggested_email = s.profile.name, s.profile.email
+                    info.suggested_score = round(s.similarity, 4)
+        ident = {
+            "rule": IDENTIFY_RULE,
+            "scope": sc.match_scope,
+            "participants": len(participants),
+            "auto": sum(1 for s in speakers.values() if s.source == SOURCE_AUTO),
+            "manual": sum(1 for s in speakers.values() if s.source in USER_DECIDED),
+            "speech_s": speech,
+            "decisions": {sid: {"match": d.match.profile.name if d.match else "", "reason": d.reason,
+                                "candidates": d.candidates} for sid, d in decisions.items()},
+            "trackcheck": report.to_dict(),
+        }
+        return speakers, ident, learn
+
+    def _step_identify(self, rec: Recording, result: ProcessResult, progress: Callable[..., None]) -> None:
+        import time
+
+        t0 = time.monotonic()
+        speakers, ident, learn = self.compute_identification(rec)
+        rid = rec.folder.name
+        # automatic contributions of an earlier run of this recording are replaced, never repeated
+        self.c.profiles.forget(rid, sources=("auto",))
+        _emb, model_id = rec.load_embeddings()
+        for prof, sid, emb, secs in learn:
+            self.c.profiles.learn(prof.name, prof.email, emb, model_id, recording=rid, speaker=sid, source="auto",
+                                  seconds=secs, title=rec.title())
         rec.save_speakers(speakers)
+        ident["timing"] = {"identify_s": round(time.monotonic() - t0, 3)}
+        ident["at"] = _now_iso()
+        rec.update_meta(["processing", "identification"], ident)
+        for w in ident["trackcheck"]["warnings"]:
+            result.messages.append(f"Hinweis: {w}")
+            log.warning("%s: %s", rec.folder.name, w)
         result.unassigned_speakers = sum(1 for s in speakers.values() if not s.name)
+
+    def preview_identification(self, rec: Recording) -> list[tuple[str, str, str]]:
+        """ "Sprecherzuordnung neu prüfen": what would change, as (label, before, after); nothing is saved."""
+        new, _ident, _learn = self.compute_identification(rec)
+        old = rec.load_speakers()
+        out: list[tuple[str, str, str]] = []
+        for sid, info in new.items():
+            if sid == SELF_SPEAKER_ID:
+                continue
+            before = old.get(sid)
+            b = before.display if before is not None else info.label
+            if b != info.display:
+                out.append((info.label, b, info.display + (f" – {info.note}" if info.note and not info.name else "")))
+        return out
 
     def _step_render(self, rec: Recording, result: ProcessResult, progress: Callable[..., None]) -> None:
         mic = rec.load_asr("mic")
@@ -440,9 +614,14 @@ class Pipeline:
         tc = self.cfg.transcript
         gap, max_len = tc.split_pause_s, tc.max_paragraph_s
         join_gap = tc.merge_max_gap_s if tc.merge_same_speaker else None
+        self._apply_self_name(rec, speakers)
         mic_u = assign_single(mic, SELF_SPEAKER_ID, "mic", max_gap=gap, max_len=max_len)
+        self_ids = {sid for sid, s in speakers.items() if s.source == SOURCE_SELF_ECHO}
         if turns:
-            remote_u = assign_remote(remote, turns, max_gap=gap, max_len=max_len)
+            from callrec.speakers.assign import words_of
+
+            remote_u = assign_remote(remote, turns, max_gap=gap, max_len=max_len, self_ids=self_ids,
+                                     self_speaker=SELF_SPEAKER_ID, mic_words=words_of(mic) if self_ids else None)
         else:
             remote_u = assign_single(remote, "S1", "remote", max_gap=gap, max_len=max_len)
             speakers.setdefault("S1", SpeakerInfo(id="S1", label="Gegenseite"))
@@ -487,10 +666,12 @@ class Pipeline:
                 f"Ich: {language_name(mic.language)}, Gegenseite: {language_name(remote.language)}"
         warnings = quality.warning_lines({t: (tmeta.get(t) or {}).get("quality") or {} for t in ("mic", "remote")},
                                          lambda x: fmt_ts(x))
+        ident = proc.get("identification") or {}
         md = render_markdown(
             rec.title(), rec.started_at(), rec.duration() or mic.duration, rec.participants(), utterances, speakers, note,
             ts_format=tc.timestamp_format, join_gap=join_gap, version_note=f"v{n}{preset}",
-            language_note=lang_note, warnings=warnings,
+            language_note=lang_note, warnings=warnings, self_line=self_track_line(utterances, speakers),
+            capture_notes=list((ident.get("trackcheck") or {}).get("warnings") or []),
         )
         spoken, unassigned, _silent = speaker_lists(utterances, speakers)
         result.unassigned_speakers = len(unassigned)
@@ -500,6 +681,18 @@ class Pipeline:
         n2, new = write_version(rec, "transcript", md, fp, settings)
         if new and n2 > 1:
             result.messages.append(f"Neue Transkript-Version v{n2} erstellt (vorherige bleibt als transcript.v{n2 - 1}.md erhalten).")
+
+    def _apply_self_name(self, rec: Recording, speakers: dict[str, SpeakerInfo]) -> None:
+        """Your own contributions under the configured/derived name (transcript.self_display_name)."""
+        name = self.self_name(rec)
+        me = speakers.get(SELF_SPEAKER_ID)
+        if me is None:
+            speakers[SELF_SPEAKER_ID] = SpeakerInfo(id=SELF_SPEAKER_ID, label="Ich", name=name, source=SOURCE_SELF)
+        else:
+            me.name = name
+        for s in speakers.values():
+            if s.source == SOURCE_SELF_ECHO:
+                s.name = name
 
     def _step_summarize(self, rec: Recording, result: ProcessResult, progress: Callable[..., None]) -> None:
         if not self.cfg.summary.enabled or self.c.summarizer_factory is None:
@@ -512,6 +705,7 @@ class Pipeline:
             rec.update_meta(["processing", "summary"], {"skipped": result.summary_skipped})
             return
         speakers = rec.load_speakers()
+        self._apply_self_name(rec, speakers)  # the same name as in the transcript, also after a settings change
         tc = self.cfg.transcript
         lines = render_lines(utterances, speakers, "hh:mm:ss", tc.merge_max_gap_s if tc.merge_same_speaker else None)
         names = list(dict.fromkeys(s.display for s in speakers.values() if s.id != UNKNOWN))

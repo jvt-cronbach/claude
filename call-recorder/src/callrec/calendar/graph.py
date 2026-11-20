@@ -224,8 +224,11 @@ class GraphClient:
             raise GraphError("Unerwartete Antwort von Graph")
         return data
 
+    def get_me_raw(self) -> dict[str, Any]:
+        return self._get(f"{GRAPH}/me", {"$select": "displayName,givenName,mail,userPrincipalName"})
+
     def get_me(self) -> Person:
-        data = self._get(f"{GRAPH}/me", {"$select": "displayName,mail,userPrincipalName"})
+        data = self.get_me_raw()
         return Person(
             name=str(data.get("displayName") or ""),
             email=str(data.get("mail") or data.get("userPrincipalName") or ""),

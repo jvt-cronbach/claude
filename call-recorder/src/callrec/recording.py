@@ -178,10 +178,14 @@ class Recording:
             return []
         return [Utterance.from_dict(d) for d in json.loads(self.utterances_path.read_text(encoding="utf-8"))]
 
-    def save_embeddings(self, embeddings: dict[str, np.ndarray], model_id: str) -> None:
+    def save_embeddings(self, embeddings: dict[str, np.ndarray], model_id: str,
+                        self_embedding: np.ndarray | None = None) -> None:
+        """Remote speakers' embeddings and (optionally) the embedding of the mic track (the user)."""
         self.data_dir.mkdir(parents=True, exist_ok=True)
         tmp = self.embeddings_path.with_name("speaker_embeddings.tmp.npz")
         arrays = {f"spk_{k}": np.asarray(v, dtype=np.float32) for k, v in embeddings.items()}
+        if self_embedding is not None:
+            arrays["own_mic"] = np.asarray(self_embedding, dtype=np.float32)
         np.savez(tmp, __model_id__=np.array(model_id), **arrays)  # type: ignore[arg-type]
         tmp.replace(self.embeddings_path)
 
@@ -192,6 +196,25 @@ class Recording:
             model_id = str(data["__model_id__"]) if "__model_id__" in data.files else ""
             embs = {k[4:]: np.asarray(data[k]) for k in data.files if k.startswith("spk_")}
         return embs, model_id
+
+    def load_self_embedding(self) -> np.ndarray | None:
+        if not self.embeddings_path.exists():
+            return None
+        with np.load(self.embeddings_path, allow_pickle=False) as data:
+            return np.asarray(data["own_mic"]) if "own_mic" in data.files else None
+
+    @property
+    def trackcheck_path(self) -> Path:
+        return self.data_dir / "trackcheck.json"
+
+    def load_trackcheck(self) -> dict[str, Any]:
+        try:
+            return dict(json.loads(self.trackcheck_path.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            return {}
+
+    def save_trackcheck(self, data: dict[str, Any]) -> None:
+        write_text_atomic(self.trackcheck_path, json.dumps(data, ensure_ascii=False, indent=2))
 
     def delete_embeddings(self) -> bool:
         if self.embeddings_path.exists():

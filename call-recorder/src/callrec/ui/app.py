@@ -65,13 +65,17 @@ class MeProvider:
             from callrec.calendar.graph import GraphClient
 
             auth = graph_auth(self.cfg)
-            me = GraphClient(auth.token_silent, timeout=self.cfg.calendar.request_timeout_s).get_me()
+            client = GraphClient(auth.token_silent, timeout=self.cfg.calendar.request_timeout_s)
+            raw = client.get_me_raw()
         except Exception as exc:
             log.info("/me nicht abrufbar: %s", exc)
             return None
+        me = Person(name=str(raw.get("displayName") or ""),
+                    email=str(raw.get("mail") or raw.get("userPrincipalName") or ""), role="self")
         if me.name:
             self.cache.parent.mkdir(parents=True, exist_ok=True)
-            self.cache.write_text(json.dumps(me.to_dict(), ensure_ascii=False), encoding="utf-8")
+            self.cache.write_text(json.dumps({**me.to_dict(), "given_name": str(raw.get("givenName") or "")},
+                                             ensure_ascii=False), encoding="utf-8")
         return me
 
 

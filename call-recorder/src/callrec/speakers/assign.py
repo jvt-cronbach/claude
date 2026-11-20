@@ -89,19 +89,38 @@ def group_words(
     return utterances
 
 
-def assign_remote(asr: AsrResult, turns: list[SpeakerTurn], max_gap: float = 2.0, max_len: float = 60.0) -> list[Utterance]:
+def assign_remote(asr: AsrResult, turns: list[SpeakerTurn], max_gap: float = 2.0, max_len: float = 60.0,
+                  self_ids: set[str] | frozenset[str] = frozenset(), self_speaker: str = "ME",
+                  mic_words: list[Word] | None = None, tolerance: float = 0.5) -> list[Utterance]:
+    """Utterances of the remote track.
+
+    ``self_ids``: clusters the user marked as their own voice ("das bin ich", e.g. sidetone).
+    Their words are attributed to ``self_speaker``; words that the mic track also has at the same
+    time (within ``tolerance``) are dropped, so nothing appears twice."""
     index = TurnIndex(turns)
     words = words_of(asr)
     last = [UNKNOWN]
 
-    def speaker_of(w: Word) -> str:
+    def raw_speaker(w: Word) -> str:
         spk = index.speaker_for(w.start, w.end)
         if spk is None:
             spk = last[0] if last[0] != UNKNOWN else (turns[0].speaker if len(turns) == 1 else UNKNOWN)
         last[0] = spk
         return spk
 
-    return group_words(words, speaker_of, "remote", max_gap=max_gap, max_len=max_len)
+    labelled = [(w, raw_speaker(w)) for w in sorted(words, key=lambda w: w.start)]
+    if self_ids:
+        mic = sorted(((m.start, m.end) for m in mic_words or []))
+        starts = [s for s, _ in mic]
+
+        def on_mic(w: Word) -> bool:
+            i = bisect.bisect_right(starts, w.end + tolerance)
+            return any(e + tolerance >= w.start for _s, e in mic[max(0, i - 20):i])
+
+        labelled = [(w, self_speaker if s in self_ids else s) for w, s in labelled
+                    if not (s in self_ids and on_mic(w))]
+    spk_of = {id(w): s for w, s in labelled}
+    return group_words([w for w, _ in labelled], lambda w: spk_of[id(w)], "remote", max_gap=max_gap, max_len=max_len)
 
 
 def assign_single(asr: AsrResult, speaker: str, track: str, max_gap: float = 2.0, max_len: float = 60.0) -> list[Utterance]:
