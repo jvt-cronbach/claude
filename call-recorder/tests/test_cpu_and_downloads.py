@@ -290,10 +290,10 @@ def test_cli_download_shows_progress_and_stops_on_ctrl_c(tmp_path: Path, capsys,
 
     script = tmp_path / "dl.py"
     script.write_text("import sys\nprint('STAGE download', flush=True)\nprint('DOWNLOAD 800000000 1600000000 900000000', flush=True)\n"
-                      "print('STAGE done', flush=True)\n", encoding="utf-8")
+                      "print('DOWNLOADED 1610000000', flush=True)\nprint('STAGE done', flush=True)\n", encoding="utf-8")
     assert cli.run_whisper_download("large-v3-turbo", tmp_path, command_prefix=[sys.executable, str(script)]) == 0
     out = capsys.readouterr().out
-    assert "Strg+C" in out and "900 MB von 1,60 GB (56 %)" in out
+    assert "Strg+C" in out and "900 MB von 1,60 GB (56 %)" in out and "geprüft (1,61 GB)" in out
 
     slow = tmp_path / "slow.py"
     slow.write_text("import time\nprint('STAGE download', flush=True)\ntime.sleep(30)\n", encoding="utf-8")

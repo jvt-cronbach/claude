@@ -120,7 +120,7 @@ def test_summary_request_shape_and_only_transcript_text_is_sent():
     assert body["model"] == "claude-opus-5-5" and body["stream"] is True
     assert body["output_config"] == {"effort": "medium"} and body["fallbacks"] == "default"
     assert "temperature" not in body and "thinking" not in body and "top_p" not in body
-    assert body["system"] == DEFAULT_PROMPTS.system
+    assert body["system"].startswith(DEFAULT_PROMPTS.system.rstrip()) and "Sprache des Protokolls: Deutsch" in body["system"]
     assert [m["role"] for m in body["messages"]] == ["user"]
     user = body["messages"][0]["content"]
     assert "Wir verschieben das Release." in user and "Teilnehmende: Ich Selbst, Anna Beispiel" in user

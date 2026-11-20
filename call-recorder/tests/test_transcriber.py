@@ -47,8 +47,9 @@ def _transcriber(tmp_path: Path, **cfg) -> WhisperSubprocessTranscriber:
 def test_cuda_success(tmp_path: Path):
     t = _transcriber(tmp_path)
     progress: list[float] = []
-    res = t.transcribe(tmp_path / "mic.flac", tmp_path / "asr_mic.json", initial_prompt="Gespräch mit Anna.", progress=progress.append)
-    assert res.device == "cuda" and res.compute_type == "auto" and res.language == "de"
+    res = t.transcribe(tmp_path / "mic.flac", tmp_path / "asr_mic.json", initial_prompt="Gespräch mit Anna.",
+                       progress=progress.append, language="de")
+    assert res.device == "cuda" and res.compute_type == "auto" and res.language == "de"  # per-call language wins
     assert res.segments[0].text == "Gespräch mit Anna."
     assert progress == [0.5, 1.0]
 

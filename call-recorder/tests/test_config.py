@@ -30,7 +30,7 @@ def test_load_creates_default_file(isolated_home: Path):
     assert paths.config_file().exists()
     assert paths.config_file().is_relative_to(isolated_home)
     assert cfg.transcription.model == "auto"
-    assert cfg.transcription.language == "de"
+    assert cfg.transcription.language == "auto" and cfg.transcription.language_candidates == ["de", "en"]
     assert cfg.summary.ollama_url.startswith("http://127.0.0.1")
 
 

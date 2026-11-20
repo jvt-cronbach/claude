@@ -276,7 +276,7 @@ class Pipeline:
 
         try:
             raw = detect(tracks, rec.data_dir / "language_detect.json",
-                         progress=lambda f, m="": progress(-1.0, "Sprache wird erkannt" if not m else m))
+                         progress=lambda f, m="": progress(-1.0, m or "Sprache wird erkannt"))
         except TranscriptionCancelled:
             raise
         except (TranscriptionError, OSError, ValueError) as exc:

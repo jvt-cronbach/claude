@@ -267,7 +267,9 @@ def verify_snapshot(model: str, download_root: str | Path, resolver: Callable[..
         folder = Path(model)
     else:
         if resolver is None:
-            from faster_whisper.utils import download_model as resolver
+            from faster_whisper.utils import download_model
+
+            resolver = download_model
         try:
             folder = Path(resolver(model, local_files_only=True, cache_dir=str(download_root)))
         except Exception as exc:  # LocalEntryNotFoundError & co.

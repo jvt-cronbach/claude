@@ -129,7 +129,8 @@ def test_summarize_single_chunk_prompt():
     _, payload = sess.posts[0]
     assert payload["model"] == "gemma3:12b" and payload["stream"] is False
     assert payload["options"] == {"temperature": 0.2, "num_ctx": 16384}
-    assert payload["messages"][0] == {"role": "system", "content": DEFAULT_PROMPTS.system}
+    assert payload["messages"][0]["role"] == "system"
+    assert payload["messages"][0]["content"].startswith(DEFAULT_PROMPTS.system.rstrip())
     user = payload["messages"][1]["content"]
     for section in ("## Kurzfassung", "## Entscheidungen", "## Aufgaben", "| Aufgabe | Verantwortlich | Frist |",
                     "## Projektstand und Updates", "## Offene Fragen", "## Nächste Termine"):
@@ -144,7 +145,7 @@ def test_custom_template_and_missing_placeholder():
     user = sess.posts[0][1]["messages"][1]["content"]
     assert user.startswith("Nur Stichpunkte für Daily (Anna). {unbekannt}")  # unknown placeholders stay
     assert user.rstrip().endswith("[00:00:01] Anna: Hallo")  # material appended because {material} missing
-    assert sess.posts[0][1]["messages"][0]["content"] == "SYS {title}"  # system prompt is not templated
+    assert sess.posts[0][1]["messages"][0]["content"].startswith("SYS {title}\n\nSprache des Protokolls")  # not templated
 
 
 def test_summarize_map_reduce():

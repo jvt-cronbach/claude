@@ -448,7 +448,7 @@ def load_config(path: Path | None = None, preset: str | None = None) -> Config:
         data = _read_toml(path)
         migrated = False
         tr = data.get("transcription")
-        if is_legacy_language(tr):
+        if isinstance(tr, dict) and is_legacy_language(tr):
             tr["language"] = "auto"
             tr["language_candidates"] = ["de", "en"]
             try:

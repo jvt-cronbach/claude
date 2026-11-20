@@ -446,7 +446,7 @@ def cmd_record(args: argparse.Namespace) -> int:
     except (KeyboardInterrupt, EOFError):
         pass
     if args.no_process:
-        ctl.process = lambda rec, steps=ALL_STEPS: None  # type: ignore[method-assign]
+        ctl.process = lambda rec, steps=ALL_STEPS, language=None: None  # type: ignore[method-assign]
     rec = ctl.stop()
     if rec is not None and not args.no_process:
         queue.stop()
@@ -532,10 +532,11 @@ def cmd_models(args: argparse.Namespace) -> int:
     if args.action == "remove":
         if not args.name:
             raise SystemExit("Bitte den Modellnamen angeben (siehe: callrec models list)")
-        m = find_model(root, args.name)
-        if m is None:
+        found = find_model(root, args.name)
+        if found is None:
             print(f"Modell {args.name!r} ist nicht installiert (callrec models list).")
             return 1
+        m = found
         current, _note = _selected_whisper_model(cfg)
         if current in (m.name, m.repo):
             print(f"Achtung: {m.name} ist das Modell, das die Transkription verwendet - es wird bei der nächsten "
@@ -569,8 +570,8 @@ def cmd_models(args: argparse.Namespace) -> int:
                 print(f"Download fehlgeschlagen (Exit-Code {rc}) - das Modell ist NICHT vollständig. "
                       "Erneut versuchen: callrec models --whisper; Details: callrec -v models --whisper")
             return rc
-        m = find_model(root, model)
-        if m is not None and not m.complete:
+        got = find_model(root, model)
+        if got is not None and not got.complete:
             print(f"FEHLER: Modell {model} ist nicht vollständig im Modellordner.")
             return 3
     print("Fertig.")
