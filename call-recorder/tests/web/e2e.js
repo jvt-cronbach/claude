@@ -86,6 +86,11 @@ async function overflow(p) {
     await p.waitForSelector(".modal .pipe");
     const handoff = await p.$("input[data-plan=handoff]");
     check(handoff && await handoff.isChecked(), "Übergabe-Häkchen standardmäßig gesetzt (Entscheidung 4)");
+    // the window may come up while the user types elsewhere: Enter/Space must not answer the question
+    check(await p.evaluate(() => document.activeElement.tagName !== "BUTTON" && !!document.activeElement.closest(".modal")), "Fokus im Dialog, nicht auf einer Schaltfläche");
+    await p.keyboard.press("Enter");
+    await p.keyboard.press(" ");
+    check(await p.$(".modal .pipe") !== null && !(await answers(p)).some(a => a && a.choice === "full"), "Enter/Leertaste verarbeiten nicht");
     await shot(p, "postcall_1366x768_light");
     await p.click(".modal-foot [data-c=full]");
     await p.waitForSelector(".work .bar", { timeout: 3000 });

@@ -16,6 +16,7 @@ import logging
 import re
 import sys
 import threading
+import weakref
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,10 @@ jslog = logging.getLogger("callrec.ui.page")
 _ID = re.compile(r"^[^\\/:*?\"<>|\x00-\x1f]{1,200}$")
 REC_ACTIONS = ("process_now", "review", "resummarize", "handoff", "play", "folder", "retranscribe", "assign_event",
                "participants", "recheck", "rerender", "speaker_limit", "reprocess")
+
+
+# js_api object -> {"core": WebCore, "window": name}; not reachable by attribute access from the page
+_STATE: weakref.WeakKeyDictionary[Any, dict[str, Any]] = weakref.WeakKeyDictionary()
 
 
 class BridgeError(ValueError):
@@ -59,16 +64,26 @@ def safe(fn: Callable[..., Any]) -> Callable[..., Any]:
     return wrapper
 
 
+def _core(api: Any) -> Any:
+    return _STATE[api]["core"]
+
+
 class Bridge:
+    # No instance attributes at all: pywebview hides "_" names only when it builds window.pywebview.api,
+    # but resolves the name a page sends with getattr() for every part (webview/util.py
+    # js_bridge_call -> get_nested_attribute), so "_core.cfg.summary.__setattr__" would be callable from
+    # page script. The core therefore lives outside the object (module registry, see _core()).
+    __slots__ = ("__weakref__",)
+
     def __init__(self, core: Any) -> None:
-        self._core = core
+        _STATE[self] = {"core": core}
 
     # ------------------------------------------------------------------ helpers (private)
     def _rec(self, rec_id: Any) -> Recording:
         """A recording folder named by the page - only directly inside the recordings folder."""
         if not isinstance(rec_id, str) or not _ID.match(rec_id) or rec_id in (".", "..") or rec_id.strip() != rec_id:
             raise BridgeError("Ungültige Aufnahme.")
-        root = self._core.cfg.recordings_path().resolve()
+        root = _core(self).cfg.recordings_path().resolve()
         folder = (root / rec_id).resolve()
         if folder.parent != root or not folder.is_dir():
             raise BridgeError("Diese Aufnahme gibt es nicht (mehr).")
@@ -77,30 +92,33 @@ class Bridge:
     def _info(self, rec: Recording) -> Any:
         from callrec.library import read_info
 
-        self._core.index.invalidate(rec.folder)
+        _core(self).index.invalidate(rec.folder)
         return read_info(rec.folder)
 
     def _busy_ids(self) -> set[str]:
-        snap = self._core.queue.snapshot()
+        snap = _core(self).queue.snapshot()
         jobs = ([snap.current] if snap.current is not None else []) + list(snap.pending)
         return {j.recording.folder.name for j in jobs}
 
     def _recording_id(self) -> str:
-        cur = self._core.controller.current
+        cur = _core(self).controller.current
         return cur.folder.name if cur is not None else ""
 
     def _post(self, fn: Callable[[], object]) -> dict[str, Any]:
-        self._core.loop.post(fn)
+        _core(self).loop.post(fn)
         return {"ok": True}
 
     # ------------------------------------------------------------------ page lifecycle
     @safe
     def ready(self, which: str = "main") -> dict[str, Any]:
         """The page loaded (again): state to start from, open dialogs to show again."""
-        core = self._core
+        core = _core(self)
         core.events.set_ready(which if which in ("main", "indicator", "toast") else "main")
         if which == "main":
             core.page_ready.set()
+            from callrec.ui.webapp import clear_start_marker
+
+            clear_start_marker()  # the web UI started fine
         from callrec.updater import version_text
 
         return {"version": version_text(), "theme": core.cfg.ui.theme, "hotkey": core.cfg.hotkey.toggle,
@@ -126,7 +144,7 @@ class Bridge:
     # ------------------------------------------------------------------ state
     @safe
     def get_state(self) -> dict[str, Any]:
-        core = self._core
+        core = _core(self)
         c = core.controller
         a = core.actions.autostop
         view = a.view() if (a is not None and c.is_recording) else None
@@ -150,18 +168,18 @@ class Bridge:
     def get_home(self) -> dict[str, Any]:
         from callrec.ui.dto import home
 
-        infos = self._core.index.scan()
-        return home(infos, self._busy_ids(), self._recording_id(), self._core.queue.snapshot())
+        infos = _core(self).index.scan()
+        return home(infos, self._busy_ids(), self._recording_id(), _core(self).queue.snapshot())
 
     @safe
     def get_calendar(self, force: bool = False) -> dict[str, Any]:
         """Today's events, best first (may take a moment: Microsoft Graph or the cache)."""
         from callrec.ui.dto import calendar_events
 
-        cal = self._core.controller.calendar
+        cal = _core(self).controller.calendar
         events, message, source = cal.candidates()
-        with self._core.lock:
-            self._core.event_cache = list(events)
+        with _core(self).lock:
+            _core(self).event_cache = list(events)
         return {**calendar_events(events, source, message, getattr(cal, "is_current", None)),
                 "connected": cal.source is not None}
 
@@ -172,7 +190,7 @@ class Bridge:
         calendar choose). The consent question follows as a dialog - there is no other start path."""
         from callrec.calendar.service import Suggestion
 
-        core = self._core
+        core = _core(self)
         sugg: Suggestion | None = None
         if choice == "manual":
             sugg = Suggestion(None, [], "Ohne Termin – Titel und Teilnehmende eingeben.", "manual")
@@ -192,11 +210,11 @@ class Bridge:
 
     @safe
     def stop_recording(self) -> dict[str, Any]:
-        return self._post(self._core.actions.stop_recording)
+        return self._post(_core(self).actions.stop_recording)
 
     @safe
     def autostop(self, what: str) -> dict[str, Any]:
-        a = self._core.actions.autostop
+        a = _core(self).actions.autostop
         if a is None:
             return {"ok": False}
         if what == "keep":
@@ -204,7 +222,7 @@ class Bridge:
         if what == "stop":
             def stop() -> None:
                 a.stop_now()
-                self._core.actions._changed(None)
+                _core(self).actions._changed(None)
             return self._post(stop)
         if what == "dismiss":
             return self._post(a.dismiss_message)
@@ -213,7 +231,7 @@ class Bridge:
     # ------------------------------------------------------------------ dialogs
     @safe
     def answer(self, dialog_id: str, result: Any = None) -> bool:
-        return self._core.ui.broker.answer(str(dialog_id), result if isinstance(result, (dict, type(None))) else None)
+        return _core(self).ui.broker.answer(str(dialog_id), result if isinstance(result, (dict, type(None))) else None)
 
     @safe
     def import_ics(self, dialog_id: str) -> dict[str, Any]:
@@ -222,7 +240,7 @@ class Bridge:
         from callrec.people import format_participants
         from callrec.ui.webui import suggestion_text
 
-        core = self._core
+        core = _core(self)
         ctx = core.ui.broker.context.get(str(dialog_id))
         if ctx is None or core.ui.broker.kind_of(str(dialog_id)) != "start":
             raise BridgeError("Kein offener Startdialog.")
@@ -239,19 +257,19 @@ class Bridge:
 
     @safe
     def pending_dialogs(self) -> list[dict[str, Any]]:
-        return list(self._core.ui.broker.open_dialogs())
+        return list(_core(self).ui.broker.open_dialogs())
 
     @safe
     def play_sample(self, rec_id: str, speaker_id: str) -> dict[str, Any]:
         self._rec(rec_id)
-        return {"url": self._core.samples.url(rec_id, str(speaker_id))}
+        return {"url": _core(self).samples.url(rec_id, str(speaker_id))}
 
     # ------------------------------------------------------------------ recordings
     @safe
     def list_recordings(self, flt: str = "all", query: str = "") -> dict[str, Any]:
         from callrec.ui.dto import recordings_list
 
-        infos = self._core.index.scan()
+        infos = _core(self).index.scan()
         return recordings_list(infos, str(flt or "all"), str(query or "")[:200], self._busy_ids(),
                                self._recording_id())
 
@@ -261,7 +279,7 @@ class Bridge:
 
         rec = self._rec(rec_id)
         info = self._info(rec)
-        core = self._core
+        core = _core(self)
         busy = core.controller.is_busy(rec)
         return recording_detail(info, busy, self._recording_id() == rec.folder.name,
                                 core.controller.calendar.source is not None)
@@ -281,7 +299,7 @@ class Bridge:
         if key not in REC_ACTIONS:
             raise BridgeError("Unbekannte Aktion.")
         rec = self._rec(rec_id)
-        a = self._core.actions
+        a = _core(self).actions
         fns: dict[str, Callable[[], object]] = {
             "process_now": lambda: a.process_now(rec), "review": lambda: a.review(rec),
             "resummarize": lambda: a.resummarize(rec), "handoff": lambda: a.handoff(rec),
@@ -298,7 +316,7 @@ class Bridge:
         rec = self._rec(rec_id)
         if not isinstance(title, str) or not title.strip():
             raise BridgeError("Der Titel darf nicht leer sein.")
-        new = self._core.loop.call(lambda: self._core.actions.rename(rec, title[:200]))
+        new = _core(self).loop.call(lambda: _core(self).actions.rename(rec, title[:200]))
         return {"ok": True, "title": new}
 
     @safe
@@ -308,7 +326,7 @@ class Bridge:
         rec = self._rec(rec_id)
         info = self._info(rec)
         return {"title": info.title, "recycle_bin": recycle_bin_available(), "handed_over": bool(info.handoff),
-                "busy": self._core.controller.is_busy(rec)}
+                "busy": _core(self).controller.is_busy(rec)}
 
     @safe
     def delete(self, rec_id: str, permanent: bool = False) -> dict[str, Any]:
@@ -317,7 +335,7 @@ class Bridge:
 
         rec = self._rec(rec_id)
         try:
-            where = self._core.loop.call(lambda: self._core.actions.delete(rec, permanent=permanent is True))
+            where = _core(self).loop.call(lambda: _core(self).actions.delete(rec, permanent=permanent is True))
         except LibraryError as exc:
             if permanent is not True and "Papierkorb" in str(exc):
                 return {"confirm": {"kind": "permanent", "message": str(exc)}}
@@ -327,44 +345,44 @@ class Bridge:
     @safe
     def cancel_processing(self, job_id: Any = None) -> dict[str, Any]:
         jid = job_id if isinstance(job_id, int) and not isinstance(job_id, bool) else None
-        text = self._core.loop.call(lambda: self._core.actions.cancel_processing(jid))
+        text = _core(self).loop.call(lambda: _core(self).actions.cancel_processing(jid))
         return {"ok": True, "text": text}
 
     @safe
     def cancel_pending(self) -> dict[str, Any]:
-        q = self._core.queue
+        q = _core(self).queue
         for j in q.snapshot().pending:
             q.cancel(j.id)
         return {"ok": True}
 
     @safe
     def open_folder(self) -> dict[str, Any]:
-        return self._post(lambda: self._core.actions.open_folder(None))
+        return self._post(lambda: _core(self).actions.open_folder(None))
 
     # ------------------------------------------------------------------ setup checklist
     @safe
     def run_checks(self, force_audio: bool = False) -> dict[str, Any]:
-        return self._core.run_checks(force_audio is True)
+        return _core(self).run_checks(force_audio is True)
 
     @safe
     def setup_action(self, key: str) -> dict[str, Any]:
-        return self._core.setup_action(str(key))
+        return _core(self).setup_action(str(key))
 
     # ------------------------------------------------------------------ settings
     @safe
     def get_settings(self) -> dict[str, Any]:
-        return self._core.settings_data()
+        return _core(self).settings_data()
 
     @safe
     def save_settings(self, patch: dict[str, Any], confirmed: Any = None, autostart: Any = None) -> dict[str, Any]:
         if not isinstance(patch, dict):
             raise BridgeError("Ungültige Einstellungen.")
         conf = [str(x) for x in confirmed] if isinstance(confirmed, list) else []
-        return self._core.save_settings(patch, conf, autostart if isinstance(autostart, bool) else None)
+        return _core(self).save_settings(patch, conf, autostart if isinstance(autostart, bool) else None)
 
     @safe
     def pick_folder(self) -> dict[str, Any]:
-        paths = self._core.file_dialog("folder", ())
+        paths = _core(self).file_dialog("folder", ())
         return {"path": str(paths[0])} if paths else {"cancelled": True}
 
     @safe
@@ -428,7 +446,7 @@ class Bridge:
         name = str(model or "").strip()
         if not name:
             raise BridgeError("Kein Modell angegeben.")
-        emit = self._core.events.emit
+        emit = _core(self).events.emit
 
         def work() -> None:
             try:
@@ -442,12 +460,12 @@ class Bridge:
 
     @safe
     def whisper_models(self, action: str = "list", name: str = "", force_gpu: bool = False) -> dict[str, Any]:
-        return self._core.whisper_models(str(action), str(name), force_gpu is True)
+        return _core(self).whisper_models(str(action), str(name), force_gpu is True)
 
     @safe
     def prompts(self, action: str = "get", texts: Any = None, force: bool = False, rec_id: str = "") -> dict[str, Any]:
         rec = self._rec(rec_id) if rec_id else None
-        return self._core.prompts(str(action), texts if isinstance(texts, dict) else {}, force is True, rec)
+        return _core(self).prompts(str(action), texts if isinstance(texts, dict) else {}, force is True, rec)
 
     @safe
     def text_file(self, kind: str, text: Any = None) -> dict[str, Any]:
@@ -467,16 +485,16 @@ class Bridge:
 
     @safe
     def profiles(self, action: str = "list", pid: str = "", index: Any = None) -> dict[str, Any]:
-        return self._core.profiles_action(str(action), str(pid), index)
+        return _core(self).profiles_action(str(action), str(pid), index)
 
     # ------------------------------------------------------------------ updates, about, app
     @safe
     def check_updates(self) -> dict[str, Any]:
-        return self._post(lambda: self._core.actions.check_updates())
+        return self._post(lambda: _core(self).actions.check_updates())
 
     @safe
     def restore_previous_version(self) -> dict[str, Any]:
-        return self._post(self._core.actions.restore_previous_version)
+        return self._post(_core(self).actions.restore_previous_version)
 
     @safe
     def about(self) -> dict[str, Any]:
@@ -484,13 +502,13 @@ class Bridge:
         from callrec.updater import read_install_info, version_text
 
         info = read_install_info()
-        return {"version": version_text(), "python": sys.version.split()[0], "log": str(self._core.log_file or ""),
-                "config": str(paths.config_file()), "recordings": str(self._core.cfg.recordings_path()),
+        return {"version": version_text(), "python": sys.version.split()[0], "log": str(_core(self).log_file or ""),
+                "config": str(paths.config_file()), "recordings": str(_core(self).cfg.recordings_path()),
                 "previous": str(info.get("previous_version") or ""), "frontend": "web"}
 
     @safe
     def open_path(self, what: str) -> dict[str, Any]:
-        a = self._core.actions
+        a = _core(self).actions
         fns: dict[str, Callable[[], object]] = {"log": a.open_log, "readme": a.open_readme,
                                                 "recordings": lambda: a.open_folder(None)}
         if what not in fns:
@@ -499,71 +517,71 @@ class Bridge:
 
     @safe
     def set_theme(self, mode: str) -> dict[str, Any]:
-        return self._core.save_settings({"ui.theme": str(mode)}, [], None)
+        return _core(self).save_settings({"ui.theme": str(mode)}, [], None)
 
     @safe
     def switch_frontend(self, frontend: str, restart: bool = False) -> dict[str, Any]:
         """Back to the classic window (or to the preview): saved in config.toml; with ``restart`` the
         app restarts right away."""
-        res = self._core.save_settings({"ui.frontend": "tk" if frontend == "tk" else "web"}, [], None)
+        res = _core(self).save_settings({"ui.frontend": "tk" if frontend == "tk" else "web"}, [], None)
         if res.get("ok") and restart is True:
-            self._core.restart_later()
+            _core(self).restart_later()
         return res
 
     @safe
     def hide_window(self) -> bool:
-        self._core.windows.hide_main()
+        _core(self).windows.hide_main()
         return True
 
     @safe
     def quit_app(self) -> bool:
-        self._core.loop.post(self._core.actions.quit)
+        _core(self).loop.post(_core(self).actions.quit)
         return True
 
     @safe
     def save_window_state(self, state: dict[str, Any]) -> bool:
-        self._core.save_window_state(state if isinstance(state, dict) else {})
+        _core(self).save_window_state(state if isinstance(state, dict) else {})
         return True
 
 
 class CompanionApi:
     """js_api of the indicator and the toast window: only these few calls."""
 
+    __slots__ = ("__weakref__",)  # see Bridge
+
     def __init__(self, core: Any, window: str) -> None:
-        self._core = core
-        self._window = window
+        _STATE[self] = {"core": core, "window": window}
 
     @safe
     def ready(self) -> dict[str, Any]:
-        self._core.events.set_ready(self._window)
-        return {"state": Bridge(self._core).get_state(), "toast": self._core.ui.toast_data,
-                "theme": self._core.cfg.ui.theme}
+        _core(self).events.set_ready(_STATE[self]["window"])
+        return {"state": Bridge(_core(self)).get_state(), "toast": _core(self).ui.toast_data,
+                "theme": _core(self).cfg.ui.theme}
 
     @safe
     def state(self) -> dict[str, Any]:
-        return dict(Bridge(self._core).get_state())
+        return dict(Bridge(_core(self)).get_state())
 
     @safe
     def stop(self) -> bool:
-        self._core.loop.post(self._core.actions.stop_recording)
+        _core(self).loop.post(_core(self).actions.stop_recording)
         return True
 
     @safe
     def autostop(self, what: str) -> dict[str, Any]:
-        return dict(Bridge(self._core).autostop(what))
+        return dict(Bridge(_core(self)).autostop(what))
 
     @safe
-    def toast_answer(self, choice: str) -> bool:
-        self._core.ui.toast_answer(str(choice))
-        return True
+    def toast_answer(self, choice: str, toast_id: str = "") -> bool:
+        return bool(_core(self).ui.toast_answer(str(choice), str(toast_id or "")))
 
     @safe
     def show_main(self) -> bool:
-        self._core.windows.show_main(activate=True)
+        _core(self).windows.show_main(activate=True)
         return True
 
     @safe
     def log_js_error(self, message: str, source: str = "", line: int = 0, stack: str = "") -> bool:
-        jslog.error("Fehler im Begleitfenster %s: %s (%s:%s)\n%s", self._window, str(message)[:2000],
+        jslog.error("Fehler im Begleitfenster %s: %s (%s:%s)\n%s", _STATE[self]["window"], str(message)[:2000],
                     str(source)[:300], line, str(stack)[:4000])
         return True

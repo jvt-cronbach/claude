@@ -763,7 +763,12 @@ function renderDialog() {
   const body = $(".modal-body", ov); if (body && same) body.scrollTop = prevScroll;
   if (!same) {
     const m = $(".modal", ov);
-    const f = $(".modal-body input:not([disabled]):not([type=checkbox]):not([type=radio]), .modal-body textarea", m) || $(".modal-foot .btn-primary:not([disabled]), .modal-foot .btn-record:not([disabled])", m) || $(".modal-foot button", m);
+    // never focus an action button by itself: the window may come up while the user is typing
+    // elsewhere (e.g. after stopping with the hotkey), and Enter/Space would then answer the dialog
+    // ("Vollständig verarbeiten" incl. hand-over, "Aufnehmen"). Without a text field the dialog
+    // itself gets the focus; Tab reaches the buttons.
+    const f = $(".modal-body input:not([disabled]):not([type=checkbox]):not([type=radio]), .modal-body textarea", m);
+    if (m && !f) m.setAttribute("tabindex", "-1");
     (f || m).focus();
   }
 }
@@ -1127,6 +1132,10 @@ A["del-ok"] = async el => {
 A["tf-ok"] = async el => { const d = curDlg(el); const r = await act("text_file", d.data.kind, $("#tf").value); if (r && r.ok) { closeDialog(d.id); snack("Gespeichert."); } };
 A["ask-ok"] = el => { const d = curDlg(el); answer(d, { ok: true, value: ($("#ask-in") || {}).value }); };
 
+// no navigation away from the app: a file dropped onto the window would open it in place, middle or
+// Ctrl+click would open a second window (Python cancels both as well, see webapp.harden_pywebview)
+["dragover", "drop"].forEach(t => document.addEventListener(t, e => e.preventDefault()));
+document.addEventListener("auxclick", e => { if (e.target.closest && e.target.closest("a[href]")) e.preventDefault(); });
 document.addEventListener("click", e => {
   const a = e.target.closest("a[href]");
   if (a && !a.dataset.act) {

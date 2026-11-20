@@ -419,14 +419,41 @@ def _spawn_restart(args: list[str]) -> None:
         log.exception("Neustart nicht möglich")
 
 
+def start_marker() -> Path:
+    """Exists from the start of the web UI until its page has loaded once. Found at the next start, it
+    means the last start ended before that (crash of WebView2/.NET in the GUI thread, killed, hung):
+    the classic window is used instead of crashing at every start."""
+    return paths.data_dir() / "webui-start.marker"
+
+
+def clear_start_marker() -> None:
+    """An explicit choice of the web UI (``--ui web``, settings saved with it) tries it again."""
+    try:
+        start_marker().unlink(missing_ok=True)
+    except OSError:
+        log.debug("Startmarke nicht entfernbar", exc_info=True)
+
+
 def run_web_app(cfg: Config, log_file: Path | None, start_minimized: bool = False,
                 notify_fallback: Callable[[str], None] = lambda reason: None) -> int:
     """Run the web UI; ``FALLBACK`` when it cannot start (nothing was started then)."""
+    marker = start_marker()
+    if marker.exists():
+        reason = ("Sie ist beim letzten Start nicht fertig geladen worden (abgestürzt oder beendet). Erneut "
+                  "versuchen: Einstellungen › Allgemein › Oberfläche speichern bzw. callrec tray --ui web.")
+        log.warning("Neue Oberfläche nicht verwendet: %s", reason)
+        notify_fallback(reason)
+        return FALLBACK
     reason = preflight()
     if reason:
         log.warning("Neue Oberfläche nicht verfügbar: %s", reason)
         notify_fallback(reason)
         return FALLBACK
+    try:
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(time.strftime("%Y-%m-%d %H:%M:%S"), encoding="utf-8")
+    except OSError:
+        log.debug("Startmarke nicht geschrieben", exc_info=True)
     import webview
 
     from callrec.ui.bridge import Bridge, CompanionApi
@@ -437,6 +464,11 @@ def run_web_app(cfg: Config, log_file: Path | None, start_minimized: bool = Fals
     server = UiServer()
     server.start()
     core.server = server
+    if sys.platform == "win32" and not harden_pywebview(server):
+        server.stop()
+        clear_start_marker()
+        notify_fallback("Die Absicherung der Navigation in WebView2 ließ sich nicht einrichten.")
+        return FALLBACK
     bg = window_background(cfg)
     try:
         st = json.loads((paths.data_dir() / "webwindow.json").read_text(encoding="utf-8"))
@@ -470,6 +502,13 @@ def run_web_app(cfg: Config, log_file: Path | None, start_minimized: bool = Fals
         return False
 
     main.events.closing += on_closing
+
+    def companion_closing() -> bool:  # Alt+F4 on the indicator/prompt: refused (the window is reused)
+        return bool(windows.quitting)
+
+    for w in (indicator, toast):
+        if w is not None:
+            w.events.closing += companion_closing
     started = threading.Event()
 
     def boot() -> None:
@@ -479,6 +518,7 @@ def run_web_app(cfg: Config, log_file: Path | None, start_minimized: bool = Fals
         except Exception:
             log.exception("Start der neuen Oberfläche fehlgeschlagen")
             core.restart_args = ["tray", "--ui", "classic", "--once"]
+            _stop_workers(core)  # pystray's thread is no daemon: it would keep this process (and its lock) alive
             windows.destroy_all()
 
     try:
@@ -488,10 +528,12 @@ def run_web_app(cfg: Config, log_file: Path | None, start_minimized: bool = Fals
         log.exception("pywebview konnte nicht starten")
         server.stop()
         if not started.is_set():
+            clear_start_marker()  # a clean, handled failure: nothing to remember for the next start
             notify_fallback(f"Die neue Oberfläche konnte nicht starten ({exc}).")
             return FALLBACK
     finally:
         core.stop_event.set()
+        _stop_workers(core)
     _shutdown(core)
     server.stop()
     if core.restart_args:
@@ -499,10 +541,58 @@ def run_web_app(cfg: Config, log_file: Path | None, start_minimized: bool = Fals
     return 0
 
 
+def navigation_allowed(server: Any, uri: str) -> bool:
+    return bool(server.is_own_url(uri)) or uri == "about:blank"
+
+
+def harden_pywebview(server: Any) -> bool:
+    """Windows/WebView2: patch pywebview 6.2.1's EdgeChrome handlers before any window exists.
+
+    * pywebview injects ``window.pywebview`` (the js_api = the bridge) after EVERY completed
+      navigation and accepts web messages from whatever page is loaded (edgechromium.py
+      on_navigation_completed / on_script_notify). A foreign page in the window - a file dropped onto
+      it navigates there, as would ``location = ...`` - would get the whole bridge. NavigationStarting
+      (subscribed by pywebview on the GUI thread in ``EdgeChrome.__init__``, so the class attribute
+      is what runs) now cancels every navigation away from the loopback pages.
+    * NewWindowRequested (``window.open``, middle/Ctrl-click) went to ``webbrowser.open`` for any URL
+      (file:, ms-settings:, ... - ``os.startfile`` on Windows). Now only https leaves, to the browser.
+    Returns False when the module is not there (not Windows / other renderer)."""
+    try:
+        from webview.platforms import edgechromium as ec  # type: ignore[attr-defined]
+    except Exception:
+        return False
+    original_start = ec.EdgeChrome.on_navigation_start
+
+    def on_navigation_start(self: Any, sender: Any, args: Any) -> None:
+        try:
+            uri = str(args.Uri)
+        except Exception:
+            uri = ""
+        if not navigation_allowed(server, uri):
+            args.Cancel = True
+            log.warning("Navigation zu fremder Adresse abgebrochen: %s", uri[:200])
+            return
+        original_start(self, sender, args)
+
+    def on_new_window_request(self: Any, sender: Any, args: Any) -> None:
+        args.set_Handled(True)  # never a second browser window inside the app
+        uri = str(args.get_Uri())
+        if uri.startswith("https://") and not server.is_own_url(uri):
+            import webbrowser
+
+            webbrowser.open(uri)
+        else:
+            log.warning("Neues Fenster verhindert: %s", uri[:200])
+
+    ec.EdgeChrome.on_navigation_start = on_navigation_start  # type: ignore[method-assign]
+    ec.EdgeChrome.on_new_window_request = on_new_window_request  # type: ignore[method-assign]
+    return True
+
+
 def _guard_navigation(win: Any, server: Any) -> None:
-    """Only the bundled pages: a page that ends up elsewhere is sent back (defence in depth - the
-    page itself opens links only via ``open_external``, and the CSP forbids remote content).
-    On Windows WebView2's NavigationStarting is also hooked to cancel foreign navigations."""
+    """Only the bundled pages: a page that ends up elsewhere is sent back (defence in depth behind
+    :func:`harden_pywebview` - the page opens links only via ``open_external``, and the CSP forbids
+    remote content)."""
 
     def loaded() -> None:
         try:
@@ -515,29 +605,6 @@ def _guard_navigation(win: Any, server: Any) -> None:
 
     win.events.loaded += loaded
 
-    def hook() -> None:
-        native = getattr(win, "native", None)
-        wv = getattr(native, "webview", None)
-        core2 = getattr(wv, "CoreWebView2", None)
-        if core2 is None:
-            return
-
-        def starting(sender: Any, args: Any) -> None:
-            try:
-                uri = str(args.Uri)
-                if not server.is_own_url(uri) and not uri.startswith("about:") and not uri.startswith("data:"):
-                    args.Cancel = True
-                    log.warning("Navigation zu fremder Adresse abgebrochen: %s", uri[:200])
-            except Exception:
-                log.debug("NavigationStarting nicht prüfbar", exc_info=True)
-
-        try:
-            core2.NavigationStarting += starting
-        except Exception:
-            log.debug("NavigationStarting nicht verfügbar", exc_info=True)
-
-    if sys.platform == "win32":
-        win.events.shown += hook
 
 
 def _boot(core: WebCore, start_minimized: bool) -> None:
@@ -672,6 +739,21 @@ def _boot(core: WebCore, start_minimized: bool) -> None:
             core.loop.post(actions.quit)
 
     threading.Thread(target=watchdog, name="page-watchdog", daemon=True).start()
+
+
+def _stop_workers(core: WebCore) -> None:
+    """Tray (a non-daemon thread) and hotkey; safe to call more than once."""
+    for what in (core.hotkey, core.tray):
+        if what is not None:
+            try:
+                what.stop()
+            except Exception:
+                log.debug("Beenden von %r fehlgeschlagen", what, exc_info=True)
+    if core.autostop is not None:
+        try:
+            core.autostop.shutdown()
+        except Exception:
+            log.debug("Auto-Stopp nicht beendet", exc_info=True)
 
 
 def _shutdown(core: WebCore) -> None:

@@ -139,7 +139,8 @@ class UiServer:
     def resolve(self, raw_path: str) -> Path | None:
         """The file for a request path, or None (wrong token, unknown file, anything else)."""
         parts = unquote(urlsplit(raw_path).path).split("/")
-        if len(parts) < 3 or parts[0] != "" or not secrets.compare_digest(parts[1], self.token):
+        if len(parts) < 3 or parts[0] != "" or not secrets.compare_digest(
+                parts[1].encode("utf-8", "surrogatepass"), self.token.encode("ascii")):  # str: ASCII only
             return None
         rest = parts[2:]
         if len(rest) == 1:

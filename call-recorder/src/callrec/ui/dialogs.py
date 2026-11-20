@@ -206,6 +206,12 @@ def ask_record_prompt_choice(root: tk.Tk, prompt: Prompt, summary_provider: str 
     win.title("Gespräch aufnehmen?")
     answer = {"value": ""}
     ttk.Label(win, text=prompt.question(), wraplength=380, font=("Segoe UI", 10, "bold")).pack(padx=12, pady=(10, 4))
+    if prompt.event is not None and prompt.event.participants():
+        from callrec.ui.startflow import people_shown
+
+        # recorded with exactly these participants (the event's), so they are shown
+        ttk.Label(win, text="Teilnehmende: " + ", ".join(people_shown(list(prompt.event.participants()))),
+                  wraplength=380).pack(padx=12, pady=(0, 4))
     ttk.Label(win, text=reminder_statement(summary_provider), foreground="#555", wraplength=380).pack(padx=12)
     bar = ttk.Frame(win)
     bar.pack(pady=10)
@@ -844,7 +850,9 @@ def ask_after_recording(root: tk.Misc, rec: Recording, plan: Any, handoff_proble
     win.protocol("WM_DELETE_WINDOW", later)
     win.bind("<Escape>", lambda e: later())
     _modal(win)
-    full_btn.focus_set()
+    # the dialog, not the button: Space typed elsewhere (window raised after the hotkey stop) must not
+    # start the processing and the hand-over (pre-ticked by default since 0.3)
+    win.focus_set()
     root.wait_window(win)
     return result["v"]
 

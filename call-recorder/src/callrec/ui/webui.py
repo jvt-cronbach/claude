@@ -181,13 +181,18 @@ class WebUi:
 
     def ask_record_prompt(self, prompt: Prompt) -> bool:
         from callrec.consent import reminder_statement
+        from callrec.ui.startflow import people_shown
 
         mode = self.consent_mode()
         provider = self.summary_provider()
         ev = prompt.event
-        data = {"mode": mode, "question": prompt.question(), "message": prompt.message(),
+        import uuid
+
+        # the id ties a click to this prompt: the toast window is reused, so a click on content still
+        # showing an earlier prompt (before the new one rendered) must not answer this one
+        data = {"id": uuid.uuid4().hex, "mode": mode, "question": prompt.question(), "message": prompt.message(),
                 "reminder": reminder_statement(provider) if mode == "ask" else "",
-                "people": [p.display for p in ev.participants()][:12] if ev else [],
+                "people": people_shown(list(ev.participants())) if ev else [],
                 "timeout_s": 90}
         if self.tray is not None and not (self.windows is not None and self.windows.toast_ok):
             self.tray.notify("Gespräch aufnehmen?", prompt.message())
@@ -219,10 +224,21 @@ class WebUi:
             if self.windows is not None:
                 self.windows.hide_toast()
 
-    def toast_answer(self, choice: str) -> None:
+    def toast_answer(self, choice: str, toast_id: str = "") -> bool:
+        """The click in the toast window - only for the prompt it showed (``toast_id``)."""
         fut = self.toast_future
-        if fut is not None and not fut.done() and choice in ("record", "details", "dismiss"):
-            fut.set_result(choice)
+        if fut is None or fut.done() or choice not in ("record", "details", "dismiss"):
+            return False
+        if not toast_id or toast_id != str(self.toast_data.get("id") or ""):
+            log.info("Antwort im Hinweisfenster verworfen (gehört nicht zur aktuellen Frage)")
+            return False
+        fut.set_result(choice)
+        return True
+
+    def drop_prepared_start(self) -> None:
+        """After the start that followed the call-detected prompt: an unused decision (start refused
+        because another start dialog was open or a recording ran) must never start a later one."""
+        self.prepared.take()
 
     def notify(self, title: str, message: str) -> None:
         log.info("Hinweis: %s - %s", title, message)
@@ -403,10 +419,9 @@ def _show_no_activate(win: Any, topmost: bool) -> None:
     native = getattr(win, "native", None)
     if sys.platform == "win32" and native is not None:
         try:
-            import ctypes
 
             hwnd = int(native.Handle.ToInt64())
-            user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+            user32 = _user32()
             user32.ShowWindow(hwnd, 4)  # SW_SHOWNOACTIVATE
             if topmost:
                 # HWND_TOPMOST, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE | SWP_SHOWWINDOW
@@ -415,6 +430,27 @@ def _show_no_activate(win: Any, topmost: bool) -> None:
         except Exception:
             log.debug("Anzeigen ohne Fokus nicht möglich", exc_info=True)
     win.show()
+
+
+_USER32: Any = None
+
+
+def _user32() -> Any:
+    """Own WinDLL instance with 64-bit-safe signatures (HWND is pointer-sized; ctypes' default would pass
+    an int as a 32-bit C int). Not ``ctypes.windll.user32``: that object is shared with pywebview."""
+    global _USER32
+    if _USER32 is None:
+        import ctypes
+        from ctypes import wintypes
+
+        u = ctypes.WinDLL("user32", use_last_error=True)  # type: ignore[attr-defined]
+        u.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+        u.ShowWindow.restype = wintypes.BOOL
+        u.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                   ctypes.c_int, ctypes.c_uint]
+        u.SetWindowPos.restype = wintypes.BOOL
+        _USER32 = u
+    return _USER32
 
 
 def throttle(interval_s: float) -> Callable[[], bool]:

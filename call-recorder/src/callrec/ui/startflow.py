@@ -90,6 +90,15 @@ def consent_summary(meta: dict[str, Any]) -> str:
     return "Keine bestätigte Einwilligung gespeichert."
 
 
+def people_shown(participants: list[Person], limit: int = 12) -> list[str]:
+    """The participants as the call-detected prompt lists them - all of them are recorded, so a cut
+    list says how many more there are."""
+    names = [p.display for p in participants]
+    if len(names) <= limit:
+        return names
+    return names[:limit] + [f"und {len(names) - limit} weitere"]
+
+
 def decision_from_prompt(prompt: Any, me: Person, provider: str) -> Any:
     """Mode "ask": the click on "Aufnehmen" in the call-detected prompt, for exactly the detected
     event and its participants (what the prompt showed). Returns a ``StartDecision``."""

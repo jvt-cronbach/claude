@@ -79,7 +79,22 @@ class AppLoop:
                 fut.set_exception(exc)
 
         self.post(wrapper)
-        return fut.result(timeout)
+        # never wait for an app thread that has ended (app exit): the caller is often one of pywebview's
+        # js_api threads, which are not daemon threads - one blocked for good keeps the process (and its
+        # single-instance lock) alive after the window closed
+        deadline = None if timeout is None else time.monotonic() + timeout
+        while True:
+            step = 0.25 if deadline is None else max(0.0, min(0.25, deadline - time.monotonic()))
+            try:
+                return fut.result(step)
+            except TimeoutError:
+                if fut.done():  # fn itself raised TimeoutError: hand it to the caller
+                    raise
+                if self._stopped.is_set() and not self._thread.is_alive():
+                    fut.cancel()
+                    raise RuntimeError("CallRecorder wird beendet.") from None
+                if deadline is not None and time.monotonic() >= deadline:
+                    raise
 
     def wait(self, fut: Future[T], timeout: float | None = None) -> T:
         """Wait for ``fut``. On the app thread other posted calls keep running meanwhile (nested

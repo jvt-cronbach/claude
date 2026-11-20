@@ -227,6 +227,10 @@ class TkUi:
             self.prepared.put(decision_from_prompt(prompt, self.me_provider(), provider))
         return choice in ("record", "details")
 
+    def drop_prepared_start(self) -> None:
+        """See WebUi.drop_prepared_start: an unused decision from the prompt never starts a later recording."""
+        self.prepared.take()
+
     def notify(self, title: str, message: str) -> None:
         log.info("Hinweis: %s - %s", title, message)
         if self.tray is not None:

@@ -40,10 +40,14 @@ function renderToast() {
       : `<button class="btn btn-primary" data-a="details" tabindex="-1">Aufnahme vorbereiten …</button><button class="btn" data-a="dismiss" tabindex="-1">Nicht aufnehmen</button>`}</div>`;
 }
 const render = () => (kind === "toast" ? renderToast() : renderIndicator());
+// no navigation away from the app: a file dropped onto the window would open it in place, middle or
+// Ctrl+click would open a second window (Python cancels both as well, see webapp.harden_pywebview)
+["dragover", "drop"].forEach(t => document.addEventListener(t, e => e.preventDefault()));
+document.addEventListener("auxclick", e => { if (e.target.closest && e.target.closest("a[href]")) e.preventDefault(); });
 document.addEventListener("click", e => {
   const b = e.target.closest("[data-a]"); if (!b) return;
   const a = b.dataset.a;
-  if (kind === "toast") { b.disabled = true; call("toast_answer", a); return; }
+  if (kind === "toast") { b.disabled = true; call("toast_answer", a, (S.toast || {}).id || ""); return; }
   if (a === "stop") call("stop"); else if (a === "stopnow") call("autostop", "stop"); else if (a === "keep") call("autostop", "keep");
 });
 // the companion windows must not answer anything from the keyboard (focus belongs to Teams)

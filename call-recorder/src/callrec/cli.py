@@ -1062,6 +1062,10 @@ def main_tray(minimized: bool = False, ui: str | None = None, once: bool = False
     from callrec.ui.app import run_tray_app
 
     frontend = {"web": "web", "classic": "tk"}.get(ui or "")
+    if frontend == "web":
+        from callrec.ui.webapp import clear_start_marker
+
+        clear_start_marker()  # an explicit choice: try the new interface again after a failed start
     if frontend and not once:
         try:
             set_frontend(frontend)

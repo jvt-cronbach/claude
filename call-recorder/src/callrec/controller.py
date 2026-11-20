@@ -357,4 +357,12 @@ class Controller:
             sugg = None
             if prompt.event is not None:
                 sugg = Suggestion(prompt.event, prompt.event.participants(), source="graph")
-            self.start(sugg)
+            try:
+                self.start(sugg)
+            finally:
+                # a decision made in the prompt (mode "ask") is valid for exactly this start; if the start
+                # was refused before asking (another start dialog open, already recording), it must not be
+                # picked up by the next, unrelated start
+                drop = getattr(self.ui, "drop_prepared_start", None)
+                if callable(drop):
+                    drop()

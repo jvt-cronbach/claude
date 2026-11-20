@@ -210,6 +210,63 @@ def test_call_prompt_dismiss_details_and_expiry(loop: AppLoop, tmp_path: Path):
     assert time.monotonic() - t0 < 5 and ui2.prepared.take() is None
 
 
+def test_prompt_click_never_starts_a_later_unrelated_recording(loop: AppLoop, tmp_path: Path):
+    """"Aufnehmen" in the call-detected prompt while another start dialog is open (nested loop): the
+    controller refuses that start - the decision must not be kept for the next start (which would then
+    record the prompt's event without showing any dialog)."""
+    from callrec.controller import Controller
+
+    ui = make_ui(loop, tmp_path, "ask")
+    cfg = Config()
+    cfg.general.recordings_dir = str(tmp_path / "recs")
+    ctl = Controller(cfg, ui, lambda: FakeBackend(), ui.calendar, ProcessingQueue(lambda preset=None: Pipe()),
+                     lambda: ME)
+    ev = make_event("Kundentermin")
+    ctl._starting = True  # a start dialog is open
+    page = Page(ui, {"record_prompt": {"choice": "record"}})
+    loop.call(lambda: ctl.on_reminder(Prompt("calendar", ev)))
+    page.stop.set()
+    ctl._starting = False
+    assert ui.prepared.take() is None
+    # the next start asks again (here: cancelled) instead of recording the prompt's event
+    ui.events.sent.clear()
+    page2 = Page(ui, {"start": {"action": "cancel"}})
+    assert loop.call(lambda: ctl.start(None)) is False and ctl.current is None
+    page2.stop.set()
+    assert [d["kind"] for d in page2.seen] == ["start"]
+
+
+def test_toast_click_only_answers_the_prompt_it_showed(loop: AppLoop, tmp_path: Path):
+    ui = make_ui(loop, tmp_path, "ask")
+
+    class Wins:
+        toast_ok, main_visible = True, False
+
+        def show_toast(self, data):
+            pass
+
+        def hide_toast(self):
+            pass
+
+    ui.windows = Wins()
+    results: list[str] = []
+
+    def ask() -> None:
+        results.append(ui.ask_toast({"id": "new", "mode": "ask", "timeout_s": 2}))
+
+    t = threading.Thread(target=lambda: loop.call(ask))
+    t.start()
+    for _ in range(100):
+        if ui.toast_future is not None:
+            break
+        time.sleep(0.01)
+    assert ui.toast_answer("record", "old") is False  # click on content of an earlier prompt
+    assert ui.toast_answer("record", "") is False
+    assert ui.toast_answer("dismiss", "new") is True
+    t.join(5)
+    assert results == ["dismiss"]
+
+
 def test_prepared_start_expires(monkeypatch: pytest.MonkeyPatch):
     from callrec.ui import startflow
 
@@ -330,6 +387,31 @@ def test_only_methods_are_exposed_to_the_page(loop: AppLoop, tmp_path: Path):
         "ready", "state", "stop", "autostop", "toast_answer", "show_main", "log_js_error"}
 
 
+def _pywebview_resolve(obj: Any, name: str) -> Any:
+    """What pywebview 6.2.1 does with the function name a page sends (webview/util.py js_bridge_call ->
+    get_nested_attribute): getattr for every dotted part, without looking at underscores."""
+    for attr in name.split("."):
+        obj = getattr(obj, attr, None)
+        if obj is None:
+            return None
+    return obj
+
+
+def test_page_cannot_reach_the_core_through_private_names(loop: AppLoop, tmp_path: Path):
+    from callrec.ui.bridge import Bridge, CompanionApi
+
+    core = Core(tmp_path, loop)
+    for obj in (Bridge(core), CompanionApi(core, "toast")):
+        for name in ("_core", "_core.cfg.summary.__setattr__", "_core.ui.toast_answer", "_window", "__dict__",
+                     "ready.__self__._core", "ready.__func__.__wrapped__.__globals__"):
+            got = _pywebview_resolve(obj, name)
+            assert got is None or isinstance(got, dict) and "core" not in got, name
+        setattr_ = _pywebview_resolve(obj, "__setattr__")
+        with pytest.raises(AttributeError):
+            setattr_("_core", {"x": 1})  # no instance attributes at all
+    assert Bridge(core).get_recording("nope")["error"]  # still works through the registry
+
+
 def test_bridge_errors_are_german_text_not_tracebacks(loop: AppLoop, tmp_path: Path):
     from callrec.ui.bridge import Bridge
 
@@ -408,6 +490,32 @@ def test_default_handoff_migration(tmp_path: Path):
     with pytest.raises(ConfigError):
         p.write_text('[ui]\nfrontend = "qt"\n', encoding="utf-8")
         load_config(p)
+
+
+def test_default_handoff_migration_is_persisted_once_and_noted(tmp_path: Path):
+    from callrec.config import DEFAULT_CONFIG_TEMPLATE, HANDOFF_DEFAULT_NOTE
+
+    p = tmp_path / "config.toml"
+    # the 0.2.0 template: [processing] default_handoff = false, [ui] without frontend
+    old = DEFAULT_CONFIG_TEMPLATE.replace("default_handoff = true", "default_handoff = false")
+    old = old.replace('frontend = "tk"\n', "").replace('[consent]\n', "[consent_x]\n")
+    old = "\n".join(x for x in old.splitlines() if not x.startswith("[consent_x]") and x != 'mode = "ask"')
+    p.write_text(old, encoding="utf-8")
+    cfg = load_config(p)
+    assert cfg.processing.default_handoff is True and HANDOFF_DEFAULT_NOTE in cfg.warnings
+    text = p.read_text(encoding="utf-8")
+    assert "default_handoff = true" in text and 'frontend = "tk"' in text and "# Konfiguration" in text  # comments kept
+    assert HANDOFF_DEFAULT_NOTE not in load_config(p).warnings  # one-time
+    # the user switches it off by editing config.toml (no settings dialog): stays off
+    p.write_text(text.replace("default_handoff = true", "default_handoff = false"), encoding="utf-8")
+    assert load_config(p).processing.default_handoff is False
+    # a minimal file without [ui]
+    q = tmp_path / "min.toml"
+    q.write_text("[processing]\ndefault_handoff = false", encoding="utf-8")
+    assert load_config(q).processing.default_handoff is True
+    q.write_text(q.read_text(encoding="utf-8").replace("default_handoff = true", "default_handoff = false"),
+                 encoding="utf-8")
+    assert load_config(q).processing.default_handoff is False
 
 
 def test_cli_tray_ui_switch_is_remembered(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -504,6 +612,95 @@ def test_frontend_choice_falls_back_to_tk(monkeypatch: pytest.MonkeyPatch, tmp_p
     cfg.ui.frontend = "web"
     assert app.run_tray_app(cfg) == 0
     assert ran and "WebView2" in ran[0] and "callrec tray --ui" in ran[0]
+
+
+def test_unfinished_web_start_falls_back_once_then_explicit_choice_retries(monkeypatch: pytest.MonkeyPatch,
+                                                                            tmp_path: Path):
+    """A start that never got its page loaded (hard crash of WebView2/.NET, killed, hung) must not repeat at
+    every start: the next start uses the classic window until the web UI is chosen again."""
+    from callrec import cli
+    from callrec.ui import app, webapp
+
+    monkeypatch.setattr(webapp, "preflight", lambda: "")  # would start pywebview
+    webapp.start_marker().parent.mkdir(parents=True, exist_ok=True)
+    webapp.start_marker().write_text("x", encoding="utf-8")  # left by the last start
+    ran: list[str] = []
+    monkeypatch.setattr(app, "acquire_single_instance", lambda: True)
+    monkeypatch.setattr(app, "_run_tk", lambda cfg, log_file, start_minimized, notice="": ran.append(notice) or 0)
+    cfg = Config()
+    cfg.ui.frontend = "web"
+    assert app.run_tray_app(cfg) == 0
+    assert ran and "letzten Start" in ran[0] and webapp.start_marker().exists()
+    monkeypatch.setattr(app, "run_tray_app", lambda **kw: 0)
+    cli.main_tray(ui="web", once=True)
+    assert not webapp.start_marker().exists()
+
+
+def test_pywebview_navigation_and_new_windows_are_confined(monkeypatch: pytest.MonkeyPatch):
+    """pywebview injects the bridge into whatever page is loaded: navigations away from the loopback
+    pages are cancelled, new windows only open https links in the browser (webapp.harden_pywebview)."""
+    import sys
+    import types
+    import webbrowser
+
+    from callrec.ui import webapp
+    from callrec.ui.webserver import UiServer
+
+    calls: list[str] = []
+
+    class EdgeChrome:
+        def on_navigation_start(self, sender, args):
+            calls.append("original")
+
+        def on_new_window_request(self, sender, args):
+            raise AssertionError("pywebview's handler must not run")
+
+    mod = types.ModuleType("webview.platforms.edgechromium")
+    mod.EdgeChrome = EdgeChrome  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "webview.platforms.edgechromium", mod)
+    import webview.platforms
+
+    monkeypatch.setattr(webview.platforms, "edgechromium", mod, raising=False)
+    server = UiServer()
+    assert webapp.harden_pywebview(server)
+
+    class Args:
+        def __init__(self, uri):
+            self.Uri, self.Cancel, self.handled = uri, False, False
+
+        def get_Uri(self):  # noqa: N802
+            return self.Uri
+
+        def set_Handled(self, v):  # noqa: N802
+            self.handled = v
+
+    ec = EdgeChrome()
+    for uri, ok in ((server.url("index.html") + "?theme=dark", True), ("about:blank", True),
+                    ("file:///C:/Users/x/Downloads/rechnung.html", False), ("https://example.com/", False),
+                    (f"http://127.0.0.1:{server.port}/wrongtoken/index.html", False)):
+        a = Args(uri)
+        ec.on_navigation_start(None, a)
+        assert a.Cancel is (not ok), uri
+    assert calls == ["original", "original"]
+    opened: list[str] = []
+    monkeypatch.setattr(webbrowser, "open", lambda u: opened.append(u))
+    for uri in ("https://example.com/x", "file:///C:/Windows/System32/calc.exe", "ms-settings:privacy",
+                server.url("index.html")):
+        a = Args(uri)
+        ec.on_new_window_request(None, a)
+        assert a.handled is True
+    assert opened == ["https://example.com/x"]
+
+
+def test_apploop_call_does_not_hang_after_the_loop_ended():
+    lp = AppLoop("ended")
+    lp.start()
+    lp.stop()
+    lp.join(2)
+    t0 = time.monotonic()
+    with pytest.raises(RuntimeError):
+        lp.call(lambda: 1)
+    assert time.monotonic() - t0 < 2
 
 
 def test_dto_home_and_list(tmp_path: Path):

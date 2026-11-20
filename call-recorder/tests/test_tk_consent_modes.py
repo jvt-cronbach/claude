@@ -83,3 +83,37 @@ def test_tkui_prompt_record_starts_without_second_question(tmp_path: Path, monke
         assert ui.ask_record_prompt(Prompt("teams")) is False and ui.prepared.take() is None
     finally:
         ui.root.destroy()
+
+
+def test_call_prompt_shows_the_participants_it_records(root):  # noqa: F811
+    p = Prompt("calendar", make_event("Kundentermin"))
+    seen: list[str] = []
+
+    def drive():
+        win = toplevel(root)
+        seen.extend(str(w.cget("text")) for w in walk(win) if isinstance(w, ttk.Label))
+        find(win, ttk.Button, "Nicht aufnehmen").invoke()
+
+    root.after(200, drive)
+    dialogs.ask_record_prompt_choice(root, p)
+    assert any(t.startswith("Teilnehmende: ") and "Anna Beispiel" in t for t in seen), seen
+
+
+def test_after_recording_question_does_not_focus_a_button(root, tmp_path: Path):  # noqa: F811
+    """Space typed elsewhere must not press "Vollständig verarbeiten" (hand-over is pre-ticked)."""
+    from callrec.postcall import Plan
+    from tests.conftest import make_recording
+
+    rec = make_recording(tmp_path / "recs")
+    seen = {}
+
+    def drive():
+        win = toplevel(root)
+        root.update()
+        seen["focus"] = root.focus_get()
+        find(win, ttk.Button, "Später").invoke()
+
+    root.after(300, drive)
+    choice, _plan = dialogs.ask_after_recording(root, rec, Plan(True, True, True, True))
+    assert choice == "later"
+    assert not isinstance(seen["focus"], ttk.Button), seen

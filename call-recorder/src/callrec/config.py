@@ -589,6 +589,50 @@ def migrate_config_file(path: Path) -> bool:
     return False
 
 
+HANDOFF_DEFAULT_NOTE = (
+    "Übergabe: Das Häkchen „an SharePoint übergeben“ in der Rückfrage nach einer Aufnahme ist jetzt "
+    "vorbelegt (frühere Versionen: nicht vorbelegt). Übergeben wird weiterhin erst nach dem Klick auf "
+    "„Vollständig verarbeiten“. Nicht vorbelegen: Einstellungen › Aufnahme › Vorauswahl."
+)
+_HANDOFF_FALSE_LINE = re.compile(r"^default_handoff\s*=\s*false\s*(#.*)?$")
+
+
+def migrate_handoff_default_file(path: Path) -> bool:
+    """One-time: ``default_handoff = false`` (template default before 0.3) -> true, and mark the file
+    as written for 0.3 (``[ui] frontend``) so that a false set later is kept. Comments are kept."""
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines(keepends=True)
+    if lines and not lines[-1].endswith("\n"):
+        lines[-1] += "\n"
+    section, flipped, ui_at = "", False, -1
+    for i, line in enumerate(lines):
+        st = line.strip()
+        if st.startswith("["):
+            section = st.strip("[] ")
+            if section == "ui":
+                ui_at = i
+            continue
+        if section == "processing" and _HANDOFF_FALSE_LINE.match(st):
+            lines[i] = ("# 0.3: Vorbelegung umgestellt (übergeben wird weiterhin nur nach dem Klick in der Rückfrage)\n"
+                        "default_handoff = true\n")
+            flipped = True
+    if not flipped:
+        return False
+    marker = 'frontend = "tk"\n'
+    if ui_at >= 0:
+        lines.insert(ui_at + 1, marker)
+    else:
+        lines.append("\n[ui]\n" + marker)
+    new = "".join(lines)
+    data = tomllib.loads(new)  # never write a file that does not parse
+    if data.get("processing", {}).get("default_handoff") is not True or "frontend" not in data.get("ui", {}):
+        return False
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(new, encoding="utf-8")
+    tmp.replace(path)
+    return True
+
+
 def load_config(path: Path | None = None, preset: str | None = None) -> Config:
     """Load config.toml and overlay the preset (argument wins over general.preset)."""
     path = path or paths.config_file()
@@ -617,10 +661,20 @@ def load_config(path: Path | None = None, preset: str | None = None) -> Config:
             # false was the template default before 0.3 (written into every config.toml), not a choice;
             # since 0.3 the hand-over box in the question after a recording is ticked by default
             pr["default_handoff"] = True
+            try:
+                # persisted once (with the [ui] frontend marker), so that a false chosen later stays
+                handoff_migrated = migrate_handoff_default_file(path)
+            except (OSError, ValueError):
+                handoff_migrated = False
+                log.warning("config.toml: Vorbelegung der Übergabe nicht umgestellt", exc_info=True)
             log.info("processing.default_handoff = false (alter Standardwert) -> true")
+        else:
+            handoff_migrated = False
         cfg = config_from_dict(data)
         if migrated:
             cfg.warnings.append(LEGACY_LANGUAGE_NOTE)
+        if handoff_migrated:
+            cfg.warnings.append(HANDOFF_DEFAULT_NOTE)
     name = preset if preset is not None else cfg.general.preset.strip()
     if name:
         ppath = paths.presets_dir() / f"{name}.toml"

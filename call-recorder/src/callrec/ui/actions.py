@@ -506,6 +506,10 @@ class AppActions:
         """After config.toml was saved (either settings UI): take it over in the running app."""
         try:
             reload_config_in_place(self.cfg)
+            if self.cfg.ui.frontend == "web":  # saved with the new interface chosen: try it again next start
+                from callrec.ui.webapp import clear_start_marker
+
+                clear_start_marker()
             # the calendar source depends on calendar.client_id: rebuild it in the shared service
             self.controller.calendar.source = build_calendar_service(self.cfg).source
             self.ui.show_overlay = self.cfg.ui.show_overlay
