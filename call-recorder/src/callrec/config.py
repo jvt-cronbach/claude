@@ -129,6 +129,10 @@ class SpeakerConfig:
     # clean speech (s) a speaker needs before it is matched automatically / may change a profile
     min_match_speech_s: float = 8.0
     min_learn_speech_s: float = 20.0
+    # a diarized remote "speaker" with less speech than this (s, without overlap) is a fragment (cough,
+    # "mhm", cross-talk, noise): not offered for naming, not counted as open, never matched or learned;
+    # its text goes to the most plausible speaker or is labelled "Unklar"
+    min_named_speech_s: float = 5.0
     # the participant list limits the number of remote speakers (participants without you, plus
     # this many uninvited guests); per recording "Weitere Sprecher zulassen" lifts it
     limit_to_participants: bool = True
@@ -318,7 +322,7 @@ class Config:
             raise ConfigError("speakers.match_threshold muss zwischen 0 und 1 liegen")
         if sp.match_scope not in MATCH_SCOPES:
             raise ConfigError("speakers.match_scope muss 'participants' oder 'all_profiles' sein")
-        if not 0.0 <= sp.match_margin < 0.5 or min(sp.min_match_speech_s, sp.min_learn_speech_s) < 0:
+        if not 0.0 <= sp.match_margin < 0.5 or min(sp.min_match_speech_s, sp.min_learn_speech_s, sp.min_named_speech_s) < 0:
             raise ConfigError("speakers.match_margin muss zwischen 0 und 0,5 liegen, min_*_speech_s >= 0")
         if not sp.auto_update_threshold < 1.0:
             raise ConfigError("speakers.auto_update_threshold muss kleiner als 1 sein")
@@ -823,6 +827,9 @@ match_margin = 0.08
 # Mindest-Sprechzeit (s) für die automatische Zuordnung bzw. für das Lernen eines Profils
 min_match_speech_s = 8.0
 min_learn_speech_s = 20.0
+# Stimmen mit weniger Sprache (s) gelten als kurze Fragmente (Husten, "mhm", Störgeräusch): sie werden nicht
+# zur Zuordnung angeboten und zählen nicht als offen; ihr Text geht an die passende Person oder heißt "Unklar"
+min_named_speech_s = 5.0
 # Anzahl der Sprecher der Gegenseite höchstens = Teilnehmende ohne Sie (+ so viele nicht eingeladene Gäste);
 # je Aufnahme aufhebbar ("Weitere Sprecher zulassen")
 limit_to_participants = true

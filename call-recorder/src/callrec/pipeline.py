@@ -519,12 +519,17 @@ class Pipeline:
         keep = carry_over_assignments(cur_turns, cur_sp, raw_turns)
         keep_apart = {sid: i.name for sid, i in keep.items() if i.source == SOURCE_MANUAL}
         exclude = set(report.self_suspects) | {sid for sid, i in keep.items() if i.source == SOURCE_SELF_ECHO}
+        # short fragments are not a participant: neither counted for the limit nor merged into a voice
+        from callrec.speakers.fragments import minor_ids
+
+        fragments = minor_ids(raw_turns, sc.min_named_speech_s, set(keep))
+        exclude |= fragments
         res = merge_to_bound(raw_turns, raw_emb, speech_seconds(raw_turns), bound, keep_apart, exclude,
                              named_merge_min=sc.match_threshold)
         raw_n = len({t.speaker for t in raw_turns})
         info: dict[str, Any] = {"participants": len(participants), "bound": bound, "lifted": lifted,
                                 "raw_speakers": raw_n, "speakers": len({t.speaker for t in res.turns}),
-                                "merged": res.merged, "changed": False}
+                                "merged": res.merged, "fragments": sorted(fragments), "changed": False}
         same = [(t.start, t.end, t.speaker) for t in res.turns] == \
             [(t.start, t.end, t.speaker) for t in sorted(cur_turns, key=lambda t: (t.start, t.end))]
         if same:
@@ -582,6 +587,15 @@ class Pipeline:
         participants = self._participants(rec)
         strict = sc.match_scope == "participants"
         open_ids = [sid for sid in ids if speakers[sid].source not in USER_DECIDED]
+        from callrec.speakers.fragments import minor_ids
+
+        fragments = minor_ids(turns, sc.min_named_speech_s, {sid for sid in ids if speakers[sid].source in USER_DECIDED})
+        for sid in fragments:
+            info = speakers[sid]
+            info.minor = True
+            info.note = (f"kurzes Fragment ({speech.get(sid, 0.0):.1f} s Sprache, weniger als "
+                         f"{sc.min_named_speech_s:.0f} s) – nicht zur Zuordnung angeboten")
+        open_ids = [sid for sid in open_ids if sid not in fragments]
         not_eligible: dict[str, str] = {}
         for sid in open_ids:
             if sid in report.self_suspects:
@@ -594,7 +608,8 @@ class Pipeline:
         decisions: dict[str, Any] = {}
         learn: list[Any] = []
         lifted = bool((rec.load_meta().get("speaker_limit") or {}).get("lifted"))
-        remote_ids = [sid for sid in ids if not speakers[sid].self_suspect and speakers[sid].source != SOURCE_SELF_ECHO]
+        remote_ids = [sid for sid in ids if not speakers[sid].self_suspect and speakers[sid].source != SOURCE_SELF_ECHO
+                      and sid not in fragments]
         sole = (strict and sc.limit_to_participants and not lifted and len(participants) == 1
                 and len(remote_ids) == 1 and remote_ids[0] in open_ids)
         if sole:
@@ -657,6 +672,8 @@ class Pipeline:
             "auto": sum(1 for s in speakers.values() if s.source == SOURCE_AUTO),
             "manual": sum(1 for s in speakers.values() if s.source in USER_DECIDED),
             "speech_s": speech,
+            "fragments": sorted(fragments),
+            "min_named_speech_s": sc.min_named_speech_s,
             "decisions": {sid: {"match": d.match.profile.name if d.match else "", "reason": d.reason,
                                 "candidates": d.candidates} for sid, d in decisions.items()},
             "trackcheck": report.to_dict(),
@@ -724,7 +741,7 @@ class Pipeline:
         for w in ident["trackcheck"]["warnings"]:
             result.messages.append(f"Hinweis: {w}")
             log.warning("%s: %s", rec.folder.name, w)
-        result.unassigned_speakers = sum(1 for s in speakers.values() if not s.name)
+        result.unassigned_speakers = sum(1 for s in speakers.values() if not s.name and not s.minor)
 
     def preview_identification(self, rec: Recording) -> list[tuple[str, str, str]]:
         """ "Sprecherzuordnung neu prüfen": what would change, as (label, before, after); nothing is saved."""
@@ -737,6 +754,9 @@ class Pipeline:
                 continue
             before = old.get(sid)
             b = before.display if before is not None else info.label
+            if info.minor and not (before is not None and before.minor):
+                out.append((info.label, b, "kurzes Fragment – wird nicht mehr zur Zuordnung angeboten"))
+                continue
             if b != info.display:
                 out.append((info.label, b, info.display + (f" – {info.note}" if info.note and not info.name else "")))
         # speakers that the limit to the participants merges away must not vanish from the preview
@@ -763,8 +783,13 @@ class Pipeline:
         self_ids = {sid for sid, s in speakers.items() if s.source == SOURCE_SELF_ECHO}
         if turns:
             from callrec.speakers.assign import words_of
+            from callrec.speakers.fragments import plan_fragments
 
-            remote_u = assign_remote(remote, turns, max_gap=gap, max_len=max_len, self_ids=self_ids,
+            embs, _model = rec.load_embeddings()
+            plan = plan_fragments(turns, speakers, embs, self.cfg.speakers.match_threshold,
+                                  self.cfg.speakers.min_named_speech_s)
+            rec.update_meta(["processing", "fragments"], plan.record)
+            remote_u = assign_remote(remote, plan.turns, max_gap=gap, max_len=max_len, self_ids=self_ids,
                                      self_speaker=SELF_SPEAKER_ID, mic_words=words_of(mic) if self_ids else None)
         else:
             remote_u = assign_single(remote, "S1", "remote", max_gap=gap, max_len=max_len)
@@ -852,7 +877,7 @@ class Pipeline:
         self._apply_self_name(rec, speakers)  # the same name as in the transcript, also after a settings change
         tc = self.cfg.transcript
         lines = render_lines(utterances, speakers, "hh:mm:ss", tc.merge_max_gap_s if tc.merge_same_speaker else None)
-        names = list(dict.fromkeys(s.display for s in speakers.values() if s.id != UNKNOWN))
+        names = list(dict.fromkeys(s.display for s in speakers.values() if s.id != UNKNOWN and not s.minor))
         start = rec.started_at()
         date = f"{start:%d.%m.%Y %H:%M}" if start else ""
         provider_name = self.cfg.summary.provider

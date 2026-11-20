@@ -531,6 +531,7 @@ class SettingsDialog:
             ("diarization", "num_threads", "Rechen-Threads Sprechertrennung (0 = automatisch):", None),
             ("speakers", "match_threshold", "Schwelle Wiedererkennung (0..1):", None),
             ("speakers", "match_margin", "Mindestabstand zum zweitbesten Profil:", None),
+            ("speakers", "min_named_speech_s", "Kürzere Stimmen nicht zur Zuordnung anbieten (Sekunden Sprache):", None),
             ("speakers", "min_match_speech_s", "Mindest-Sprechzeit für automatische Erkennung (s):", None),
             ("speakers", "min_learn_speech_s", "Mindest-Sprechzeit, damit ein Profil lernt (s):", None),
             ("speakers", "invitee_bonus", "Bonus für Eingeladene (nur bei all_profiles):", None),

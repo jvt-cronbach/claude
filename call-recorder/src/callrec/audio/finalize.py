@@ -179,3 +179,24 @@ def write_clip(src: Path, start: float, end: float, dst: Path) -> Path:
     data, _ = sf.read(str(src), start=s, stop=e, dtype="float32", always_2d=True)
     sf.write(str(dst), data, rate, subtype="PCM_16", format="WAV")
     return dst
+
+
+def write_clip_pieces(src: Path, pieces: list[tuple[float, float]], dst: Path, gap_s: float = 0.3) -> Path:
+    """Several [start, end) passages of ``src`` one after the other (``gap_s`` of silence between)
+    as one 16-bit WAV - a speaker sample made from short turns."""
+    info = sf.info(str(src))
+    rate = info.samplerate
+    parts = []
+    for start, end in pieces:
+        s = max(0, int(start * rate))
+        e = min(info.frames, int(end * rate))
+        if e <= s:
+            continue
+        data, _ = sf.read(str(src), start=s, stop=e, dtype="float32", always_2d=True)
+        if parts and gap_s > 0:
+            parts.append(np.zeros((int(gap_s * rate), data.shape[1]), dtype="float32"))
+        parts.append(data)
+    if not parts:
+        raise ValueError("Kein Audio für diese Hörprobe.")
+    sf.write(str(dst), np.concatenate(parts), rate, subtype="PCM_16", format="WAV")
+    return dst

@@ -163,6 +163,10 @@ PAGES: tuple[Page, ...] = (
               _c(("participants", "Nur Teilnehmende des Termins (empfohlen)"),
                  ("all_profiles", "Alle gespeicherten Stimmprofile – auch nicht Eingeladene"))),
         Field("speakers", "auto_update_on_match", "Profile bei sicherer Erkennung nachschärfen"),
+        Field("speakers", "min_named_speech_s", "Kurze Fragmente ausblenden unter (Sekunden Sprache)",
+              "Stimmen mit weniger Sprache (Husten, „mhm“, Störgeräusche) werden nicht zur Zuordnung angeboten; "
+              "ihr Text geht an die passende Person oder erscheint als „Unklar“. Im Zuordnungsdialog über "
+              "„Kurze Fragmente anzeigen“ trotzdem benennbar."),
         Field("diarization", "cluster_threshold", "Clusterschwelle (kleiner = mehr Sprecher)", adv=True),
         Field("diarization", "num_speakers", "Feste Sprecheranzahl Gegenseite (0 = auto)", adv=True),
         Field("diarization", "min_duration_on", "Mindestdauer Sprechabschnitt (s)", adv=True),

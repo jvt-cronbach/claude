@@ -79,8 +79,10 @@ def speaker_lists(utterances: list[Utterance], speakers: dict[str, SpeakerInfo])
         if n not in spoken:
             spoken.append(n)
     internal = (SELF_SPEAKER_ID, UNKNOWN_SPEAKER_ID)
-    unassigned = [s for s in speakers.values() if not s.name and s.id not in internal and s.id in spoken_ids]
-    silent = [s for s in speakers.values() if s.id not in internal and s.id not in spoken_ids and s.display not in spoken]
+    # short fragments (SpeakerInfo.minor) are never "open"; their text reads "Unklar" or went to a person
+    unassigned = [s for s in speakers.values() if not s.name and not s.minor and s.id not in internal and s.id in spoken_ids]
+    silent = [s for s in speakers.values() if s.id not in internal and not s.minor and s.id not in spoken_ids
+              and s.display not in spoken]
     return spoken, unassigned, silent
 
 

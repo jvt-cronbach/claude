@@ -13,6 +13,8 @@ SOURCE_MANUAL = "manual"  # assigned or confirmed by the user (always wins, surv
 SOURCE_SELF = "self"  # the mic track
 SOURCE_SELF_ECHO = "self_echo"  # a remote cluster the user marked "das bin ich"
 USER_DECIDED = (SOURCE_MANUAL, SOURCE_SELF_ECHO)
+# display name of text from a short fragment that could not be attributed to anybody
+UNCLEAR_LABEL = "Unklar"
 
 
 @dataclass(frozen=True)
@@ -207,10 +209,12 @@ class SpeakerInfo:
     note: str = ""  # why there is no automatic assignment
     self_suspect: bool = False  # probably the user's own voice on the remote track
     preselect_name: str = ""  # pre-filled in the dialog: the only participant not assigned yet (you confirm)
+    # too little speech (speakers.min_named_speech_s): a fragment, not offered for naming, not "open"
+    minor: bool = False
 
     @property
     def display(self) -> str:
-        return self.name or self.label
+        return self.name or (UNCLEAR_LABEL if self.minor else self.label)
 
     def clear_hints(self) -> None:
         self.suggested_name, self.suggested_email, self.suggested_score, self.note = "", "", None, ""
@@ -237,4 +241,5 @@ class SpeakerInfo:
             note=str(d.get("note", "")),
             self_suspect=bool(d.get("self_suspect", False)),
             preselect_name=str(d.get("preselect_name", "")),
+            minor=bool(d.get("minor", False)),
         )

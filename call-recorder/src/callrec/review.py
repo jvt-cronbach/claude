@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from callrec.models import (
@@ -42,6 +42,9 @@ class SpeakerOverview:
     note: str = ""
     self_suspect: bool = False
     preselect_name: str = ""
+    minor: bool = False  # short fragment: hidden unless "Kurze Fragmente anzeigen"
+    speech_s: float = 0.0  # clean speech (no other speaker at the same time)
+    samples: list[Any] = field(default_factory=list)  # callrec.speakers.samples.Sample, best first
 
 
 def choose_sample_span(turns: list[SpeakerTurn], min_len: float = 3.0, max_len: float = 8.0) -> tuple[float, float] | None:
@@ -51,6 +54,31 @@ def choose_sample_span(turns: list[SpeakerTurn], min_len: float = 3.0, max_len: 
     good = [t for t in turns if t.end - t.start >= min_len]
     t = min(good, key=lambda t: t.start) if good else max(turns, key=lambda t: t.end - t.start)
     return (t.start, min(t.end, t.start + max_len))
+
+
+def mic_spans(rec: Recording) -> list[tuple[float, float]]:
+    """When you speak on the microphone track (word times; utterances as fallback)."""
+    from callrec.speakers.assign import words_of
+
+    asr = rec.load_asr("mic")
+    if asr is not None:
+        spans = [(w.start, w.end) for w in words_of(asr) if w.end > w.start]
+        if spans:
+            return spans
+    return [(u.start, u.end) for u in rec.load_utterances() if u.track == "mic"]
+
+
+def _fragment_text(rec: Recording, turns: list[SpeakerTurn]) -> str:
+    """Words of the remote track inside these turns (a fragment's text went to somebody else)."""
+    from callrec.speakers.assign import words_of
+
+    asr = rec.load_asr("remote")
+    if asr is None or not turns:
+        return ""
+    words = [w.text for w in words_of(asr)
+             if any(min(w.end, t.end) - max(w.start, t.start) > 0 for t in turns)]
+    text = "".join(words).strip()
+    return text if len(text) <= 160 else text[:157] + "..."
 
 
 def load_turns(rec: Recording) -> list[SpeakerTurn]:
@@ -67,9 +95,15 @@ def _sample_text(utts: list[Any]) -> str:
 
 
 def speaker_overview(rec: Recording) -> list[SpeakerOverview]:
+    """All remote speakers, short fragments included (``minor``; the dialogs hide them by default)."""
+    from callrec.speakers.diarize import speech_seconds
+    from callrec.speakers.samples import Sample, remote_samples
+
     speakers = rec.load_speakers()
     utterances = rec.load_utterances()
     turns = load_turns(rec)
+    speech = speech_seconds(turns)
+    mic = mic_spans(rec) if turns else []
     out = []
     for sid, info in speakers.items():
         if sid == SELF_SPEAKER_ID:
@@ -77,13 +111,17 @@ def speaker_overview(rec: Recording) -> list[SpeakerOverview]:
         spk_turns = [t for t in turns if t.speaker == sid]
         spk_utts = [u for u in utterances if u.speaker == sid]
         talk = sum(t.end - t.start for t in spk_turns) or sum(u.end - u.start for u in spk_utts)
-        span = choose_sample_span(spk_turns)
-        if span is None and spk_utts:
+        samples = remote_samples(turns, sid, mic) if spk_turns else []
+        if not samples and spk_utts:
             u = max(spk_utts, key=lambda u: u.end - u.start)
-            span = (u.start, min(u.end, u.start + 8.0))
+            samples = [Sample([(u.start, min(u.end, u.start + 15.0))])]
+        span = (samples[0].pieces[0][0], samples[0].pieces[-1][1]) if samples else None
+        text = _sample_text(spk_utts) or (_fragment_text(rec, spk_turns) if info.minor else "")
         out.append(SpeakerOverview(sid, info.label, info.name, info.score, info.source, talk, len(spk_utts),
-                                   _sample_text(spk_utts), span, info.suggested_name, info.suggested_score,
-                                   info.note, info.self_suspect, info.preselect_name))
+                                   text, span, info.suggested_name, info.suggested_score,
+                                   info.note, info.self_suspect, info.preselect_name,
+                                   minor=info.minor and not info.name, speech_s=speech.get(sid, talk),
+                                   samples=samples))
     out.sort(key=lambda o: (min((t.start for t in turns if t.speaker == o.id), default=1e12), o.id))
     return out
 
@@ -94,11 +132,13 @@ def self_overview(rec: Recording) -> SpeakerOverview:
     me = speakers.get(SELF_SPEAKER_ID)
     mine = [u for u in rec.load_utterances() if u.speaker == SELF_SPEAKER_ID and u.track == "mic"]
     talk = sum(u.end - u.start for u in mine)
-    good = [u for u in mine if u.end - u.start >= 3.0]
-    pick = min(good, key=lambda u: u.start) if good else (max(mine, key=lambda u: u.end - u.start) if mine else None)
-    span = (pick.start, min(pick.end, pick.start + 8.0)) if pick is not None else None
+    from callrec.speakers.samples import mic_samples
+
+    samples = mic_samples(mic_spans(rec), load_turns(rec)) if mine else []
+    span = (samples[0].pieces[0][0], samples[0].pieces[-1][1]) if samples else None
     name = me.display if me is not None else rec.self_person().display
-    return SpeakerOverview(SELF_SPEAKER_ID, "Ich", name, None, "self", talk, len(mine), _sample_text(mine), span)
+    return SpeakerOverview(SELF_SPEAKER_ID, "Ich", name, None, "self", talk, len(mine), _sample_text(mine), span,
+                           speech_s=talk, samples=samples)
 
 
 def _is_me(p: Person, me: Person | list[Person]) -> bool:
@@ -213,7 +253,11 @@ def apply_assignments(
             continue
         name, is_self = parse_choice(a.name)
         is_self = is_self or a.is_self
+        was_minor = info.minor
+        if not name and not is_self and info.minor and not info.name:
+            continue  # a hidden short fragment left as it is
         if is_self:
+            info.minor = False
             profiles.forget(rid, a.speaker_id)
             info.name, info.email, info.profile_id, info.score = me.name or "Ich", me.email, "", None
             info.source = SOURCE_SELF_ECHO
@@ -237,11 +281,15 @@ def apply_assignments(
         info.email = a.email or (person.email if person is not None else "")
         info.score = None
         info.source = SOURCE_MANUAL
+        info.minor = False
         info.clear_hints()
         if a.save_profile:
             emb = embeddings.get(a.speaker_id)
             secs = speech.get(a.speaker_id, 0.0)
-            if emb is None or not model_id:
+            if was_minor:
+                profiles.forget(rid, a.speaker_id)
+                messages.append(f"{info.label}: kurzes Fragment ({secs:.0f} s) – kein Stimmprofil gespeichert.")
+            elif emb is None or not model_id:
                 profiles.forget(rid, a.speaker_id)
                 messages.append(f"Für {info.label} liegt kein Stimm-Embedding vor - kein Profil gespeichert.")
             elif secs < min_learn:

@@ -196,7 +196,7 @@ def read_info(folder: Path) -> RecordingInfo:
         try:
             speakers = rec.load_speakers()
             remote = [s for s in speakers.values() if s.id not in ("ME", "S?")]
-            info.speakers_unassigned = sum(1 for s in remote if not s.name)
+            info.speakers_unassigned = sum(1 for s in remote if not s.name and not s.minor)
             info.speakers_spoken = len(remote)
         except (OSError, ValueError, KeyError):
             pass
