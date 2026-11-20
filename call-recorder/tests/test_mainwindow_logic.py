@@ -381,10 +381,11 @@ def test_calendar_candidates(tmp_path: Path):
     src = Src()
     svc = CalendarService(src, tmp_path / "cache.json", timedelta(minutes=10), timedelta(minutes=10), clock=lambda: now)
     events, msg, source = svc.candidates()
-    assert [e.subject for e in events] == ["Projekt Jour fixe", "Kunde"] and source == "graph" and msg == ""
+    # all of today's events: the running one first, then by distance
+    assert [e.subject for e in events] == ["Projekt Jour fixe", "Kunde", "Später"] and source == "graph" and msg == ""
     src.fail = True
     events, msg, source = svc.candidates()
-    assert source == "cache" and len(events) == 2 and "offline" in msg
+    assert source == "cache" and len(events) == 3 and "offline" in msg
     none = CalendarService(None, tmp_path / "x.json", timedelta(0), timedelta(0))
     assert none.candidates()[0] == [] and "optional" in none.candidates()[1]
 

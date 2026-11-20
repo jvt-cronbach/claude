@@ -26,8 +26,9 @@ def test_events_for_recording_ranks_by_overlap():
     other = make_event("Später", START + timedelta(hours=3), id="s")
     cancelled = make_event("Abgesagt", START, is_cancelled=True, id="c")
     found = events_for_recording([other, long_block, cancelled, call], START, START + timedelta(minutes=40))
-    assert [e.id for e in found] == ["p", "b"]  # the call, not the 4-h blocker that also covers it
-    assert events_for_recording([other], START, START + timedelta(minutes=30)) == []
+    # the call, not the 4-h blocker that also covers it; the other events of the day follow, cancelled last
+    assert [e.id for e in found] == ["p", "b", "s", "c"]
+    assert events_for_recording([other], START, START + timedelta(minutes=30)) == [other]
     with pytest.raises(ValueError):
         events_for_recording([], START.replace(tzinfo=None), START)
 

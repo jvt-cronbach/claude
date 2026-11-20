@@ -304,12 +304,17 @@ die App kann dann alle Dateien lesen und schreiben, auf die Sie Zugriff haben). 
 entfällt. Hochgeladen wird mit `PUT /drives/{drive-id}/root:/{Ordner}/{Datei}:/content`
 (eine vorhandene Datei gleichen Namens wird ersetzt).
 
-**Terminauswahl:** Berücksichtigt werden Termine, die gerade laufen, in den nächsten
-10 Minuten beginnen oder vor höchstens 10 Minuten endeten (einstellbar). Abgesagte,
-abgelehnte, ganztägige und „frei“-Termine werden ignoriert. Bei Überschneidungen gewinnt:
-Online-Besprechung → läuft tatsächlich → Beginn am nächsten an „jetzt“ → kürzerer Termin →
-mehr Teilnehmende. Ist der Kalender offline, wird der zuletzt abgerufene Stand verwendet;
-sonst Eingabe von Hand oder `.ics`-Import.
+**Terminauswahl:** Die Auswahlliste im Hauptfenster („Termine aktualisieren“) zeigt **alle Termine
+des heutigen Tages** (Mitternacht bis Mitternacht Ortszeit, auch bereits vorbei und später): zuerst
+Besprechungen, die gerade laufen oder in den nächsten 10 Minuten beginnen bzw. vor höchstens 10 Minuten
+endeten (einstellbar), dann die übrigen nach zeitlicher Nähe, Online-Besprechungen (Teams) vor anderen.
+Ganztägige und mehrtägige Einträge, „frei“/„abwesend“, abgesagte und abgelehnte Termine sowie lange
+Blocker ohne Teilnehmende (z. B. „Rückreise“) stehen markiert am Ende und werden nie vorausgewählt; läuft
+gerade keine Besprechung, ist „Ohne Termin“ vorausgewählt. Dieselbe Rangfolge benennt eine neue
+Aufnahme. *Termin zuordnen …* zeigt alle Termine des Aufnahmetags (bei Aufnahmen über Mitternacht auch des
+Folgetags) mit Uhrzeit, Organisation und Anzahl der Teilnehmenden, der am besten überlappende zuerst. Ist
+der Kalender offline, wird der zuletzt abgerufene Stand verwendet; sonst Eingabe von Hand oder `.ics`-Import.
+Im Protokoll steht, wie viele Termine abgefragt wurden und warum ein Termin nachrangig ist.
 
 ---
 
@@ -792,6 +797,17 @@ auf die neue Gliederung aktualisiert. **Selbst angepasste Vorlagen bleiben unver
 neue Standardvorlage liegt daneben als `summary_final.default.txt` (bzw. `summary_system…`,
 `summary_chunk…`). Übernehmen: eigene Datei löschen (wird beim nächsten Start aus der Standardvorlage
 neu angelegt) oder Inhalt der `.default.txt` hineinkopieren und eigene Ergänzungen wieder einfügen.
+
+**Nur Geschäftliches.** Die Standardvorlagen lassen Smalltalk und Privates bewusst weg (Begrüßung,
+private Gespräche, persönliche Neuigkeiten, Gesundheit, Familie, Gerede über Dritte). War ein Gespräch
+ausschließlich privat, besteht die Zusammenfassung nur aus der Zeile „Privates Gespräch – keine
+geschäftlichen Inhalte protokolliert.“
+
+**Prompt bearbeiten:** Hauptfenster *Extras → Zusammenfassungs-Prompt bearbeiten …* (auch unter
+*Einstellungen → Zusammenfassung*): je Vorlage ein Reiter mit Erklärung der Platzhalter,
+„Standard wiederherstellen“, eine Prüfung beim Speichern (fehlendes `{material}`/`{chunk}`, unbekannte
+Platzhalter) und – mit ausgewählter Aufnahme – „Mit dieser Aufnahme testen“: speichert und erstellt die
+Zusammenfassung dieser Aufnahme als neue Version (die bisherige bleibt zum Vergleich).
 
 ### Sprache des Gesprächs
 
