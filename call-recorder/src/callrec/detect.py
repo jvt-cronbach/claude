@@ -18,8 +18,14 @@ class Prompt:
 
     def message(self) -> str:
         if self.reason == "calendar" and self.event:
-            return f"Der Termin „{self.event.subject}“ beginnt. Möchten Sie das Gespräch aufnehmen?"
-        return "Teams nutzt gerade das Mikrofon - beginnt ein Anruf? Möchten Sie das Gespräch aufnehmen?"
+            return f"Der Termin „{self.event.subject}“ beginnt. Gespräch aufnehmen?"
+        return "Teams nutzt gerade das Mikrofon – beginnt ein Anruf? Gespräch aufnehmen?"
+
+    def question(self) -> str:
+        """Short one-line question for the call-detected prompt ("Call erkannt: <Termin> – aufnehmen?")."""
+        if self.event is not None:
+            return f"Call erkannt: {self.event.subject} – aufnehmen?"
+        return "Call erkannt – aufnehmen?"
 
 
 def _norm_process(name: str) -> str:

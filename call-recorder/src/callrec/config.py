@@ -216,7 +216,7 @@ class ProcessingConfig:
     after_recording: str = "ask"  # ask | full
     default_speakers: bool = True  # speaker separation/recognition + assignment dialog
     default_summary: bool = True
-    default_handoff: bool = False  # pre-ticks the hand-over box in the question (still the user's click)
+    default_handoff: bool = True  # pre-ticks the hand-over box in the question (still the user's click)
     handoff_without_asking: bool = False  # only with after_recording = "full"
 
 
@@ -261,11 +261,18 @@ class HotkeyConfig:
     toggle: str = "ctrl+alt+shift+r"
 
 
+UI_FRONTENDS = ("tk", "web")
+UI_THEMES = ("system", "light", "dark")
+
+
 @dataclass
 class UiConfig:
     show_overlay: bool = True
     open_review_after_processing: bool = True
     start_minimized: bool = False  # True = start only in the tray, without opening the main window
+    # "tk" = classic window; "web" = new interface (preview, pywebview/WebView2; falls back to "tk")
+    frontend: str = "tk"
+    theme: str = "system"  # new interface: system (Windows app mode) | light | dark
 
 
 @dataclass
@@ -296,6 +303,10 @@ class Config:
         return paths.default_recordings_dir()
 
     def validate(self) -> None:
+        if self.ui.frontend not in UI_FRONTENDS:
+            raise ConfigError("ui.frontend muss 'tk' oder 'web' sein")
+        if self.ui.theme not in UI_THEMES:
+            raise ConfigError("ui.theme muss 'system', 'light' oder 'dark' sein")
         if self.consent.mode not in ("ask", "confirm"):
             raise ConfigError("consent.mode muss 'ask' oder 'confirm' sein")
         if self.audio.format not in ("flac", "opus"):
@@ -601,6 +612,12 @@ def load_config(path: Path | None = None, preset: str | None = None) -> Config:
             # 2 was the template default of earlier versions (written into every config.toml), not a choice
             di["num_threads"] = 0
             log.info("diarization.num_threads = 2 (alter Standardwert) -> automatisch")
+        ui, pr = data.get("ui"), data.get("processing")
+        if isinstance(pr, dict) and pr.get("default_handoff") is False and not (isinstance(ui, dict) and "frontend" in ui):
+            # false was the template default before 0.3 (written into every config.toml), not a choice;
+            # since 0.3 the hand-over box in the question after a recording is ticked by default
+            pr["default_handoff"] = True
+            log.info("processing.default_handoff = false (alter Standardwert) -> true")
         cfg = config_from_dict(data)
         if migrated:
             cfg.warnings.append(LEGACY_LANGUAGE_NOTE)
@@ -859,8 +876,9 @@ after_recording = "ask"
 # Vorauswahl der Schritte in der Rückfrage
 default_speakers = true
 default_summary = true
-# Häkchen "an SharePoint übergeben" vorbelegen (übergeben wird trotzdem nur nach Ihrem Klick)
-default_handoff = false
+# Häkchen "an SharePoint übergeben" vorbelegen (übergeben wird trotzdem nur nach dem Klick auf
+# "Vollständig verarbeiten" in der Rückfrage)
+default_handoff = true
 # nur bei after_recording = "full": Zusammenfassung ohne Rückfrage an SharePoint übergeben
 handoff_without_asking = false
 
@@ -871,7 +889,7 @@ toggle = "ctrl+alt+shift+r"
 # Quelle der Updates (nur HTTPS auf github.com; installiert wird nur der in release.json freigegebene Stand)
 repo_url = "https://github.com/jvt-cronbach/claude"
 branch = "claude/cool-maxwell-zmzy87"
-# einmal täglich nachsehen und nur benachrichtigen (installiert wird nie ohne Ihren Klick)
+# einmal täglich nachsehen und nur benachrichtigen (installiert wird nie ohne Klick)
 check_daily = true
 
 [ui]
@@ -879,6 +897,10 @@ show_overlay = true
 open_review_after_processing = true
 # true = beim Start nur das Tray-Symbol, ohne Hauptfenster
 start_minimized = false
+# Oberfläche: "tk" = klassisches Fenster, "web" = neue Oberfläche (Vorschau; ohne WebView2 automatisch "tk")
+frontend = "tk"
+# neue Oberfläche: "system" = wie der Windows-App-Modus, "light" = hell, "dark" = dunkel
+theme = "system"
 """
 
 

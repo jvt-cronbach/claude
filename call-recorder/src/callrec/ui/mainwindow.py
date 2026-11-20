@@ -45,6 +45,7 @@ from callrec.ui.viewmodel import (
     MANUAL_EVENT,
     VersionChoice,
     WindowState,
+    action_states,
     clamp_geometry,
     default_geometry,
     event_label,
@@ -1263,23 +1264,7 @@ class MainWindow:
         rec = Recording(info.folder)
         recording_now = self.controller.current is not None and self.controller.current.folder == info.folder
         busy = self.controller.is_busy(rec)
-        enabled = {
-            "process_now": info.needs_processing and not busy and not recording_now,
-            "handoff": info.has_summary,
-            "review": info.speakers_unassigned is not None and not busy,
-            "resummarize": info.has_transcript and not recording_now,
-            "retranscribe": info.recording_status in ("stopped", "recovered") and not recording_now,
-            "reprocess": info.recording_status in ("stopped", "recovered", "recording") and not recording_now,
-            "rename": not busy,
-            "assign_event": not busy and not recording_now and self.controller.calendar.source is not None,
-            "participants": not busy,
-            "recheck": not busy and info.speakers_unassigned is not None,
-            "rerender": not busy and info.has_transcript,
-            "speaker_limit": not busy and info.speakers_unassigned is not None,
-            "folder": True,
-            "play": not recording_now and (info.folder / "audio").is_dir(),
-            "delete": not busy,
-        }
+        enabled = action_states(info, recording_now, busy, self.controller.calendar.source is not None)
         self._enabled = enabled
         for key, b in self.buttons.items():
             b.state(["!disabled"] if enabled.get(key) else ["disabled"])

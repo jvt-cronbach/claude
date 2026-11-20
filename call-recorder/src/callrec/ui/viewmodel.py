@@ -310,3 +310,113 @@ def next_action(info: RecordingInfo, busy: bool = False, recording_now: bool = F
     if info.has_summary:
         return "fertig und übergeben", "", ""
     return "–", "", ""
+
+
+# ---------------------------------------------------------------------------
+# Markdown as blocks (web UI): structure only, never HTML - the page sets text with textContent
+# ---------------------------------------------------------------------------
+Inline = list[list[Any]]  # [[text, "b"|"i"|"c"|""], ...]
+_UTT = re.compile(r"^\*\*(?:\[(\d{1,2}:\d{2}(?::\d{2})?)\]\s*)?([^*\n]{1,200}?):\*\*\s?(.*)$")
+_TAG_FLAG = {"bold": "b", "italic": "i", "code": "c"}
+
+
+def inline_runs(text: str) -> Inline:
+    out: Inline = []
+    for chunk, tags in inline_spans(text):
+        flag = "".join(_TAG_FLAG[t] for t in tags if t in _TAG_FLAG)
+        if chunk:
+            out.append([chunk, flag])
+    return out
+
+
+def _cells(line: str) -> list[str]:
+    return [c.strip() for c in line.strip().strip("|").split("|")]
+
+
+def markdown_blocks(md: str, transcript: bool = False) -> list[dict[str, Any]]:
+    """The Markdown subset of summary.md / transcript.md as a list of blocks:
+
+    ``{"t": "h", "level": 1-3, "inl": ...}``, ``{"t": "p", "inl": ...}``, ``{"t": "li", "level": 0|1,
+    "num": "1." | "", "inl": ...}``, ``{"t": "quote", "inl": ...}``, ``{"t": "rule"}``,
+    ``{"t": "table", "head": [...], "rows": [[...]]}`` (cells as inline runs) and, in a transcript,
+    ``{"t": "utt", "ts": "00:01:02", "who": "Name", "inl": ...}`` for every contribution."""
+    lines = md.replace("\r\n", "\n").split("\n")
+    out: list[dict[str, Any]] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+        if stripped.startswith("|") and stripped.count("|") >= 2:
+            block = []
+            while i < len(lines) and lines[i].strip().startswith("|"):
+                block.append(lines[i])
+                i += 1
+            rows = [_cells(b) for b in block if not _TABLE_SEP.match(b)]
+            has_head = len(block) > 1 and bool(_TABLE_SEP.match(block[1]))
+            head = rows[0] if has_head and rows else []
+            body = rows[1:] if has_head else rows
+            out.append({"t": "table", "head": [inline_runs(c) for c in head],
+                        "rows": [[inline_runs(c) for c in r] for r in body]})
+            continue
+        m = re.match(r"^(#{1,6})\s+(.*)$", line)
+        if transcript and (u := _UTT.match(stripped)):
+            out.append({"t": "utt", "ts": u.group(1) or "", "who": u.group(2).strip(), "inl": inline_runs(u.group(3))})
+        elif m:
+            out.append({"t": "h", "level": min(len(m.group(1)), 3), "inl": inline_runs(m.group(2).strip())})
+        elif re.match(r"^\s*([-*_])(\s*\1){2,}\s*$", line):
+            out.append({"t": "rule"})
+        elif re.match(r"^\s*[-*+]\s+", line):
+            indent = len(line) - len(line.lstrip())
+            out.append({"t": "li", "level": 1 if indent >= 2 else 0, "num": "",
+                        "inl": inline_runs(re.sub(r"^\s*[-*+]\s+", "", line))})
+        elif n := re.match(r"^\s*(\d+[.)])\s+(.*)$", line):
+            out.append({"t": "li", "level": 0, "num": n.group(1), "inl": inline_runs(n.group(2))})
+        elif stripped.startswith(">"):
+            out.append({"t": "quote", "inl": inline_runs(stripped.lstrip("> ").rstrip())})
+        elif stripped:
+            para = [stripped]
+            while i + 1 < len(lines) and _is_plain(lines[i + 1]):
+                i += 1
+                para.append(lines[i].strip())
+            out.append({"t": "p", "inl": inline_runs(" ".join(para))})
+        i += 1
+    return out
+
+
+# ---------------------------------------------------------------------------
+# per-recording actions (both main windows)
+# ---------------------------------------------------------------------------
+def action_states(info: RecordingInfo, recording_now: bool, busy: bool, calendar_connected: bool) -> dict[str, bool]:
+    """Which actions of a recording are possible right now."""
+    return {
+        "process_now": info.needs_processing and not busy and not recording_now,
+        "handoff": info.has_summary,
+        "review": info.speakers_unassigned is not None and not busy,
+        "resummarize": info.has_transcript and not recording_now,
+        "retranscribe": info.recording_status in ("stopped", "recovered") and not recording_now,
+        "reprocess": info.recording_status in ("stopped", "recovered", "recording") and not recording_now,
+        "rename": not busy,
+        "assign_event": not busy and not recording_now and calendar_connected,
+        "participants": not busy,
+        "recheck": not busy and info.speakers_unassigned is not None,
+        "rerender": not busy and info.has_transcript,
+        "speaker_limit": not busy and info.speakers_unassigned is not None,
+        "folder": True,
+        "play": not recording_now and (info.folder / "audio").is_dir(),
+        "delete": not busy,
+    }
+
+
+def status_tone(info: RecordingInfo, key: str, busy: bool = False, recording_now: bool = False) -> str:
+    """Colour family of the status chip of ``next_action`` (never colour alone - text and icon too)."""
+    if info.error or info.has_problem():
+        return "err" if info.error or not key else "warn"
+    if recording_now:
+        return "rec"
+    if busy or info.busy or info.chain_active:
+        return "warn" if key == "review" else "info"
+    if key == "handoff":
+        return "warn" if info.handoff else "accent"
+    if key:
+        return "warn"
+    return "ok" if info.has_summary else ""

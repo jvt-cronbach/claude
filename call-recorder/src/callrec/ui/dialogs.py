@@ -60,7 +60,12 @@ def _modal(win: tk.Toplevel) -> None:
 # Start + consent
 # ---------------------------------------------------------------------------
 def ask_start(root: tk.Tk, suggestion: Suggestion, me: Person, calendar: CalendarService,
-              summary_provider: str = "") -> StartDecision | None:
+              summary_provider: str = "", mode: str = "confirm") -> StartDecision | None:
+    """Start question. ``mode`` "ask": one question with the reminder and "Aufnehmen" (no checkbox);
+    "confirm": the explicit confirmation checkbox (see :mod:`callrec.ui.startflow`)."""
+    from callrec.ui.startflow import build_record, start_texts
+
+    texts = start_texts(mode, summary_provider)
     win = tk.Toplevel(root)
     win.title("Aufnahme vorbereiten")
     win.resizable(True, False)
@@ -100,23 +105,23 @@ def ask_start(root: tk.Tk, suggestion: Suggestion, me: Person, calendar: Calenda
 
     ttk.Button(win, text=".ics-Einladung importieren …", command=import_ics).grid(row=3, column=1, sticky="w", **PAD)
 
-    frame = ttk.LabelFrame(win, text="Einwilligung aller Teilnehmenden (§ 201 StGB)")
+    frame = ttk.LabelFrame(win, text="Zustimmung aller Teilnehmenden (§ 201 StGB)")
     frame.grid(row=4, column=0, columnspan=2, sticky="we", padx=8, pady=8)
-    ttk.Label(frame, text=consent_statement(summary_provider), wraplength=520).pack(anchor="w", padx=8, pady=4)
-    cloud = summary_provider == "anthropic"
-    if cloud:
-        ttk.Label(frame, text="Achtung: Die Zusammenfassung erstellt Claude (Anthropic). Das Transkript verlässt "
-                  "dafür diesen Rechner.", wraplength=520, foreground="#b00020").pack(anchor="w", padx=8, pady=2)
+    ttk.Label(frame, text=texts.statement, wraplength=520, foreground="#444" if mode == "ask" else "").pack(
+        anchor="w", padx=8, pady=4)
+    if texts.cloud_note:
+        ttk.Label(frame, text="Achtung: " + texts.cloud_note, wraplength=520, foreground="#b00020").pack(
+            anchor="w", padx=8, pady=2)
     consent_var = tk.BooleanVar(value=False)  # never pre-checked
     start_btn: ttk.Button
 
     def on_check() -> None:
         start_btn.state(["!disabled"] if consent_var.get() else ["disabled"])
 
-    ttk.Checkbutton(
-        frame, text="Ja, alle Teilnehmenden haben der Aufnahme und der Übertragung an Anthropic zugestimmt." if cloud
-        else "Ja, alle Teilnehmenden haben der Aufnahme zugestimmt.", variable=consent_var, command=on_check
-    ).pack(anchor="w", padx=8, pady=4)
+    if mode != "ask":
+        ttk.Checkbutton(frame, text=texts.checkbox, variable=consent_var, command=on_check).pack(
+            anchor="w", padx=8, pady=4)
+    ttk.Label(frame, text=texts.record_note, wraplength=520, foreground="#555").pack(anchor="w", padx=8, pady=2)
 
     buttons = ttk.Frame(win)
     buttons.grid(row=5, column=0, columnspan=2, sticky="e", **PAD)
@@ -125,13 +130,9 @@ def ask_start(root: tk.Tk, suggestion: Suggestion, me: Person, calendar: Calenda
         title = title_var.get().strip() or "Anruf"
         participants = parse_participants_text(people_txt.get("1.0", "end"))
         try:
-            consent = confirm_consent(
-                user_checked_box=bool(consent_var.get()),
-                confirmed_by=me.display or "Benutzer",
-                participants=participants,
-                method="dialog",
-                summary_provider=summary_provider,
-            )
+            # mode "ask": this click on "Aufnehmen" is the user's action; "confirm": the ticked box
+            consent = build_record(mode, user_action=True if mode == "ask" else bool(consent_var.get()), me=me,
+                                   participants=participants, provider=summary_provider)
         except ConsentError as exc:
             messagebox.showwarning("Einwilligung fehlt", str(exc), parent=win)
             return
@@ -139,10 +140,11 @@ def ask_start(root: tk.Tk, suggestion: Suggestion, me: Person, calendar: Calenda
         result["value"] = StartDecision(title, participants, sugg.event, consent)
         win.destroy()
 
-    start_btn = ttk.Button(buttons, text="Aufnahme starten", command=do_start)
-    start_btn.state(["disabled"])
+    start_btn = ttk.Button(buttons, text=texts.start_label, command=do_start)
+    if mode != "ask":
+        start_btn.state(["disabled"])
     start_btn.pack(side="right", padx=4)
-    ttk.Button(buttons, text="Abbrechen", command=win.destroy).pack(side="right", padx=4)
+    ttk.Button(buttons, text=texts.cancel_label, command=win.destroy).pack(side="right", padx=4)
     win.bind("<Escape>", lambda e: win.destroy())
     win.columnconfigure(1, weight=1)
     _modal(win)
@@ -185,6 +187,44 @@ def ask_record_prompt(root: tk.Tk, prompt: Prompt, timeout_s: int = 90) -> bool:
     x = win.winfo_screenwidth() - win.winfo_width() - 24
     y = win.winfo_screenheight() - win.winfo_height() - 80
     win.geometry(f"+{x}+{y}")
+    def expire() -> None:
+        if win.winfo_exists():
+            win.destroy()
+
+    win.after(timeout_s * 1000, expire)
+    root.wait_window(win)
+    return answer["value"]
+
+
+def ask_record_prompt_choice(root: tk.Tk, prompt: Prompt, summary_provider: str = "", timeout_s: int = 90) -> str:
+    """Mode "ask": the call-detected prompt IS the one question.
+
+    Returns "record" (click on "Aufnehmen"), "details" (open the full start dialog) or "" (dismissed,
+    closed or expired - expiring never starts anything). No button is bound to Enter, and the window
+    is not given the keyboard focus (typing in Teams must not answer it)."""
+    from callrec.consent import reminder_statement
+
+    win = tk.Toplevel(root)
+    win.title("Gespräch aufnehmen?")
+    answer = {"value": ""}
+    ttk.Label(win, text=prompt.question(), wraplength=380, font=("Segoe UI", 10, "bold")).pack(padx=12, pady=(10, 4))
+    ttk.Label(win, text=reminder_statement(summary_provider), foreground="#555", wraplength=380).pack(padx=12)
+    bar = ttk.Frame(win)
+    bar.pack(pady=10)
+
+    def choose(v: str) -> None:
+        answer["value"] = v
+        win.destroy()
+
+    ttk.Button(bar, text="Aufnehmen", command=lambda: choose("record"), takefocus=0).pack(side="left", padx=4)
+    ttk.Button(bar, text="Nicht aufnehmen", command=win.destroy, takefocus=0).pack(side="left", padx=4)
+    ttk.Button(bar, text="Details …", command=lambda: choose("details"), takefocus=0).pack(side="left", padx=4)
+    win.attributes("-topmost", True)
+    win.update_idletasks()
+    x = win.winfo_screenwidth() - win.winfo_width() - 24
+    y = win.winfo_screenheight() - win.winfo_height() - 80
+    win.geometry(f"+{x}+{y}")
+
     def expire() -> None:
         if win.winfo_exists():
             win.destroy()

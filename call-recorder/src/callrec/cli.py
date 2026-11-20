@@ -591,9 +591,14 @@ def cmd_record(args: argparse.Namespace) -> int:
             try:
                 from callrec.consent import active_summary_provider
 
+                from callrec.consent import cli_start
+                from callrec.ui.startflow import consent_mode
+
                 tty = sys.stdin is not None and sys.stdin.isatty()
-                consent = cli_confirm(input, print, me.display, people, interactive=tty,
-                                      summary_provider=active_summary_provider(cfg.summary))
+                # mode "ask": one question "Aufnehmen? [j/N]" with the reminder; "confirm": typed "ja"
+                ask = cli_start if consent_mode(cfg) == "ask" else cli_confirm
+                consent = ask(input, print, me.display, people, interactive=tty,
+                              summary_provider=active_summary_provider(cfg.summary))
             except ConsentError as exc:
                 print(exc)
                 return None

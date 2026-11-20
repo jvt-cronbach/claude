@@ -1,9 +1,11 @@
-"""User actions shared by the tray menu and the main window (Tk thread only).
+"""User actions shared by the tray menu and the main window (UI thread only: the Tk thread of the
+classic UI, the app thread of the web UI).
 
 Each action goes through the existing building blocks - the controller (recording, queueing
-pipeline steps, rename/delete), the existing dialogs (consent, speaker review, hand-over
-preview, settings) and the factory - so tray, window and CLI cannot drift apart. Nothing in
-here runs long work on the Tk thread except where the existing dialogs already did so.
+pipeline steps, rename/delete), the dialogs (consent, speaker review, hand-over preview,
+settings; reached through ``self.dialogs``, a :class:`callrec.ui.dialogport.DialogPort`) and the
+factory - so tray, both windows and CLI cannot drift apart. Nothing in here runs long work on the
+UI thread except where the existing dialogs already did so.
 """
 
 from __future__ import annotations
@@ -14,7 +16,6 @@ import sys
 import threading
 from collections.abc import Callable
 from pathlib import Path
-from tkinter import messagebox
 from typing import Any
 
 from callrec import paths
@@ -33,7 +34,7 @@ from callrec.models import Person
 from callrec.pipeline import STEP_PRESETS
 from callrec.recording import Recording, list_recordings
 from callrec.speakers.profiles import ProfileStore
-from callrec.ui import dialogs
+from callrec.ui.dialogport import AFTER_DISCARD, AFTER_FULL, DialogPort, TkDialogPort
 
 log = logging.getLogger(__name__)
 
@@ -91,6 +92,8 @@ class AppActions:
         self.quit_handler: Callable[[], None] = lambda: None
         self.show_window_handler: Callable[[], None] = lambda: None
         self.autostop: Any = None  # AutoStopRunner (countdown banner in the main window), set by the app
+        # the questions to the user (Tk dialogs by default; the web UI sets its in-page dialogs)
+        self.dialogs: DialogPort = TkDialogPort(lambda: self.ui.root)
         from callrec.autostart import Autostart
         from callrec.postcall import ProcessingChain
 
@@ -115,6 +118,13 @@ class AppActions:
     @property
     def root(self) -> Any:
         return self.ui.root
+
+    def _after(self, ms: int, fn: Callable[[], object]) -> None:
+        after = getattr(self.ui, "after", None)
+        if callable(after):
+            after(ms, fn)
+        else:
+            self.root.after(ms, fn)
 
     def _changed(self, rec: Recording | None) -> None:
         for fn in list(self.on_changed):
@@ -160,13 +170,13 @@ class AppActions:
             return ""
         ready, why = self.handoff_ready()
         summary_problem = "" if self.cfg.summary.enabled else "in den Einstellungen ausgeschaltet"
-        choice, plan = dialogs.ask_after_recording(self.root, rec, default_plan(self.cfg), "" if ready else why,
-                                                   summary_problem)
-        if choice == dialogs.AFTER_FULL:
+        choice, plan = self.dialogs.ask_after_recording(rec, default_plan(self.cfg), "" if ready else why,
+                                                        summary_problem)
+        if choice == AFTER_FULL:
             if not self.cloud_ok(rec, STEP_PRESETS["all"] if plan.summary else frozenset()):
                 plan.summary = False
             self.chain.start(rec, plan, "dialog")
-        elif choice == dialogs.AFTER_DISCARD:
+        elif choice == AFTER_DISCARD:
             try:
                 where = self.controller.delete(rec)
                 self.ui.notify("Aufnahme verworfen", where)
@@ -199,8 +209,8 @@ class AppActions:
 
     def review_in_chain(self, rec: Recording) -> bool:
         pipeline = build_pipeline(self.cfg, self.profiles)
-        return bool(dialogs.review_speakers(self.root, rec, self.profiles, rerender=lambda: pipeline.run(rec, {"render"}),
-                                            resummarize=lambda: None, in_chain=True, speaker_cfg=self.cfg.speakers))
+        return bool(self.dialogs.review_speakers(rec, self.profiles, rerender=lambda: pipeline.run(rec, {"render"}),
+                                                 resummarize=lambda: None, in_chain=True, speaker_cfg=self.cfg.speakers))
 
     # -- helpers ------------------------------------------------------
     def last_recording(self) -> Recording | None:
@@ -221,7 +231,7 @@ class AppActions:
 
         if "summarize" not in steps or cloud_summary_covered(rec.load_meta(), active_summary_provider(self.cfg.summary)):
             return True
-        if dialogs.confirm_cloud_summary(self.root, rec, self.me_provider()):
+        if self.dialogs.confirm_cloud_summary(rec, self.me_provider()):
             return True
         self.ui.notify("Keine Übertragung", "Ohne Bestätigung wird die Zusammenfassung nicht von Claude erstellt.")
         return False
@@ -274,8 +284,8 @@ class AppActions:
             self.ui.notify("Noch nicht verarbeitet", "Die Aufnahme wird noch verarbeitet.")
             return
         pipeline = build_pipeline(self.cfg, self.profiles)
-        dialogs.review_speakers(
-            self.root, rec, self.profiles,
+        self.dialogs.review_speakers(
+            rec, self.profiles,
             rerender=lambda: pipeline.run(rec, {"render"}),
             resummarize=lambda: self.resummarize(rec),
             handoff=lambda: self.handoff(rec),
@@ -326,7 +336,7 @@ class AppActions:
         if self.controller.is_busy(rec):
             self.ui.notify("Wird noch verarbeitet", f"{rec.folder.name}: Teilnehmende sind danach änderbar.")
             return False
-        people = dialogs.edit_participants(self.root, rec)
+        people = self.dialogs.edit_participants(rec)
         if people is None:
             return False
         msgs = set_participants(rec, people)
@@ -350,7 +360,7 @@ class AppActions:
             return False
         pipeline = build_pipeline(self.cfg, self.profiles)
         foreign = foreign_old_assignments(rec, pipeline._participants(rec))
-        if foreign and dialogs.confirm_reset_foreign(self.root, rec, foreign):
+        if foreign and self.dialogs.confirm_reset_foreign(rec, foreign):
             archive_speakers(rec)
             names = {name for _sid, _label, name in foreign}
             reset_speakers(rec, [sid for sid, _l, _n in foreign], self.profiles)
@@ -363,7 +373,7 @@ class AppActions:
             log.exception("Vorschau der Sprecherzuordnung fehlgeschlagen")
             self.ui.notify("Sprecherzuordnung neu prüfen", f"Nicht möglich: {exc}")
             return False
-        if not dialogs.confirm_recheck(self.root, rec, changes):
+        if not self.dialogs.confirm_recheck(rec, changes):
             return False
         from callrec.review import legacy_profile_updates
 
@@ -397,10 +407,10 @@ class AppActions:
             return False
         ready, why = self.handoff_ready()
         if not ready:
-            if messagebox.askyesno("SharePoint-Übergabe einrichten", why + "\n\nEinstellungen jetzt öffnen?", parent=self.root):
+            if self.dialogs.ask_yes_no("SharePoint-Übergabe einrichten", why + "\n\nEinstellungen jetzt öffnen?"):
                 self.settings("SharePoint")
             return False
-        done = dialogs.ask_handoff(self.root, rec, self.cfg, lambda sha: perform_handoff(self.cfg, rec, sha))
+        done = self.dialogs.ask_handoff(rec, self.cfg, lambda sha: perform_handoff(self.cfg, rec, sha))
         self._changed(rec)
         return done
 
@@ -440,7 +450,7 @@ class AppActions:
         if not events:
             self.ui.notify("Termin zuordnen", f"Im Kalender gibt es keinen Termin zur Zeit von {rec.folder.name}.")
             return
-        choice = dialogs.ask_event_for_recording(self.root, rec, events)
+        choice = self.dialogs.ask_event_for_recording(rec, events)
         if choice is None:
             return
         if self.controller.is_busy(rec):
@@ -467,7 +477,7 @@ class AppActions:
         rec = self._resolve(rec)
         if rec is None:
             return False
-        choice = dialogs.ask_retranscribe(self.root, rec, list_presets())
+        choice = self.dialogs.ask_retranscribe(rec, list_presets())
         if choice is None:
             return False
         language, preset = choice
@@ -486,11 +496,14 @@ class AppActions:
                 b.close()
             except Exception:
                 log.exception("Geräteliste nicht verfügbar")
-        from callrec.ui.settings import edit_settings
-
         base = load_config(preset="")  # edit config.toml itself, not the preset overlay
-        if not edit_settings(self.root, base, mics, outs, save_config, initial_tab=tab, autostart=self.autostart):
+        if not self.dialogs.edit_settings(base, mics, outs, save_config, initial_tab=tab, autostart=self.autostart):
             return False
+        self.apply_saved_config()
+        return True
+
+    def apply_saved_config(self) -> None:
+        """After config.toml was saved (either settings UI): take it over in the running app."""
         try:
             reload_config_in_place(self.cfg)
             # the calendar source depends on calendar.client_id: rebuild it in the shared service
@@ -500,7 +513,6 @@ class AppActions:
             self.ui.notify("Konfiguration", str(exc))
         for fn in list(self.on_config_changed):
             fn()
-        return True
 
     def set_autostart(self, on: bool) -> str:
         try:
@@ -536,12 +548,10 @@ class AppActions:
     def edit_prompts(self, rec: Recording | None = None) -> bool:
         """ "Zusammenfassungs-Prompt bearbeiten" (main window); with a selected recording also
         "Mit dieser Aufnahme testen" (a new summary version, the earlier one stays for comparison)."""
-        from callrec.ui.settings import edit_summary_prompts
-
         test = None
         if rec is not None and rec.utterances_path.exists():
             test = lambda: self.resummarize(rec)  # noqa: E731
-        return edit_summary_prompts(self.root, test=test)
+        return self.dialogs.edit_summary_prompts(test=test)
 
     # -- updates ----------------------------------------------------------
     def busy_reason(self) -> str:
@@ -582,7 +592,7 @@ class AppActions:
         from callrec.updater import read_install_info
 
         info = read_install_info()
-        choice = dialogs.ask_update(self.root, res, self.busy_reason(), info)
+        choice = self.dialogs.ask_update(res, self.busy_reason(), info)
         if choice in ("now", "after") and not isinstance(res, Exception):
             self.start_update(res, "update", wait=choice == "after")
         elif choice == "restore":
@@ -599,7 +609,7 @@ class AppActions:
                 return False
             self.ui.notify("Update vorgemerkt", f"{busy} CallRecorder aktualisiert sich, sobald das abgeschlossen ist.")
             self._pending_update = (res, mode)
-            self.root.after(15000, self._pending_update_tick)
+            self._after(15000, self._pending_update_tick)
             return False
         try:
             if mode == "update":
@@ -615,7 +625,7 @@ class AppActions:
             self.ui.notify("Update nicht möglich", str(exc))
             return False
         self.ui.notify("Update", "CallRecorder wird für das Update beendet und danach neu gestartet.")
-        self.root.after(500, self.quit)
+        self._after(500, self.quit)
         return True
 
     _pending_update: tuple[Any, str] | None = None
@@ -625,7 +635,7 @@ class AppActions:
         if pending is None:
             return
         if self.busy_reason():
-            self.root.after(15000, self._pending_update_tick)
+            self._after(15000, self._pending_update_tick)
             return
         self._pending_update = None
         self.start_update(pending[0], pending[1])
@@ -640,9 +650,9 @@ class AppActions:
         except Exception as exc:
             self.ui.notify("Wiederherstellen nicht möglich", str(exc))
             return False
-        if not messagebox.askyesno("Vorherige Version wiederherstellen",
-                                   f"Zurück auf CallRecorder {res.target_version} ({prev[:10]})? CallRecorder wird "
-                                   "dafür beendet und neu gestartet.", parent=self.root):
+        if not self.dialogs.ask_yes_no("Vorherige Version wiederherstellen",
+                                       f"Zurück auf CallRecorder {res.target_version} ({prev[:10]})? CallRecorder wird "
+                                       "dafür beendet und neu gestartet."):
             return False
         return self.start_update(res, "restore", wait=True)
 
@@ -657,8 +667,8 @@ class AppActions:
     def manage_profiles(self) -> None:
         from callrec.review import rebuild_profile
 
-        dialogs.manage_profiles(self.root, self.profiles,
-                                rebuild=lambda pid: rebuild_profile(self.profiles, pid, self.cfg.recordings_path()))
+        self.dialogs.manage_profiles(self.profiles,
+                                     rebuild=lambda pid: rebuild_profile(self.profiles, pid, self.cfg.recordings_path()))
 
     # -- files --------------------------------------------------------
     def _open(self, path: Any) -> bool:

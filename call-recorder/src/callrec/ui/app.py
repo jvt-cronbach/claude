@@ -170,6 +170,10 @@ def run_tray_app(cfg: Config | None = None, start_minimized: bool = False) -> in
     from callrec.consent import active_summary_provider
 
     ui.summary_provider = lambda: active_summary_provider(cfg.summary)
+    from callrec.ui.startflow import consent_mode
+
+    ui.consent_mode = lambda: consent_mode(cfg)
+    ui.me_provider = me_provider
     actions = AppActions(cfg, ui, controller, queue, profiles, me_provider, log_file)
     ui.review_handler = actions.review
     window = MainWindow(ui.root, actions)

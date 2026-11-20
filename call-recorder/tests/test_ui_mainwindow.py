@@ -186,7 +186,7 @@ def test_record_start_goes_through_consent_dialog_and_stop_queues_processing(wor
     w.win.event_var.set(values[1])  # pick the other current event
     asked: list[Suggestion] = []
 
-    def fake_ask_start(root, suggestion, me, calendar, summary_provider=""):
+    def fake_ask_start(root, suggestion, me, calendar, summary_provider="", **_k):
         asked.append(suggestion)
         consent = confirm_consent(user_checked_box=True, confirmed_by=me.name, participants=suggestion.participants,
                                   method="dialog")
@@ -383,7 +383,7 @@ def test_recording_from_tray_while_window_hidden_keeps_single_controller(world: 
     """The tray and the window share one controller: a recording started via toggle shows up in the window."""
     w = world
 
-    def fake_ask_start(root, suggestion, me, calendar, summary_provider=""):
+    def fake_ask_start(root, suggestion, me, calendar, summary_provider="", **_k):
         consent = confirm_consent(user_checked_box=True, confirmed_by="Ich", participants=[Person("A")], method="dialog")
         return StartDecision("Spontan", [Person("A")], None, consent)
 
@@ -480,7 +480,7 @@ def test_autostop_countdown_banner_keep_and_stop_now(world: World, monkeypatch):
     w.actions.autostop = runner
     w.win.show()
 
-    def fake_ask_start(root, suggestion, me, calendar, summary_provider=""):
+    def fake_ask_start(root, suggestion, me, calendar, summary_provider="", **_k):
         consent = confirm_consent(user_checked_box=True, confirmed_by=me.name, participants=[], method="dialog")
         return StartDecision("Spontan", [], None, consent)
 
@@ -521,7 +521,7 @@ def test_autostop_countdown_expiry_stops_like_manual_stop(world: World, monkeypa
     runner = AutoStopRunner(lambda: w.cfg.autostop, w.controller, w.ui.post, clock=lambda: clock["t"])
     w.actions.autostop = runner
 
-    def fake_ask_start(root, suggestion, me, calendar, summary_provider=""):
+    def fake_ask_start(root, suggestion, me, calendar, summary_provider="", **_k):
         consent = confirm_consent(user_checked_box=True, confirmed_by=me.name, participants=[], method="dialog")
         return StartDecision("Spontan", [], None, consent)
 
@@ -545,7 +545,7 @@ def test_stop_asks_once_then_runs_the_chain_or_defers(world: World, monkeypatch)
     w = world
     w.controller.after_stop = w.actions.after_recording
 
-    def fake_ask_start(root, suggestion, me, calendar, summary_provider=""):
+    def fake_ask_start(root, suggestion, me, calendar, summary_provider="", **_k):
         consent = confirm_consent(user_checked_box=True, confirmed_by=me.name, participants=[], method="dialog")
         return StartDecision("Kette", [], None, consent)
 

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CallRecorder – Prototyp</title>
+<title>CallRecorder – Prototyp (Fluent/Teams-Stil)</title>
 <!--
   CallRecorder UI prototype (design/prototype.html)
   Self-contained: no network, no web fonts, no build step. Intended to be carried over into the
@@ -17,94 +17,100 @@
 -->
 <style>
 /* =====================================================================
-   1. TOKENS
+   1. TOKENS  (Fluent 2 as Teams uses it: brand indigo, neutral greys)
    ===================================================================== */
 :root {
   color-scheme: light;
-  /* neutrals */
-  --bg: #F3F3F3;            /* window background (Mica-like) */
-  --surface: #FFFFFF;       /* cards, panes */
-  --surface-2: #F7F7F7;     /* subtle fills inside cards */
-  --surface-hover: #EFEFEF;
-  --surface-pressed: #E7E7E7;
-  --surface-selected: #E3F2F0;
-  --border: #E3E3E3;        /* decorative separators */
+  /* neutrals (Teams light) */
+  --frame: #EBEBEB;         /* title bar + app rail */
+  --bg: #F5F5F5;            /* content background, list pane */
+  --surface: #FFFFFF;       /* cards, detail pane, dialogs */
+  --surface-2: #FAFAFA;     /* subtle fills inside cards */
+  --surface-hover: #F0F0F0;
+  --surface-pressed: #E0E0E0;
+  --surface-selected: #E8EBFA;
+  --border: #E0E0E0;        /* decorative separators */
   --border-strong: #D1D1D1;
-  --border-control: #858585;/* input/checkbox boundaries, 3.69:1 */
-  --text: #1B1B1B;
-  --text-2: #565656;
-  --text-3: #6B6B6B;
+  --border-control: #858585;/* input/checkbox boundaries (3.7:1 on white) */
+  --text: #242424;
+  --text-2: #424242;
+  --text-3: #616161;
   --text-on-accent: #FFFFFF;
-  /* brand / accent: calm petrol-teal */
-  --accent: #0F6E68;
-  --accent-hover: #0C5E59;
-  --accent-pressed: #0A4F4B;
-  --accent-text: #0B5753;
-  --accent-subtle: #E3F2F0;
+  /* brand / accent: Teams-like indigo (own values, no logo, no product name) */
+  --accent: #5B5FC7;        /* indicators: selection bar, progress, focus of fields */
+  --accent-fill: #5B5FC7;   /* primary button, checked checkbox / switch */
+  --accent-hover: #4F52B2;
+  --accent-pressed: #444791;
+  --accent-text: #4F52B2;
+  --accent-subtle: #E8EBFA;
+  --accent-subtle-text: #3D3E78;
   /* recording – reserved for the recording state only */
-  --rec: #C42B1C;
-  --rec-hover: #AD2618;
-  --rec-text: #A1251A;
-  --rec-subtle: #FDECEA;
+  --rec: #C4314B;
+  --rec-hover: #A72B41;
+  --rec-text: #A4262C;
+  --rec-subtle: #FDE7E9;
   /* status */
-  --ok: #107C10;  --ok-text: #0E6B0E;  --ok-subtle: #E6F4E3;
-  --warn: #8A5100; --warn-text: #7A4800; --warn-subtle: #FFF4D6; --warn-mark: #C77A00;
-  --err: #B3261E; --err-text: #9E2119; --err-subtle: #FDECEA;
-  --info: #0062B1; --info-text: #00539A; --info-subtle: #E5F0FA;
+  --ok: #107C10;  --ok-text: #0E700E;  --ok-subtle: #F1FAF1;
+  --warn: #835B00; --warn-text: #7A4A00; --warn-subtle: #FFF4CE; --warn-mark: #C77A00;
+  --err: #B10E1C; --err-text: #9E1B1B; --err-subtle: #FDE7E9;
+  --info: #0F6CBD; --info-text: #115EA3; --info-subtle: #EBF3FC;
   /* speaker colours (text-safe ≥ 6:1 on surface) */
   --sp-me: var(--accent-text);
   --sp-1: #1F5FA8; --sp-2: #7A3FB8; --sp-3: #A3266E; --sp-4: #9A4A00; --sp-5: #2E7031; --sp-6: #4A5B6E;
-  --focus: #1B1B1B;
+  --focus: #242424;
   --focus-inner: #FFFFFF;
-  --scrim: rgba(0,0,0,.32);
-  /* elevation */
-  --shadow-1: 0 1px 2px rgba(0,0,0,.05);
-  --shadow-2: 0 2px 6px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
-  --shadow-flyout: 0 8px 16px rgba(0,0,0,.14), 0 0 1px rgba(0,0,0,.18);
-  --shadow-dialog: 0 32px 64px rgba(0,0,0,.20), 0 2px 21px rgba(0,0,0,.14);
+  --scrim: rgba(0,0,0,.40);
+  /* elevation (Fluent 2 shadow ramp) */
+  --shadow-1: 0 0 2px rgba(0,0,0,.12), 0 1px 2px rgba(0,0,0,.14);
+  --shadow-2: 0 0 2px rgba(0,0,0,.12), 0 2px 4px rgba(0,0,0,.14);
+  --shadow-flyout: 0 0 2px rgba(0,0,0,.12), 0 8px 16px rgba(0,0,0,.14);
+  --shadow-dialog: 0 0 8px rgba(0,0,0,.12), 0 32px 64px rgba(0,0,0,.14);
   /* type */
   --font: "Segoe UI Variable Text", "Segoe UI", "Inter", system-ui, sans-serif;
   --font-display: "Segoe UI Variable Display", "Segoe UI", "Inter", system-ui, sans-serif;
   --font-mono: "Cascadia Mono", Consolas, "JetBrains Mono", ui-monospace, monospace;
   --fs-caption: 12px; --lh-caption: 16px;
   --fs-body: 14px;    --lh-body: 20px;
-  --fs-read: 16px;    --lh-read: 26px;
-  --fs-subtitle: 18px; --lh-subtitle: 24px;
-  --fs-title: 22px;   --lh-title: 28px;
-  --fs-display: 28px; --lh-display: 36px;
-  --fs-timer: 40px;
+  --fs-read: 15px;    --lh-read: 24px;
+  --fs-subtitle: 16px; --lh-subtitle: 22px;
+  --fs-title: 20px;   --lh-title: 28px;
+  --fs-display: 24px; --lh-display: 32px;
+  --fs-timer: 36px;
   /* spacing (4px grid) */
   --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px; --s-8: 32px; --s-10: 40px;
-  /* radii */
-  --r-sm: 4px; --r-md: 6px; --r-lg: 8px; --r-xl: 12px; --r-pill: 999px;
+  /* radii (Fluent 2: 4 controls, 8 cards / dialogs) */
+  --r-sm: 4px; --r-md: 4px; --r-lg: 8px; --r-xl: 8px; --r-pill: 999px;
   /* motion */
-  --t-fast: 83ms; --t-normal: 167ms; --t-slow: 250ms;
-  --ease-out: cubic-bezier(0, 0, 0, 1);
-  --ease-in: cubic-bezier(1, 0, 1, 1);
+  --t-fast: 100ms; --t-normal: 200ms; --t-slow: 300ms;
+  --ease-out: cubic-bezier(.33, 0, .1, 1);
+  --ease-in: cubic-bezier(.9, .1, 1, .2);
   /* layout */
-  --nav-w: 232px;
-  --page-pad: 28px;
+  --rail-w: 72px;
+  --top-h: 48px;
+  --page-pad: 24px;
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #1F1F1F; --surface: #2A2A2A; --surface-2: #303030; --surface-hover: #353535; --surface-pressed: #3B3B3B;
-  --surface-selected: #1E3B39;
-  --border: #3A3A3A; --border-strong: #4A4A4A; --border-control: #8C8C8C;
-  --text: #F2F2F2; --text-2: #C4C4C4; --text-3: #A3A3A3; --text-on-accent: #062523;
-  --accent: #5CCFC2; --accent-hover: #74D8CD; --accent-pressed: #4BB9AD; --accent-text: #7EDDD2; --accent-subtle: #1E3B39;
-  --rec: #C42B1C; --rec-hover: #D63A2A; --rec-text: #FF9C94; --rec-subtle: #46201D;
-  --ok: #7BD06E; --ok-text: #8EDB82; --ok-subtle: #1F3A1C;
-  --warn: #F5C451; --warn-text: #F7CD6A; --warn-subtle: #3D3216; --warn-mark: #F5C451;
-  --err: #FF9C94; --err-text: #FFB4AD; --err-subtle: #46201D;
-  --info: #7CC4FF; --info-text: #9AD2FF; --info-subtle: #1A3247;
+  --frame: #141414;
+  --bg: #1F1F1F; --surface: #292929; --surface-2: #2E2E2E; --surface-hover: #333333; --surface-pressed: #3D3D3D;
+  --surface-selected: #2F2F4A;
+  --border: #3D3D3D; --border-strong: #4D4D4D; --border-control: #8F8F8F;
+  --text: #FFFFFF; --text-2: #D6D6D6; --text-3: #ADADAD; --text-on-accent: #FFFFFF;
+  --accent: #7F85F5; --accent-fill: #4F52B2; --accent-hover: #5B5FC7; --accent-pressed: #444791; --accent-text: #A6A9F8; --accent-subtle: #2F2F4A;
+  --accent-subtle-text: #C5C7FA;
+  --rec: #C4314B; --rec-hover: #D13C55; --rec-text: #FF9CA8; --rec-subtle: #3E1F25;
+  --ok: #54B054; --ok-text: #9FD89F; --ok-subtle: #052505;
+  --warn: #F5C451; --warn-text: #F8D57A; --warn-subtle: #3D3216; --warn-mark: #F5C451;
+  --err: #F1707B; --err-text: #FFA8AF; --err-subtle: #3E1F25;
+  --info: #62ABF5; --info-text: #96C6FA; --info-subtle: #0E2A47;
   --sp-me: var(--accent-text);
   --sp-1: #8CC2FF; --sp-2: #C9A6F2; --sp-3: #F29AC9; --sp-4: #F5AE6B; --sp-5: #8CD38F; --sp-6: #AFC0D3;
   --focus: #FFFFFF; --focus-inner: #1F1F1F;
-  --scrim: rgba(0,0,0,.55);
-  --shadow-1: 0 1px 2px rgba(0,0,0,.3);
-  --shadow-2: 0 2px 6px rgba(0,0,0,.35);
-  --shadow-flyout: 0 8px 16px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.06);
-  --shadow-dialog: 0 32px 64px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.07);
+  --scrim: rgba(0,0,0,.60);
+  --shadow-1: 0 0 2px rgba(0,0,0,.24), 0 1px 2px rgba(0,0,0,.28);
+  --shadow-2: 0 0 2px rgba(0,0,0,.24), 0 2px 4px rgba(0,0,0,.28);
+  --shadow-flyout: 0 0 2px rgba(0,0,0,.24), 0 8px 16px rgba(0,0,0,.28), 0 0 0 1px rgba(255,255,255,.06);
+  --shadow-dialog: 0 0 8px rgba(0,0,0,.24), 0 32px 64px rgba(0,0,0,.28), 0 0 0 1px rgba(255,255,255,.07);
 }
 
 /* =====================================================================
@@ -142,30 +148,43 @@ kbd { font: 600 11px/1 var(--font); padding: 3px 5px; border: 1px solid var(--bo
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; } }
 
 /* =====================================================================
-   3. APP SHELL
+   3. APP SHELL  (title bar on top, app rail left, content with a rounded corner)
    ===================================================================== */
-.app { display: grid; grid-template-columns: var(--nav-w) 1fr; height: 100vh; }
-.nav { display: flex; flex-direction: column; gap: var(--s-1); padding: var(--s-3) var(--s-2); border-right: 1px solid var(--border); background: var(--bg); min-height: 0; overflow-y: auto; }
-.brand { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-2) var(--s-3) var(--s-4); font-weight: 600; font-size: 15px; }
-.brand-mark { width: 28px; height: 28px; border-radius: var(--r-md); background: var(--accent); color: var(--text-on-accent); display: grid; place-items: center; }
-.brand-mark .ico { width: 18px; height: 18px; }
-.nav-item { position: relative; display: flex; align-items: center; gap: var(--s-3); height: 40px; padding: 0 var(--s-3); border: 0; border-radius: var(--r-md); background: transparent; color: var(--text); text-align: left; text-decoration: none; transition: background var(--t-fast) var(--ease-out); }
-.nav-item:hover { background: var(--surface-hover); }
-.nav-item[aria-current="page"] { background: var(--surface); box-shadow: var(--shadow-1); font-weight: 600; }
-.nav-item[aria-current="page"]::before { content: ""; position: absolute; left: 0; top: 11px; bottom: 11px; width: 3px; border-radius: 2px; background: var(--accent); }
-.nav-item .badge { margin-left: auto; }
-.nav-sep { height: 1px; background: var(--border); margin: var(--s-2) var(--s-3); }
-.nav-spacer { flex: 1; }
-.nav-rec { margin: var(--s-2) var(--s-1) var(--s-1); }
-.nav-status { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-2) var(--s-3); color: var(--text-2); font-size: var(--fs-caption); line-height: var(--lh-caption); }
-.badge { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: var(--r-pill); background: var(--accent); color: var(--text-on-accent); font-size: 12px; font-weight: 600; }
-.badge-warn { background: var(--warn-subtle); color: var(--warn-text); box-shadow: inset 0 0 0 1px var(--warn-mark); }
+.app { display: grid; grid-template-columns: var(--rail-w) minmax(0, 1fr); grid-template-rows: var(--top-h) minmax(0, 1fr); height: 100vh; background: var(--frame); }
+.topbar { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(180px, 1fr) minmax(200px, 560px) minmax(180px, 1fr); align-items: center; gap: var(--s-4); padding: 0 var(--s-3) 0 0; background: var(--frame); min-width: 0; }
+.brand { display: flex; align-items: center; gap: var(--s-3); padding-left: 18px; font-weight: 600; font-size: 14px; min-width: 0; white-space: nowrap; }
+.brand-mark { width: 32px; height: 32px; flex: none; display: grid; place-items: center; }
+.brand-mark svg { width: 32px; height: 32px; }
+.top-search { position: relative; min-width: 0; }
+.top-search .ico { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-3); pointer-events: none; width: 16px; height: 16px; }
+.top-search input { width: 100%; height: 32px; padding: 0 64px 0 34px; border: 1px solid transparent; border-radius: var(--r-sm); background: var(--surface); color: var(--text); box-shadow: inset 0 -1px 0 var(--border-strong); }
+.top-search input::placeholder { color: var(--text-3); }
+.top-search input:hover { border-color: var(--border-strong); }
+.top-search input:focus-visible { outline: none; border-color: var(--border-strong); box-shadow: inset 0 -2px 0 var(--accent); border-radius: var(--r-sm); }
+.top-search kbd { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); }
+.top-right { display: flex; align-items: center; justify-content: flex-end; gap: var(--s-2); min-width: 0; }
+.top-right .icon-btn { color: var(--text-2); }
+.rec-pill { display: inline-flex; align-items: center; gap: var(--s-2); height: 32px; padding: 0 6px 0 12px; border-radius: var(--r-sm); background: var(--rec-subtle); color: var(--rec-text); font-weight: 600; white-space: nowrap; }
+.rec-pill .btn { min-height: 24px; padding: 1px 10px; }
+.rail { grid-row: 2; display: flex; flex-direction: column; align-items: stretch; gap: 2px; padding: var(--s-1) 4px var(--s-2); background: var(--frame); min-height: 0; overflow-y: auto; overflow-x: hidden; }
+.rail-item { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 56px; padding: 6px 2px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-2); text-decoration: none; font-size: 10px; line-height: 12px; font-weight: 400; text-align: center; transition: background var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out); }
+.rail-item .ico { width: 24px; height: 24px; stroke-width: 1.5; }
+.rail-item:hover { background: var(--surface-hover); color: var(--text); }
+:root[data-theme="dark"] .rail-item:hover { background: var(--surface); }
+.rail-item[aria-current="page"] { color: var(--accent-text); font-weight: 600; }
+.rail-item[aria-current="page"] .ico { fill: color-mix(in srgb, var(--accent) 22%, transparent); }
+.rail-item[aria-current="page"]::before { content: ""; position: absolute; left: -4px; top: 50%; height: 20px; margin-top: -10px; width: 3px; border-radius: 0 2px 2px 0; background: var(--accent); }
+.rail-item .lbl { max-width: 66px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rail-item .badge { position: absolute; top: 4px; right: 10px; min-width: 16px; height: 16px; padding: 0 4px; font-size: 10px; box-shadow: 0 0 0 2px var(--frame); }
+.rail-spacer { flex: 1; }
+.badge { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: var(--r-pill); background: var(--accent-fill); color: var(--text-on-accent); font-size: 11px; font-weight: 600; line-height: 1; }
+.badge-warn { background: var(--warn-mark); color: #1F1F1F; }
 
-.main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.main { grid-row: 2; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg); border-top-left-radius: var(--r-lg); overflow: hidden; box-shadow: var(--shadow-1); }
 .scroll { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; }
-.page { padding: var(--s-6) var(--page-pad) var(--s-8); max-width: 1680px; margin: 0 auto; }
-.page-head { display: flex; align-items: flex-end; gap: var(--s-4); flex-wrap: wrap; margin-bottom: var(--s-5); }
-.page-head h1 { font: 600 var(--fs-display)/var(--lh-display) var(--font-display); }
+.page { padding: var(--s-5) var(--page-pad) var(--s-8); max-width: 1680px; margin: 0 auto; }
+.page-head { display: flex; align-items: center; gap: var(--s-4); flex-wrap: wrap; margin-bottom: var(--s-5); min-height: 40px; }
+.page-head h1 { font: 700 var(--fs-display)/var(--lh-display) var(--font-display); }
 .page-head .sub { color: var(--text-2); margin-top: 2px; }
 .page-head .grow { flex: 1; min-width: 240px; }
 .crumbs { display: flex; align-items: center; gap: var(--s-1); color: var(--text-2); margin-bottom: var(--s-1); flex-wrap: wrap; }
@@ -184,11 +203,11 @@ kbd { font: 600 11px/1 var(--font); padding: 3px 5px; border: 1px solid var(--bo
    4. COMPONENTS
    ===================================================================== */
 /* buttons */
-.btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2); min-height: 32px; padding: 5px 12px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--surface); color: var(--text); font-weight: 400; line-height: 20px; white-space: nowrap; text-decoration: none; transition: background var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out); }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2); min-height: 32px; padding: 5px 12px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--surface); color: var(--text); font-weight: 600; line-height: 20px; white-space: nowrap; text-decoration: none; transition: background var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out); }
 .btn:hover { background: var(--surface-hover); }
 .btn:active { background: var(--surface-pressed); }
 .btn[disabled], .btn[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
-.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--text-on-accent); font-weight: 600; }
+.btn-primary { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--text-on-accent); font-weight: 600; }
 .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 .btn-primary:active { background: var(--accent-pressed); }
 .btn-record { background: var(--rec); border-color: var(--rec); color: #fff; font-weight: 600; }
@@ -208,7 +227,7 @@ kbd { font: 600 11px/1 var(--font); padding: 3px 5px; border: 1px solid var(--bo
 .btn-row { display: flex; gap: var(--s-2); flex-wrap: wrap; align-items: center; }
 
 /* cards */
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-1); min-width: 0; }
+.card { background: var(--surface); border: 0; border-radius: var(--r-lg); box-shadow: var(--shadow-2); min-width: 0; }
 .card-head { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-4) var(--s-5) var(--s-2); }
 .card-head h2, .card-title { font: 600 var(--fs-subtitle)/var(--lh-subtitle) var(--font-display); }
 .card-head .grow { flex: 1; }
@@ -251,7 +270,7 @@ kbd { font: 600 11px/1 var(--font); padding: 3px 5px; border: 1px solid var(--bo
 .inline-num { width: 72px; text-align: right; display: inline-block; }
 .check { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
 .check input { appearance: none; width: 20px; height: 20px; margin: 0; flex: none; border: 1px solid var(--border-control); border-radius: var(--r-sm); background: var(--surface); display: grid; place-items: center; cursor: pointer; }
-.check input:checked { background: var(--accent); border-color: var(--accent); }
+.check input:checked { background: var(--accent-fill); border-color: var(--accent-fill); }
 .check input:checked::after { content: ""; width: 10px; height: 6px; border: 2px solid var(--text-on-accent); border-top: 0; border-right: 0; transform: translateY(-1px) rotate(-45deg); }
 .check input:disabled { opacity: .45; cursor: not-allowed; }
 .check input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
@@ -262,7 +281,7 @@ kbd { font: 600 11px/1 var(--font); padding: 3px 5px; border: 1px solid var(--bo
 .switch { display: flex; align-items: center; gap: var(--s-3); cursor: pointer; }
 .switch input { appearance: none; width: 40px; height: 20px; margin: 0; flex: none; border: 1px solid var(--border-control); border-radius: var(--r-pill); background: var(--surface); position: relative; cursor: pointer; transition: background var(--t-normal) var(--ease-out); }
 .switch input::after { content: ""; position: absolute; top: 3px; left: 4px; width: 12px; height: 12px; border-radius: 50%; background: var(--text-2); transition: transform var(--t-normal) var(--ease-out); }
-.switch input:checked { background: var(--accent); border-color: var(--accent); }
+.switch input:checked { background: var(--accent-fill); border-color: var(--accent-fill); }
 .switch input:checked::after { background: var(--text-on-accent); transform: translateX(19px); }
 .switch input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
@@ -305,7 +324,7 @@ details.adv[open] > summary .ico { transform: rotate(90deg); }
 
 /* segmented filter */
 .seg { display: flex; flex-wrap: wrap; gap: 6px; }
-.seg button { height: 28px; padding: 0 10px; border-radius: var(--r-pill); border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-2); font-size: 13px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.seg button { height: 28px; padding: 0 12px; border-radius: var(--r-pill); border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-2); font-size: 13px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .seg button:hover { background: var(--surface-hover); color: var(--text); }
 .seg button[aria-pressed="true"] { background: var(--accent-subtle); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
 .seg .n { font-variant-numeric: tabular-nums; opacity: .85; }
@@ -352,7 +371,7 @@ details.adv[open] > summary .ico { transform: rotate(90deg); }
 .vstep:not(:last-child)::before { content: ""; position: absolute; left: 15px; top: 34px; bottom: 2px; width: 2px; background: var(--border-strong); }
 .vstep.done:not(:last-child)::before { background: var(--accent); }
 .vstep .dot { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); color: var(--text-3); box-shadow: inset 0 0 0 1.5px var(--border-strong); }
-.vstep.done .dot { background: var(--accent); color: var(--text-on-accent); box-shadow: none; }
+.vstep.done .dot { background: var(--accent-fill); color: var(--text-on-accent); box-shadow: none; }
 .vstep.active .dot { background: var(--surface); color: var(--accent-text); box-shadow: inset 0 0 0 2px var(--accent); }
 .vstep.wait .dot { background: var(--warn-subtle); color: var(--warn-text); box-shadow: inset 0 0 0 2px var(--warn-mark); }
 .vstep.err .dot { background: var(--err-subtle); color: var(--err-text); box-shadow: inset 0 0 0 2px var(--err); }
@@ -476,6 +495,7 @@ button.row:hover { background: var(--surface-hover); }
 .rec-item { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px var(--s-3); width: 100%; padding: 10px var(--s-3); border: 0; border-radius: var(--r-md); background: none; text-align: left; color: var(--text); }
 .rec-item:hover { background: var(--surface-hover); }
 .rec-item[aria-selected="true"] { background: var(--surface); box-shadow: var(--shadow-1); }
+:root[data-theme="dark"] .rec-item[aria-selected="true"] { background: var(--surface-pressed); }
 .rec-item[aria-selected="true"]::before { content: ""; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px; border-radius: 2px; background: var(--accent); }
 .rec-item .t { font-weight: 600; }
 .rec-item .m { color: var(--text-3); font-size: 13px; grid-column: 1; }
@@ -534,7 +554,7 @@ button.row:hover { background: var(--surface-hover); }
 .utt .who { font-weight: 600; font-size: 14px; color: var(--c); display: flex; align-items: center; gap: 6px; }
 .utt .who::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
 .utt p { font-size: var(--fs-read); line-height: var(--lh-read); margin-top: 2px; }
-.utt.me .who::after { content: "Sie"; font-size: 11px; font-weight: 600; color: var(--text-3); border: 1px solid var(--border-strong); border-radius: var(--r-pill); padding: 0 6px; line-height: 16px; }
+.utt.me .who::after { content: "eigene Spur"; font-size: 11px; font-weight: 600; color: var(--text-3); border: 1px solid var(--border-strong); border-radius: var(--r-pill); padding: 0 6px; line-height: 16px; }
 .tx-head { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-4); padding: var(--s-3) var(--s-4); border-radius: var(--r-md); background: var(--surface-2); color: var(--text-2); font-size: 13px; }
 .legend { display: inline-flex; align-items: center; gap: 6px; }
 .legend i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
@@ -660,15 +680,10 @@ body.clean .proto { display: none; }
   .subnav button { white-space: nowrap; }
 }
 @media (max-width: 1099px) {
-  :root { --nav-w: 64px; --page-pad: 20px; }
-  .nav .lbl-t, .nav .badge, .brand span, .nav-status span { display: none; }
-  .nav-item { justify-content: center; padding: 0; }
-  .nav-item .ico { margin: 0; }
-  .brand { justify-content: center; padding: var(--s-2) 0 var(--s-4); }
-  .nav-rec .btn { padding: 0; }
-  .nav-rec .btn .lbl-t { display: none; }
-  .nav-status { justify-content: center; }
-  .nav-item .dotbadge { position: absolute; top: 8px; right: 12px; width: 8px; height: 8px; border-radius: 50%; background: var(--warn-mark); }
+  :root { --page-pad: 20px; }
+  .topbar { grid-template-columns: auto minmax(160px, 1fr) auto; }
+  .brand span.name { display: none; }
+  .top-search kbd { display: none; }
   .lib { grid-template-columns: minmax(260px, 320px) minmax(0, 1fr); }
   .voice { grid-template-columns: minmax(0, 1fr); }
   .prompt-grid { grid-template-columns: minmax(0, 1fr); }
@@ -676,7 +691,6 @@ body.clean .proto { display: none; }
   .pipe-step:nth-child(2)::after { display: none; }
   .det-head, .det-inner, .det-actions { padding-left: var(--s-5); padding-right: var(--s-5); }
 }
-@media (min-width: 1100px) { .nav-item .dotbadge { display: none; } }
 @media (max-width: 1099px) { .foot-note { display: none; } .sticky-foot .grow { min-width: 0; } }
 @media (max-width: 999px) {
   .lib { grid-template-columns: minmax(0, 1fr); }
@@ -759,12 +773,13 @@ body.clean .proto { display: none; }
   <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6h9M19 6h1M4 12h3M13 12h7M4 18h11M21 18h-1"/><circle cx="16" cy="6" r="2.5"/><circle cx="10" cy="12" r="2.5"/><circle cx="18" cy="18" r="2.5"/></symbol>
   <symbol id="i-fingerprint" viewBox="0 0 24 24"><path d="M12 11v3.5a7 7 0 0 1-1.5 4.3M8.5 7.6A4.5 4.5 0 0 1 16.5 11v2.5M7.5 11v2.5a10 10 0 0 1-1 4.4M16.3 17a12 12 0 0 1-1 3M4.5 9.5A8 8 0 0 1 19.7 8M20 12v1.5"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
-  <symbol id="i-teams" viewBox="0 0 24 24"><rect x="3" y="6" width="12" height="12" rx="2"/><path d="M6.5 10h5M9 10v5"/><circle cx="18.5" cy="8.5" r="2"/><path d="M15 13h5.5v3a2.5 2.5 0 0 1-2.5 2.5h-3"/></symbol>
+  <symbol id="i-video" viewBox="0 0 24 24"><rect x="3" y="6.5" width="12.5" height="11" rx="2.5"/><path d="m15.5 10.5 5-3v9l-5-3"/></symbol>
   <symbol id="i-phone" viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></symbol>
 </svg>
 
 <div class="app" id="app">
-  <nav class="nav" id="nav" aria-label="Hauptnavigation"></nav>
+  <header class="topbar" id="topbar"></header>
+  <nav class="rail" id="nav" aria-label="Hauptnavigation"></nav>
   <div class="main">
     <div id="recbar"></div>
     <main class="scroll" id="main" tabindex="-1"></main>
@@ -779,7 +794,7 @@ body.clean .proto { display: none; }
 /* =====================================================================
    DATA (all fictional)
    ===================================================================== */
-const ME = { name: "Martina Ehlers", short: "Martina", ini: "ME", mail: "m.ehlers@nordhafen-bau.example" };
+const ME = { name: "Martina Ehlers", ini: "ME", mail: "m.ehlers@nordhafen-bau.example" };
 const P = {
   jp: { name: "Jonas Pfeiffer", org: "Kessler Bau", ini: "JP", c: 1 },
   lh: { name: "Leonie Hartwig", org: "Kessler Bau", ini: "LH", c: 2 },
@@ -818,7 +833,7 @@ const STATUS = {
 };
 const FILTERS = [
   ["all", "Alle", () => true],
-  ["todo", "Wartet auf mich", r => ["open", "ready", "changed", "err", "new"].includes(r.status)],
+  ["todo", "Wartet", r => ["open", "ready", "changed", "err", "new"].includes(r.status)],
   ["notsent", "Nicht übergeben", r => ["ready", "open", "new", "err"].includes(r.status)],
   ["changed", "Seit Übergabe geändert", r => r.status === "changed"],
   ["err", "Mit Fehlern", r => r.status === "err"],
@@ -906,27 +921,24 @@ const btn = (label, { cls = "", icon = "", act = "", to = "", attrs = "" } = {})
    ===================================================================== */
 function renderNav() {
   const items = [
-    ["home", "home", "Übersicht", S.empty ? "" : `<span class="badge">4</span>`],
+    ["home", "home", "Übersicht", S.empty ? "" : `<span class="badge" aria-label="4 offen">4</span>`],
     ["library", "list", "Aufnahmen", ""],
-    ["setup", "checklist", "Einrichtung", `<span class="badge badge-warn" title="2 Hinweise">2</span>`],
+    ["setup", "checklist", "Einrichtung", `<span class="badge badge-warn" aria-label="2 Hinweise">2</span>`],
     ["settings", "gear", "Einstellungen", ""],
   ];
   const active = { home: "home", library: "library", speakers: "library", setup: "setup", settings: "settings", prompt: "settings", mini: "" }[S.screen];
   const recBtn = S.rec === "idle"
-    ? `<button class="btn btn-record btn-block" data-act="start" title="Aufnahme starten (Strg+Alt+Umschalt+R)">${I("rec", "ico-sm")}<span class="lbl-t">Aufnahme starten …</span></button>`
-    : `<button class="btn btn-record btn-block" data-act="stop" title="Aufnahme beenden">${I("stop", "ico-sm")}<span class="lbl-t">Beenden · <span class="num" data-clock>${clock(S.elapsed).slice(0)}</span></span></button>`;
+    ? `<button class="btn btn-record" data-act="start" title="Aufnahme starten (Strg+Alt+Umschalt+R)">${I("rec", "ico-sm")}<span class="lbl-t">Aufnehmen</span></button>`
+    : `<span class="rec-pill" role="status"><span class="rec-dot" aria-hidden="true"></span><span class="num" data-clock>${clock(S.elapsed)}</span><button class="btn btn-record btn-sm" data-act="stop">${I("stop", "ico-sm")}Beenden</button></span>`;
   const themeIcon = { auto: "auto", light: "sun", dark: "moon" }[S.theme];
-  const themeText = { auto: "System", light: "Hell", dark: "Dunkel" }[S.theme];
+  document.getElementById("topbar").innerHTML = `
+    <div class="brand"><span class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><rect x="1" y="1" width="30" height="30" rx="8" fill="var(--accent-fill)"/><rect x="12" y="7" width="8" height="12" rx="4" fill="#fff"/><path d="M9 15.5a7 7 0 0 0 14 0" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/><path d="M16 22.5V25" stroke="#fff" stroke-width="2" stroke-linecap="round"/><circle cx="24.5" cy="8" r="3.2" fill="#fff"/><circle cx="24.5" cy="8" r="1.8" fill="var(--rec)"/></svg></span><span class="name">CallRecorder</span></div>
+    <label class="top-search"><span class="sr-only">Aufnahmen durchsuchen</span>${I("search", "ico-sm")}<input type="search" placeholder="Aufnahmen durchsuchen" data-act="topsearch"><kbd>Strg+F</kbd></label>
+    <div class="top-right">${recBtn}<button class="icon-btn" data-act="theme" aria-label="Darstellung wechseln" title="Darstellung: ${{ auto: "wie Windows", light: "hell", dark: "dunkel" }[S.theme]}">${I(themeIcon)}</button><button class="icon-btn" data-act="help" aria-label="Hilfe" title="Hilfe">${I("help")}</button></div>`;
   document.getElementById("nav").innerHTML = `
-    <div class="brand"><span class="brand-mark">${I("mic")}</span><span>CallRecorder</span></div>
-    ${items.map(([k, ic, t, b]) => `<a href="#${k}" class="nav-item" ${active === k ? 'aria-current="page"' : ""} title="${t}">${I(ic)}<span class="lbl-t">${t}</span>${b}${k === "setup" ? '<i class="dotbadge" aria-hidden="true"></i>' : ""}</a>`).join("")}
-    <div class="nav-spacer"></div>
-    ${S.screen === "home" ? "" : `<div class="nav-rec">${recBtn}</div>`}
-    <div class="nav-sep"></div>
-    <button class="nav-item" data-act="theme" title="Darstellung: ${{ auto: "wie Windows", light: "hell", dark: "dunkel" }[S.theme]} – klicken zum Wechseln">${I(themeIcon)}<span class="lbl-t">Darstellung: ${themeText}</span></button>
-    <a class="nav-item" href="#mini" title="Begleitfenster (Toast, Aufnahme-Anzeige)">${I("expand")}<span class="lbl-t">Begleitfenster</span></a>
-    <button class="nav-item" data-act="help" title="Hilfe">${I("help")}<span class="lbl-t">Hilfe</span></button>
-    <div class="nav-status" title="Bereit: Headset gefunden, Kalender verbunden">${I("check-circle", "ico-sm")}<span>Bereit · Version 2.7.0</span></div>`;
+    ${items.map(([k, ic, t, b]) => `<a href="#${k}" class="rail-item" ${active === k ? 'aria-current="page"' : ""}>${I(ic)}<span class="lbl">${t}</span>${b}</a>`).join("")}
+    <div class="rail-spacer"></div>
+    <a class="rail-item" href="#mini" ${S.screen === "mini" ? 'aria-current="page"' : ""}>${I("expand")}<span class="lbl">Fenster</span></a>`;
 }
 function renderRecbar() {
   const el = document.getElementById("recbar");
@@ -951,13 +963,13 @@ function heroIdle() {
     <div class="hero-top"><div class="grow">
       <div class="eyebrow">Aufnehmen</div>
       <h2 id="h-now">Bereit für den nächsten Call</h2>
-      <p class="muted" style="margin-top:4px;max-width:60ch">Ohne Outlook-Kalender tippen Sie Titel und Teilnehmende beim Start selbst ein. Mit Kalender heißt jede Aufnahme wie der Termin, und die Sprechererkennung kennt die Teilnehmenden.</p>
+      <p class="muted" style="margin-top:4px;max-width:60ch">Ohne Outlook-Kalender werden Titel und Teilnehmende beim Start eingetippt. Mit Kalender heißt jede Aufnahme wie der Termin, und die Sprechererkennung kennt die Teilnehmenden.</p>
     </div></div>
     <div class="hero-actions">
       ${btn("Aufnahme ohne Termin starten …", { cls: "btn-record btn-lg", icon: "rec", act: "start" })}
       ${btn("Mit Outlook verbinden …", { cls: "btn-lg", icon: "calendar", to: "setup" })}
     </div>
-    <p class="hero-note">${I("keyboard")}<span>Jederzeit auch mit <kbd>Strg</kbd>+<kbd>Alt</kbd>+<kbd>Umschalt</kbd>+<kbd>R</kbd> – vor dem Start bestätigen Sie immer die Einwilligung aller Teilnehmenden.</span></p>
+    <p class="hero-note">${I("keyboard")}<span>Jederzeit auch mit <kbd>Strg</kbd>+<kbd>Alt</kbd>+<kbd>Umschalt</kbd>+<kbd>R</kbd> – vor dem Start kommt immer die Frage mit dem Hinweis auf die Zustimmung aller Teilnehmenden.</span></p>
   </section>`;
   return `
   <section class="card hero a-now" aria-labelledby="h-now">
@@ -965,13 +977,13 @@ function heroIdle() {
       <div class="grow">
         <div class="eyebrow">Als Nächstes · in ${NEXT.inMin} Minuten</div>
         <h2 id="h-now">${esc(NEXT.title)}</h2>
-        <div class="when">${I("clock", "ico-sm")}<span class="num">Heute, ${NEXT.time}</span><span aria-hidden="true">·</span>${I("teams", "ico-sm")}<span>Teams-Besprechung</span></div>
+        <div class="when">${I("clock", "ico-sm")}<span class="num">Heute, ${NEXT.time}</span><span aria-hidden="true">·</span>${I("video", "ico-sm")}<span>Teams-Besprechung</span></div>
       </div>
       <div class="menu-wrap">
         <button class="btn btn-subtle" data-act="menu" data-menu="events" aria-haspopup="menu" aria-expanded="${S.menu === "events"}">Anderer Termin ${I("down", "ico-sm")}</button>
         ${S.menu === "events" ? `<div class="menu" role="menu">
           <div class="menu-label">Laufende und nächste Termine</div>
-          <button role="menuitem" data-act="pick">${I("teams")}<span><b>14:00–14:45</b> Jour fixe Neubau Hafenkante</span></button>
+          <button role="menuitem" data-act="pick">${I("video")}<span><b>14:00–14:45</b> Jour fixe Neubau Hafenkante</span></button>
           <button role="menuitem" data-act="pick">${I("phone")}<span><b>15:30–16:00</b> Rückruf Steuerberatung Krämer</span></button>
           <div class="sep"></div>
           <button role="menuitem" data-act="start">${I("pencil")}<span>Ohne Termin – Titel selbst eingeben</span></button>
@@ -980,13 +992,13 @@ function heroIdle() {
     </div>
     <div>
       <div class="caption muted" style="margin-bottom:8px">Teilnehmende · ${NEXT.people.length + 1} Personen</div>
-      <div class="people"><span class="person">${av("me")}<span>Sie <span class="org">· Martina Ehlers</span></span></span>${NEXT.people.map(person).join("")}</div>
+      <div class="people"><span class="person">${av("me")}<span>Martina Ehlers <span class="org">· eigene Spur</span></span></span>${NEXT.people.map(person).join("")}</div>
     </div>
     <div class="hero-actions">
       ${btn("Aufnahme starten …", { cls: "btn-record btn-lg", icon: "rec", act: "start" })}
       <span class="muted">oder <kbd>Strg</kbd>+<kbd>Alt</kbd>+<kbd>Umschalt</kbd>+<kbd>R</kbd></span>
     </div>
-    <p class="hero-note">${I("shield")}<span>Vor dem Start bestätigen Sie die Einwilligung aller Teilnehmenden. Endet der Call, beendet CallRecorder die Aufnahme nach einem sichtbaren 30-Sekunden-Countdown.</span></p>
+    <p class="hero-note">${I("shield")}<span>Vor dem Start kommt eine Frage mit dem Hinweis auf die Zustimmung aller Teilnehmenden. Endet der Call, beendet CallRecorder die Aufnahme nach einem sichtbaren 30-Sekunden-Countdown.</span></p>
   </section>`;
 }
 function heroRecording() {
@@ -1024,8 +1036,8 @@ function heroRecording() {
 function attention() {
   if (S.empty) return `
   <section class="card a-att" aria-labelledby="h-att">
-    <div class="card-head"><h2 id="h-att">Wartet auf Sie</h2></div>
-    <div class="empty" style="padding:24px 20px 32px"><div class="art">${I("check-circle")}</div><h3>Nichts offen</h3><p>Hier erscheinen Aufnahmen, bei denen Sie etwas entscheiden müssen – zum Beispiel Stimmen benennen oder eine Zusammenfassung übergeben.</p></div>
+    <div class="card-head"><h2 id="h-att">Wartet</h2></div>
+    <div class="empty" style="padding:24px 20px 32px"><div class="art">${I("check-circle")}</div><h3>Nichts offen</h3><p>Hier erscheinen Aufnahmen, die eine Entscheidung brauchen – zum Beispiel Stimmen benennen oder eine Zusammenfassung übergeben.</p></div>
   </section>`;
   const items = [
     { ic: "warn", icon: "people", t: "Kundengespräch Lindqvist Logistik", d: "2 Stimmen haben noch keinen Namen. Danach wird die Zusammenfassung mit den Namen erstellt.", meta: "Heute, 11:00 · 52 Min", b: btn("Sprecher zuordnen", { cls: "btn-primary btn-sm", to: "speakers" }) },
@@ -1035,7 +1047,7 @@ function attention() {
   ];
   return `
   <section class="card a-att" aria-labelledby="h-att">
-    <div class="card-head"><h2 id="h-att">Wartet auf Sie</h2><span class="badge">${items.length}</span><span class="grow"></span>${btn("Alle anzeigen", { cls: "btn-link btn-sm", to: "library" })}</div>
+    <div class="card-head"><h2 id="h-att">Wartet</h2><span class="badge">${items.length}</span><span class="grow"></span>${btn("Alle anzeigen", { cls: "btn-link btn-sm", to: "library" })}</div>
     <ul class="att-list">${items.map(i => `
       <li class="att"><span class="ic ${i.ic}">${I(i.icon)}</span>
         <div style="min-width:0"><div class="at">${esc(i.t)}</div><div class="meta">${i.meta}</div></div>
@@ -1067,17 +1079,17 @@ function work() {
 }
 function today() {
   const ag = [
-    { t: "09:00", title: "Vertriebsrunde Nord", d: S.empty ? `${I("teams", "ico-sm")} Teams · nicht aufgenommen` : chip("chip-info", "clock", "aufgenommen · wird verarbeitet"), cls: "past" },
-    { t: "11:00", title: "Kundengespräch Lindqvist Logistik", d: S.empty ? `${I("teams", "ico-sm")} Teams · nicht aufgenommen` : chip("chip-warn", "people", "aufgenommen · 2 Stimmen offen"), cls: "past" },
+    { t: "09:00", title: "Vertriebsrunde Nord", d: S.empty ? `${I("video", "ico-sm")} Teams · nicht aufgenommen` : chip("chip-info", "clock", "aufgenommen · wird verarbeitet"), cls: "past" },
+    { t: "11:00", title: "Kundengespräch Lindqvist Logistik", d: S.empty ? `${I("video", "ico-sm")} Teams · nicht aufgenommen` : chip("chip-warn", "people", "aufgenommen · 2 Stimmen offen"), cls: "past" },
     { now: true },
-    { t: "14:00", title: "Jour fixe Neubau Hafenkante", d: `${I("teams", "ico-sm")} Teams · 5 Personen`, cls: "now" },
+    { t: "14:00", title: "Jour fixe Neubau Hafenkante", d: `${I("video", "ico-sm")} Teams · 5 Personen`, cls: "now" },
     { t: "15:30", title: "Rückruf Steuerberatung Krämer", d: `${I("phone", "ico-sm")} Telefon · 2 Personen` },
-    { t: "16:30", title: "Budgetrunde Q1 2027", d: `${I("teams", "ico-sm")} Teams · 4 Personen` },
+    { t: "16:30", title: "Budgetrunde Q1 2027", d: `${I("video", "ico-sm")} Teams · 4 Personen` },
   ];
   if (!S.calendar) return `
   <section class="card a-today" aria-labelledby="h-today">
     <div class="card-head"><h2 id="h-today">Heute</h2></div>
-    <div class="empty" style="padding:20px 20px 28px"><div class="art">${I("calendar")}</div><h3>Termine erscheinen hier</h3><p>Melden Sie sich bei Microsoft an, damit CallRecorder Ihre Termine kennt. Es wird nur gelesen, nur Ihr eigener Kalender.</p>${btn("Bei Microsoft anmelden …", { cls: "btn-primary", to: "setup" })}</div>
+    <div class="empty" style="padding:20px 20px 28px"><div class="art">${I("calendar")}</div><h3>Termine erscheinen hier</h3><p>Mit der Microsoft-Anmeldung kennt CallRecorder die Termine. Gelesen wird nur der eigene Kalender.</p>${btn("Bei Microsoft anmelden …", { cls: "btn-primary", to: "setup" })}</div>
   </section>`;
   return `
   <section class="card a-today" aria-labelledby="h-today">
@@ -1091,7 +1103,7 @@ function recent() {
   if (S.empty) return `
   <section class="card a-recent" aria-labelledby="h-recent">
     <div class="card-head"><h2 id="h-recent">Zuletzt aufgenommen</h2></div>
-    <div class="empty"><div class="art">${I("mic")}</div><h3>Noch keine Aufnahmen</h3><p>Starten Sie Ihre erste Aufnahme oben – oder jederzeit mit dem Tastenkürzel. Danach finden Sie hier Transkript und Zusammenfassung.</p>${btn("Einrichtung prüfen", { icon: "checklist", to: "setup" })}</div>
+    <div class="empty"><div class="art">${I("mic")}</div><h3>Noch keine Aufnahmen</h3><p>Die erste Aufnahme oben starten – oder jederzeit mit dem Tastenkürzel. Danach stehen hier Transkript und Zusammenfassung.</p>${btn("Einrichtung prüfen", { icon: "checklist", to: "setup" })}</div>
   </section>`;
   const rows = RECS.slice(0, 5);
   return `
@@ -1111,7 +1123,7 @@ function homeColumns(c) {
   return `<div class="home-grid">${col(["now", "work", "recent"])}${col(["att", "today"])}</div>`;
 }
 function screenHome() {
-  const greet = S.empty ? "Willkommen bei CallRecorder" : "Guten Tag, Martina";
+  const greet = "Übersicht";
   return `<div class="page">
     <header class="page-head">
       <div class="grow"><h1 tabindex="-1" data-focus>${greet}</h1><p class="sub">Freitag, 20. November 2026</p></div>
@@ -1151,11 +1163,11 @@ function libraryEmpty() {
       <div class="art">${I("mic")}</div><h2>Noch keine Aufnahmen</h2>
       <p>Jede Aufnahme erscheint hier mit Transkript, Sprechernamen und Zusammenfassung. Audio und Transkript bleiben auf diesem Rechner.</p>
       <div class="btn-row" style="justify-content:center">${btn("Aufnahme starten …", { cls: "btn-record", icon: "rec", act: "start" })}${btn("Einrichtung prüfen", { icon: "checklist", to: "setup" })}</div>
-      <p class="caption faint">Tipp: Wenn Teams einen Call beginnt, fragt CallRecorder unten rechts nach. Ohne Ihre Bestätigung wird nie aufgenommen.</p>
+      <p class="caption faint">Tipp: Wenn Teams einen Call beginnt, fragt CallRecorder unten rechts nach. Ohne Klick auf „Aufnehmen“ wird nie aufgenommen.</p>
     </div></div></div>`;
 }
 const SUMMARY_R10 = `
-  <p class="src">Version 3 · erstellt am 19.11.2026, 16:40 mit Claude (claude-opus-5-5) · 4 Teilnehmende und Sie</p>
+  <p class="src">Version 3 · erstellt am 19.11.2026, 16:40 mit Claude (claude-opus-5-5) · 5 Teilnehmende</p>
   <h2>Kurzfassung</h2>
   <p class="lead">Der Rohbau von Haus B liegt zwei Wochen hinter Plan, weil der Stahl erst am 2.&nbsp;Dezember geliefert wird. Kessler Bau zieht dafür die Fassadenarbeiten an Haus A vor; der Fertigstellungstermin 30.&nbsp;April 2027 bleibt bestehen. Offen ist, wer die Mehrkosten für Winterbaumaßnahmen trägt.</p>
   <h2>Entscheidungen</h2>
@@ -1199,7 +1211,7 @@ function detailPane() {
       <div><div class="strong">Seit der Übergabe geändert</div><div class="hd">Übergeben am 13.11. um 15:02 (Version 2) nach SharePoint › Geschäftsführung › Protokolle › 2026-11-13_1400_Jour-fixe-Neubau-Hafenkante.md. Version 3 ist neuer.</div></div>
       ${btn("Übergabe ansehen", { cls: "btn-subtle", icon: "external" })}</div>`
     : r.status === "sent" ? `<div class="handoff"><span class="ico-wrap">${I("check")}</span><div><div class="strong">An SharePoint übergeben</div><div class="hd">Am ${r.sent} nach SharePoint › Geschäftsführung › Protokolle. Seitdem unverändert.</div></div>${btn("Ordner öffnen", { cls: "btn-subtle", icon: "external" })}</div>`
-    : r.status === "ready" ? `<div class="handoff"><span class="ico-wrap">${I("send")}</span><div><div class="strong">Noch nicht übergeben</div><div class="hd">Übergeben wird nur die Zusammenfassung – nie Audio oder Transkript. Sie sehen vorher eine Vorschau.</div></div><span></span></div>` : "";
+    : r.status === "ready" ? `<div class="handoff"><span class="ico-wrap">${I("send")}</span><div><div class="strong">Noch nicht übergeben</div><div class="hd">Übergeben wird nur die Zusammenfassung – nie Audio oder Transkript. Vorher erscheint eine Vorschau.</div></div><span></span></div>` : "";
   const steps = busy ? "" : `<div class="mini-steps" aria-label="Stand der Aufnahme">
       <span class="ms done">${I("check-circle")}Transkript</span>
       <span class="ms ${r.status === "open" ? "open" : "done"}">${I(r.status === "open" ? "people" : "check-circle")}${r.status === "open" ? "2 Stimmen offen" : "Sprecher benannt"}</span>
@@ -1234,8 +1246,8 @@ function detailPane() {
   else if (err && S.tab === "summary") body = `
     <div class="banner banner-err" role="alert">${I("globe")}
       <div class="bt">Zusammenfassung nicht erstellt: keine Verbindung zu Claude</div>
-      <div class="bd" style="grid-column:2">Drei Versuche sind nach jeweils 20 Sekunden ohne Antwort abgebrochen. <b>Das Transkript ist fertig</b> – nur die Zusammenfassung fehlt.<br>Häufigste Ursache ist ein <b>aktives VPN</b>: Pausieren Sie es kurz und versuchen Sie es erneut. Dauerhaft hilft eine Ausnahme für CallRecorder in der VPN-App („Split-Tunneling“).</div>
-      <div class="btn-row">${btn("Zusammenfassung neu erstellen", { cls: "btn-primary btn-sm", icon: "refresh", act: "toast-msg", attrs: 'data-msg="Zusammenfassung wird neu erstellt"' })}${btn("Verbindung testen", { cls: "btn-sm", act: "toast-msg", attrs: 'data-msg="Test läuft – höchstens 20 Sekunden"' })}${btn("So richten Sie die VPN-Ausnahme ein", { cls: "btn-sm btn-link", icon: "external", act: "help" })}</div>
+      <div class="bd" style="grid-column:2">Drei Versuche sind nach jeweils 20 Sekunden ohne Antwort abgebrochen. <b>Das Transkript ist fertig</b> – nur die Zusammenfassung fehlt.<br>Häufigste Ursache ist ein <b>aktives VPN</b>: Das VPN kurz pausieren und es erneut. Dauerhaft hilft eine Ausnahme für CallRecorder in der VPN-App („Split-Tunneling“).</div>
+      <div class="btn-row">${btn("Zusammenfassung neu erstellen", { cls: "btn-primary btn-sm", icon: "refresh", act: "toast-msg", attrs: 'data-msg="Zusammenfassung wird neu erstellt"' })}${btn("Verbindung testen", { cls: "btn-sm", act: "toast-msg", attrs: 'data-msg="Test läuft – höchstens 20 Sekunden"' })}${btn("VPN-Ausnahme einrichten", { cls: "btn-sm btn-link", icon: "external", act: "help" })}</div>
     </div>
     ${readerTools(false)}
     <div class="empty" style="padding:32px 16px"><div class="art" style="background:var(--surface-2);color:var(--text-3)">${I("sparkle")}</div><h3>Noch keine Zusammenfassung</h3><p>Sobald die Verbindung klappt, erscheint sie hier – mit Kurzfassung, Entscheidungen, Aufgaben und nächsten Terminen.</p>${btn("Transkript lesen", { act: "tab", attrs: 'data-tab="transcript"' })}</div>`;
@@ -1245,7 +1257,7 @@ function detailPane() {
       <button class="btn btn-subtle btn-sm back-to-list" data-act="back" style="justify-self:start">${I("left", "ico-sm")}Alle Aufnahmen</button>
       <h1>${esc(r.title)}</h1>
       <div class="det-meta"><span>${I("calendar")}${r.date} 2026, ${r.time} Uhr</span><span>${I("clock")}${r.dur}</span><span>${I("lang")}${r.lang}</span>${busy ? "" : `<button class="btn btn-link btn-sm" style="min-height:24px" data-act="toast-msg" data-msg="Audio öffnet im Standard-Player">${I("play", "ico-sm")}Anhören</button>`}</div>
-      <div class="det-people">${av("me")}${r.people.map(k => av(k)).join("")}<span class="ellipsis muted">Sie, ${r.people.map(k => P[k].name).join(", ") || "keine weiteren eingetragen"}</span></div>
+      <div class="det-people">${av("me")}${r.people.map(k => av(k)).join("")}<span class="ellipsis muted">${ME.name}, ${r.people.map(k => P[k].name).join(", ") || "keine weiteren eingetragen"}</span></div>
       ${steps}
     </div>
     <div class="det-actions" role="toolbar" aria-label="Aktionen">${actions}</div>
@@ -1256,12 +1268,12 @@ function detAside(r) {
   const talk = { jp: ["14:10", 31], lh: ["9:02", 20], sa: ["4:15", 9], pw: ["6:40", 14] };
   return `<aside class="det-aside" aria-label="Auf einen Blick">
     <div class="aside-card"><h3>Sprechzeit</h3>
-      <div class="aside-row">${av("me")}<span>Sie</span><span class="num muted">11:53</span></div>
+      <div class="aside-row">${av("me")}<span>${ME.name}</span><span class="num muted">11:53</span></div>
       ${r.people.map(k => `<div class="aside-row">${av(k)}<span class="ellipsis">${P[k].name}</span><span class="num muted">${(talk[k] || ["5:00"])[0]}</span></div>`).join("")}
     </div>
     <div class="aside-card"><h3>Aus der Zusammenfassung</h3>
       <div class="aside-row">${I("check-circle", "ico-sm")}<span>3 Entscheidungen</span><span></span></div>
-      <div class="aside-row">${I("checklist", "ico-sm")}<span>4 Aufgaben, davon 1 für Sie</span><span></span></div>
+      <div class="aside-row">${I("checklist", "ico-sm")}<span>4 Aufgaben, davon 1 eigene</span><span></span></div>
       <div class="aside-row">${I("help", "ico-sm")}<span>2 offene Fragen</span><span></span></div>
     </div>
     <div class="aside-card"><h3>Dateien</h3>
@@ -1288,7 +1300,7 @@ function transcriptView() {
   const sp = { me: "me", jp: 1, lh: 2, sa: 3, pw: 5 };
   return `<div class="transcript">
     <div class="tx-head"><span>Sprache: Deutsch (automatisch erkannt)</span><span>Sprecher:</span>
-      ${[["me", "Martina Ehlers (Sie)"], ["jp", "Jonas Pfeiffer"], ["lh", "Leonie Hartwig"], ["sa", "Selin Aydın"], ["pw", "Paul Wiesner"]].map(([k, n]) => `<span class="legend" style="--c:var(--sp-${sp[k]})"><i></i>${n}</span>`).join("")}</div>
+      ${[["me", "Martina Ehlers (eigene Spur)"], ["jp", "Jonas Pfeiffer"], ["lh", "Leonie Hartwig"], ["sa", "Selin Aydın"], ["pw", "Paul Wiesner"]].map(([k, n]) => `<span class="legend" style="--c:var(--sp-${sp[k]})"><i></i>${n}</span>`).join("")}</div>
     ${TRANSCRIPT_R10.map(([ts, k, n, t]) => `<div class="utt ${k === "me" ? "me" : ""}" style="--c:var(--sp-${sp[k]})"><span class="ts">${ts.slice(3)}</span><div><div class="who">${n}</div><p>${esc(t)}</p></div></div>`).join("")}
   </div>`;
 }
@@ -1334,28 +1346,28 @@ function screenSpeakers() {
   return `<div class="page" style="max-width:1280px">
     <nav class="crumbs" aria-label="Pfad"><button data-to="library">Aufnahmen</button>${I("right", "ico-sm")}<button data-act="open" data-id="r1">Kundengespräch Lindqvist Logistik</button>${I("right", "ico-sm")}<span>Sprecher zuordnen</span></nav>
     <header class="page-head"><div class="grow"><h1 tabindex="-1" data-focus>Wer spricht hier?</h1>
-      <p class="sub" style="max-width:80ch">Ordnen Sie jede Stimme der Gegenseite einer Person zu. Zur Auswahl stehen die Teilnehmenden dieses Termins. Hören Sie im Zweifel kurz hinein.</p></div>
+      <p class="sub" style="max-width:80ch">Jede Stimme der Gegenseite einer Person zu. Zur Auswahl stehen die Teilnehmenden dieses Termins. Im Zweifel kurz hineinhören.</p></div>
       <span class="chip chip-warn">${I("people")}2 von 4 Stimmen offen</span></header>
     <p class="help" style="margin:-8px 0 16px">Die Gegenseite wird auf höchstens so viele Stimmen aufgeteilt, wie Teilnehmende eingeladen sind. Waren mehr Personen dabei? <button class="btn btn-link btn-sm" data-act="toast-msg" data-msg="Weitere Sprecher zugelassen – Erkennung läuft erneut">Weitere Sprecher zulassen</button></p>
     <div class="sp-grid">
-      <section class="card" aria-label="Ihre Stimme"><div class="fixed-row">
+      <section class="card" aria-label="Eigene Stimme"><div class="fixed-row">
         <span class="avatar avatar-lg" style="--c:var(--sp-me)">${ME.ini}</span>
-        <div style="min-width:0"><div class="strong">Sie – Martina Ehlers <span class="chip" style="margin-left:6px">${I("lock")}Mikrofonspur, immer Sie</span></div><div class="muted">48 Beiträge · 12:31 Sprechzeit · Name ändern unter Einstellungen › Allgemein</div></div>
+        <div style="min-width:0"><div class="strong">Martina Ehlers <span class="chip" style="margin-left:6px">${I("lock")}Mikrofonspur, immer die eigene Stimme</span></div><div class="muted">48 Beiträge · 12:31 Sprechzeit · Name ändern unter Einstellungen › Allgemein</div></div>
         <button class="btn" data-act="play">${I("play", "ico-sm")}Anhören</button></div></section>
       ${voices.map(v => `
       <section class="card voice" aria-labelledby="vh${v.n}" style="--c:var(--sp-${v.c})">
         <div style="min-width:0">
           <div class="voice-id"><span class="swatch"></span><h3 id="vh${v.n}">Stimme ${v.n}</h3>
-            ${v.auto ? chip("chip-accent", "check", `Automatisch erkannt · ${P[v.auto].name}`) : v.selfecho ? chip("chip-info", "info", "Klingt wie Ihre eigene Stimme") : chip("chip-warn", "", "Noch ohne Namen")}</div>
+            ${v.auto ? chip("chip-accent", "check", `Automatisch erkannt · ${P[v.auto].name}`) : v.selfecho ? chip("chip-info", "info", "Klingt wie die eigene Stimme") : chip("chip-warn", "", "Noch ohne Namen")}</div>
           <div class="play"><button class="pbtn" data-act="play" aria-label="Beispiel von Stimme ${v.n} anhören">${I("play", "ico-sm")}</button><span class="wave" aria-hidden="true">${waveBars(v.n * 7)}</span><span class="caption muted num">0:08</span></div>
           <div class="talk"><div style="display:flex;justify-content:space-between" class="caption"><span class="muted">Sprechzeit</span><span class="num strong">${v.time} · ${v.pct}&nbsp;% · ${v.utt} Beiträge</span></div><div class="bar"><i style="width:${Math.max(v.pct, 2)}%"></i></div></div>
           <div class="quotes">${v.q.map(([t, s]) => `<div class="qt"><span class="ts">${t}</span><q>${esc(s)}</q></div>`).join("")}</div>
-          ${v.selfecho ? `<p class="help" style="margin-top:10px">Ihre Stimme ist über das Headset auch auf der Gegenseite gelandet (Mithören). Diese Stellen werden Ihnen zugeordnet; doppelte Stellen entfallen.</p>` : ""}
+          ${v.selfecho ? `<p class="help" style="margin-top:10px">Die eigene Stimme ist über das Headset auch auf der Gegenseite gelandet (Mithören). Diese Stellen werden der eigenen Spur zugeordnet; doppelte Stellen entfallen.</p>` : ""}
         </div>
         <fieldset class="choices" style="border:0;margin:0;padding:0;min-width:0"><legend class="label" style="margin-bottom:8px">Diese Stimme gehört zu …</legend>
           ${people.map(([k, n, o]) => opt(v, k, n, o + (k === "tr" && v.n !== 1 ? " · bereits Stimme 1" : ""))).join("")}
           ${v.suggest ? `<label class="choice suggest"><input type="radio" name="v${v.n}" value="${v.suggest}">${av(v.suggest)}<span style="min-width:0"><span class="cn">${P[v.suggest].name}</span><span class="cd" style="display:block">Vorschlag: klingt ähnlich · <b>kein Teilnehmer dieses Termins</b> – wird bei Auswahl ergänzt</span></span></label>` : ""}
-          ${opt(v, "self", "Das bin ich", "meine Stimme auf der Spur der Gegenseite", "me")}
+          ${opt(v, "self", "Das bin ich", "eigene Stimme auf der Spur der Gegenseite", "me")}
           <div class="choice-other"><input type="radio" name="v${v.n}" value="other" aria-label="Andere Person" style="appearance:auto;width:18px;height:18px;margin:0 1px;accent-color:var(--accent)"><input class="input" placeholder="Andere Person eintippen …" aria-label="Name einer anderen Person für Stimme ${v.n}"></div>
           <label class="check" style="margin-top:4px"><input type="checkbox" ${v.auto ? "" : "checked"}><span class="t">Stimme merken <span class="help" style="display:block">${v.auto ? "Bestätigt die automatische Erkennung und verbessert das Profil." : "Legt ein Stimmprofil an – bleibt verschlüsselt auf diesem Rechner."}</span></span></label>
         </fieldset>
@@ -1377,10 +1389,10 @@ function screenSetup() {
     { st: "ok", icon: "headset", t: "Audiogeräte", d: "Mikrofon: Headset Mikrofon (USB Audio) · Gegenseite: Headset Kopfhörer (USB Audio)", b: btn("Geräte einstellen …", { cls: "btn-sm", to: "settings-recording" }) },
     { st: "ok", icon: "chip", t: "Spracherkennung", d: "Modell large-v3-turbo ist geladen und geprüft (1,6 GB). Läuft auf dem Prozessor, ohne NVIDIA-Grafikkarte.", b: "" },
     { st: "warn", icon: "sparkle", t: "Zusammenfassung mit Claude", d: "Schlüssel gespeichert. Der letzte Verbindungstest um 08:12 ist nach 20 Sekunden ohne Antwort abgebrochen.",
-      x: `<div class="ck-sub"><div class="strong">${I("globe", "ico-sm")} Ist ein VPN aktiv?</div><div class="muted">Ein aktives VPN kann die Verbindung zu Claude blockieren. Pausieren Sie es kurz oder nehmen Sie CallRecorder in der VPN-App aus („Split-Tunneling“: python.exe und pythonw.exe im Programmordner).</div></div>`,
+      x: `<div class="ck-sub"><div class="strong">${I("globe", "ico-sm")} Ist ein VPN aktiv?</div><div class="muted">Ein aktives VPN kann die Verbindung zu Claude blockieren. Das VPN kurz pausieren oder CallRecorder in der VPN-App aus („Split-Tunneling“: python.exe und pythonw.exe im Programmordner).</div></div>`,
       b: btn("Verbindung testen", { cls: "btn-sm btn-primary", act: "toast-msg", attrs: 'data-msg="Test läuft – höchstens 20 Sekunden"' }) + btn("Einstellungen …", { cls: "btn-sm", to: "settings-summary" }) },
     { st: S.calendar ? "ok" : "opt", icon: "calendar", t: "Microsoft-Anmeldung", tag: "optional", d: S.calendar ? "Angemeldet als Martina Ehlers (m.ehlers@nordhafen-bau.example). Es wird nur Ihr eigener Kalender gelesen."
-      : "Nicht angemeldet. Ohne Anmeldung tippen Sie Titel und Teilnehmende selbst ein.",
+      : "Nicht angemeldet. Ohne Anmeldung werden Titel und Teilnehmende selbst eingetippt ein.",
       x: S.calendar ? `<div class="ck-sub"><span class="caption muted">Als Nächstes im Kalender</span><span><b>Heute 14:00–14:45</b> · Jour fixe Neubau Hafenkante · 5 Teilnehmende</span></div>` : "",
       b: S.calendar ? btn("Termine prüfen", { cls: "btn-sm", icon: "refresh" }) + btn("Abmelden", { cls: "btn-sm btn-subtle" }) : btn("Bei Microsoft anmelden …", { cls: "btn-sm btn-primary" }) },
     { st: "ok", icon: "send", t: "SharePoint-Übergabe", tag: "optional", d: "Ordner „Geschäftsführung › Protokolle“ ist erreichbar und wird von OneDrive synchronisiert.", b: btn("Einstellungen …", { cls: "btn-sm", to: "settings-sharepoint" }) },
@@ -1393,7 +1405,7 @@ function screenSetup() {
     <header class="page-head"><div class="grow"><h1 tabindex="-1" data-focus>Einrichtung</h1><p class="sub">Was eingerichtet ist und was fehlt – mit je einem Schritt zur Lösung.</p></div>${btn("Erneut prüfen", { icon: "refresh" })}</header>
     <section class="card summary-strip" style="margin-bottom:16px" aria-label="Zusammenfassung der Prüfung">
       <span class="progress-ring" style="--p:75"><b>6/8</b></span>
-      <div><div class="strong" style="font-size:16px">Aufnehmen funktioniert. 2 Punkte brauchen Ihre Aufmerksamkeit.</div><div class="muted">Pflichtpunkte sind vollständig. Optional heißt: alles andere funktioniert auch ohne.</div></div><span></span>
+      <div><div class="strong" style="font-size:16px">Aufnehmen funktioniert. 2 Punkte sind offen.</div><div class="muted">Pflichtpunkte sind vollständig. Optional heißt: alles andere funktioniert auch ohne.</div></div><span></span>
     </section>
     <section class="card"><ul class="checklist">${items.map(i => `
       <li class="ck"><span class="st ${i.st}" aria-label="${{ ok: "In Ordnung", warn: "Hinweis", err: "Fehler", opt: "Nicht eingerichtet" }[i.st]}">${I(icon[i.st])}</span>
@@ -1416,9 +1428,9 @@ const setting = (t, d, ctl, cls = "") => `<div class="setting ${cls}"><div><div 
 function secGeneral() {
   return `<h2 class="group-title">Allgemein</h2>
   <section class="card">
-    ${setting("Ihr Name im Transkript", "So erscheinen Ihre eigenen Beiträge. Leer lassen = Name aus dem Microsoft-Konto.", `<input class="input" style="width:240px" value="Martina Ehlers" aria-label="Ihr Name">`)}
+    ${setting("Eigener Name im Transkript", "So erscheinen die eigenen Beiträge. Leer lassen = Name aus dem Microsoft-Konto.", `<input class="input" style="width:240px" value="Martina Ehlers" aria-label="Eigener Name">`)}
     ${setting("Mit Windows starten", "CallRecorder wartet dann im Infobereich – Tastenkürzel, Erinnerung und automatisches Ende sind immer bereit.", sw(true, "Mit Windows starten"))}
-    ${setting("Beim Start nur im Infobereich", "Das Fenster öffnet sich erst, wenn Sie auf das Symbol klicken.", sw(true, "Nur im Infobereich"))}
+    ${setting("Beim Start nur im Infobereich", "Das Fenster öffnet sich erst mit einem Klick auf das Symbol.", sw(true, "Nur im Infobereich"))}
     ${setting("Tastenkürzel zum Starten und Beenden", "Klicken und die neue Tastenkombination drücken.", `<button class="keyfield" aria-label="Tastenkürzel ändern"><kbd>Strg</kbd>+<kbd>Alt</kbd>+<kbd>Umschalt</kbd>+<kbd>R</kbd></button>`)}
     ${setting("Aufnahme-Anzeige oben rechts", "Kleines rotes Fenster mit Laufzeit und Stopp-Knopf, solange aufgenommen wird.", sw(true, "Aufnahme-Anzeige"))}
   </section>
@@ -1426,7 +1438,7 @@ function secGeneral() {
   <section class="card">
     <div class="setting stack"><div><div class="t">Was soll passieren, wenn eine Aufnahme endet?</div></div><div class="ctl" style="display:grid;gap:8px;width:100%">
       <label class="rcard"><input type="radio" name="after" checked><span class="rt">Fragen <span class="chip chip-accent" style="margin-left:6px">empfohlen</span></span><span></span><span class="rd">Einmal fragen, ob vollständig verarbeitet werden soll – mit den Schritten unten als Vorauswahl.</span></label>
-      <label class="rcard"><input type="radio" name="after"><span class="rt">Sofort vollständig verarbeiten</span><span></span><span class="rd">Ohne Rückfrage. Die Übergabe an SharePoint läuft dabei nur, wenn Sie sie unten ausdrücklich erlauben.</span></label>
+      <label class="rcard"><input type="radio" name="after"><span class="rt">Sofort vollständig verarbeiten</span><span></span><span class="rd">Ohne Rückfrage. Die Übergabe an SharePoint läuft dabei nur, wenn sie unten ausdrücklich erlaubt ist.</span></label>
     </div></div>
     ${setting("Vorauswahl", "", `<div style="display:grid;gap:8px;justify-items:start">
       <label class="check"><input type="checkbox" checked disabled><span class="t">Transkript</span></label>
@@ -1443,7 +1455,7 @@ function secRecording() {
   return `<h2 class="group-title">Geräte</h2>
   <section class="card">
     ${setting("Mikrofon", "„Automatisch“ nimmt das Gerät, das Teams gerade nutzt.", `<select class="select" style="width:280px" aria-label="Mikrofon"><option>Automatisch (wie Teams)</option><option>Headset Mikrofon (USB Audio)</option><option>Mikrofonarray (Realtek Audio)</option></select>`)}
-    ${setting("Gegenseite (Wiedergabegerät)", "Hier hören Sie die anderen – meist Ihr Headset.", `<select class="select" style="width:280px" aria-label="Wiedergabegerät"><option>Automatisch (wie Teams)</option><option>Headset Kopfhörer (USB Audio)</option><option>Lautsprecher (Realtek Audio)</option></select>`)}
+    ${setting("Gegenseite (Wiedergabegerät)", "Hier ist die Gegenseite zu hören – meist das Headset.", `<select class="select" style="width:280px" aria-label="Wiedergabegerät"><option>Automatisch (wie Teams)</option><option>Headset Kopfhörer (USB Audio)</option><option>Lautsprecher (Realtek Audio)</option></select>`)}
     ${setting("Dateiformat", "FLAC: verlustfrei, ca. 150 MB pro Stunde. Opus: etwa ein Zehntel davon.", `<select class="select" style="width:180px" aria-label="Format"><option>FLAC</option><option>Opus</option></select>`)}
   </section>
   <h2 class="group-title">Automatisches Ende</h2>
@@ -1451,11 +1463,11 @@ function secRecording() {
     ${setting("Gesprächsende erkennen", "Eine Aufnahme startet nie von selbst. Ist das Gespräch vorbei, beendet CallRecorder die Aufnahme nach einem sichtbaren Countdown.", sw(true, "Gesprächsende erkennen"))}
     ${setting("Countdown vor dem Beenden", "Zeit, um noch „Weiter aufnehmen“ zu klicken.", `<input class="input inline-num num" value="30" aria-label="Countdown in Sekunden"> <span class="muted">Sekunden</span>`)}
     ${setting("Ende bei Stille", "Wenn beide Seiten so lange still sind.", `<input class="input inline-num num" value="3" aria-label="Minuten Stille"> <span class="muted">Minuten</span>`)}
-    ${setting("Höchstdauer", "Sicherheitsnetz, auch wenn die Erkennung aus ist. 10 Minuten vorher fragen wir nach.", `<input class="input inline-num num" value="4" aria-label="Höchstdauer in Stunden"> <span class="muted">Stunden</span>`)}
+    ${setting("Höchstdauer", "Sicherheitsnetz, auch wenn die Erkennung aus ist. 10 Minuten vorher kommt eine Nachfrage.", `<input class="input inline-num num" value="4" aria-label="Höchstdauer in Stunden"> <span class="muted">Stunden</span>`)}
   </section>
   <details class="adv"><summary>${I("right", "ico-sm")}Feineinstellung der Erkennung</summary>
   <section class="card" style="margin-top:8px">
-    ${setting("Stille-Schwelle", "Leiser als dieser Pegel gilt als still. Rauscht Ihr Mikrofon, etwas höher setzen (z. B. −40).", `<input class="input inline-num num" value="−45" aria-label="Schwelle dBFS"> <span class="muted">dBFS</span>`)}
+    ${setting("Stille-Schwelle", "Leiser als dieser Pegel gilt als still. Rauscht das Mikrofon, etwas höher setzen (z. B. −40).", `<input class="input inline-num num" value="−45" aria-label="Schwelle dBFS"> <span class="muted">dBFS</span>`)}
     ${setting("Anruf-App weg nach", "Teams hat das Mikrofon freigegeben und die Gegenseite ist still.", `<input class="input inline-num num" value="20" aria-label="Sekunden"> <span class="muted">Sekunden</span>`)}
     ${setting("Ruhe nach „Weiter aufnehmen“", "", `<input class="input inline-num num" value="15" aria-label="Minuten"> <span class="muted">Minuten</span>`)}
     ${setting("Programmnamen der Anruf-App", "Mehrere durch Komma getrennt.", `<input class="input" style="width:280px" value="ms-teams.exe, teams.exe" aria-label="Prozessnamen">`)}
@@ -1469,7 +1481,7 @@ function secSummary() {
     <label class="rcard"><input type="radio" name="prov" checked><span class="rt">Claude von Anthropic</span>${chip("chip-warn", "cloud", "Transkript verlässt den Rechner")}<span class="rd">Schnell und sehr gute Qualität. Für jede Zusammenfassung wird der Transkripttext an Anthropic übertragen – Audio und Stimmprofile nie. Die Einwilligungsabfrage nennt das ausdrücklich.</span></label>
   </div></section>
   <section class="card">
-    ${setting("API-Schlüssel", "Gespeichert und mit Windows verschlüsselt – nur Ihr Konto auf diesem Rechner kann ihn lesen.", chip("chip-ok", "check", "gespeichert") + btn("Ändern …", { cls: "btn-sm" }) + btn("Löschen", { cls: "btn-sm btn-subtle btn-danger" }))}
+    ${setting("API-Schlüssel", "Gespeichert und mit Windows verschlüsselt – nur das eigene Windows-Konto auf diesem Rechner kann ihn lesen.", chip("chip-ok", "check", "gespeichert") + btn("Ändern …", { cls: "btn-sm" }) + btn("Löschen", { cls: "btn-sm btn-subtle btn-danger" }))}
     ${setting("Modell", "Opus: beste Qualität. Sonnet und Haiku sind günstiger.", `<select class="select" style="width:240px" aria-label="Modell"><option>Claude Opus 5.5 (empfohlen)</option><option>Claude Sonnet 5.5</option><option>Claude Haiku 5.5</option></select>`)}
     ${setting("Verbindung", "Sendet nur „Antworte nur mit: OK“ – kostet einen Bruchteil eines Cents.", btn("Verbindung testen", { icon: "refresh" }))}
     <div class="setting stack" style="padding-top:0;border-top:0"><div class="banner banner-warn">${I("globe")}<div class="bt">Letzter Test: keine Antwort nach 20 Sekunden</div><div class="bd" style="grid-column:2">Ist ein VPN aktiv? Dann kurz pausieren oder CallRecorder per Split-Tunneling ausnehmen und erneut testen.</div></div></div>
@@ -1482,7 +1494,7 @@ function secSummary() {
 }
 function secSharepoint() {
   return `<h2 class="group-title">SharePoint-Übergabe</h2>
-  <div class="banner" style="margin-bottom:16px">${I("info")}<div class="bt">Übergeben wird nur die Zusammenfassung</div><div class="bd" style="grid-column:2">Nie Transkript, Audio oder Stimmprofile – und nur auf Ihren Klick oder wenn Sie es beim Beenden einer Aufnahme ankreuzen. So kann Ihr Claude-Assistent die Protokolle lesen.</div></div>
+  <div class="banner" style="margin-bottom:16px">${I("info")}<div class="bt">Übergeben wird nur die Zusammenfassung</div><div class="bd" style="grid-column:2">Nie Transkript, Audio oder Stimmprofile – und nur nach einem Klick oder dem Häkchen beim Beenden einer Aufnahme. So kann ein Assistent in SharePoint die Protokolle lesen.</div></div>
   <section class="card" style="padding:16px 20px"><div class="radio-cards">
     <label class="rcard"><input type="radio" name="ho" checked><span class="rt">In einen OneDrive-synchronisierten Ordner kopieren</span>${chip("chip-accent", "", "empfohlen")}<span class="rd">Keine zusätzliche Berechtigung nötig. OneDrive lädt die Datei hoch.</span></label>
     <label class="rcard"><input type="radio" name="ho"><span class="rt">Direkt hochladen (Microsoft Graph)</span><span></span><span class="rd">Für Fälle ohne OneDrive-Synchronisierung. Braucht eine Freigabe durch die IT.</span></label>
@@ -1490,13 +1502,13 @@ function secSharepoint() {
   <section class="card">
     ${setting("Ordner", "C:\\Users\\mehlers\\Nordhafen Bau\\Geschäftsführung - Protokolle · erreichbar, wird synchronisiert", btn("Ändern …", { icon: "folder" }))}
     ${setting("E-Mail-Adressen der Teilnehmenden mitgeben", "Sonst nur Namen.", sw(false, "E-Mail-Adressen mitgeben"))}
-    ${setting("Ohne Rückfrage übergeben", "Nur wenn „Sofort vollständig verarbeiten“ gewählt ist. Sie werden beim Einschalten noch einmal gefragt.", sw(false, "Ohne Rückfrage übergeben"))}
+    ${setting("Ohne Rückfrage übergeben", "Nur wenn „Sofort vollständig verarbeiten“ gewählt ist. Beim Einschalten kommt noch eine Rückfrage.", sw(false, "Ohne Rückfrage übergeben"))}
   </section>`;
 }
 function secProfiles() {
   const rows = [["jp", "Jonas Pfeiffer", 7, "13.11."], ["lh", "Leonie Hartwig", 6, "13.11."], ["tr", "Tobias Rehm", 11, "20.11."], ["nk", "Nadine Krüger", 4, "19.11."], ["sa", "Selin Aydın", 3, "13.11."]];
   return `<h2 class="group-title">Stimmprofile</h2>
-  <div class="banner" style="margin-bottom:16px">${I("shield")}<div class="bt">Biometrische Daten – nur auf diesem Rechner</div><div class="bd" style="grid-column:2">Ein Profil entsteht nur, wenn Sie eine Stimme bestätigen („Stimme merken“). Es ist mit Windows verschlüsselt und lässt sich jederzeit löschen.</div></div>
+  <div class="banner" style="margin-bottom:16px">${I("shield")}<div class="bt">Biometrische Daten – nur auf diesem Rechner</div><div class="bd" style="grid-column:2">Ein Profil entsteht nur, wenn eine Stimme bestätigt wird („Stimme merken“). Es ist mit Windows verschlüsselt und lässt sich jederzeit löschen.</div></div>
   <section class="card"><div class="rows">${rows.map(([k, n, c, d]) => `<div class="row" style="grid-template-columns:auto minmax(0,1fr) auto"><span>${av(k)}</span><span style="min-width:0"><span class="rt" style="display:block">${n}</span><span class="rd">gelernt aus ${c} Aufnahmen · zuletzt ${d}</span></span><span class="btn-row">${btn("Herkunft", { cls: "btn-sm" })}${btn("Löschen", { cls: "btn-sm btn-subtle btn-danger", icon: "trash" })}</span></div>`).join("")}</div>
   <div class="card-foot">${btn("Alle Stimmprofile löschen …", { cls: "btn-sm btn-danger", icon: "trash" })}<span class="caption muted" style="flex:1">Aufnahmen bleiben erhalten.</span></div></section>`;
 }
@@ -1509,23 +1521,23 @@ function secUpdate() {
   <section class="card" style="margin-top:16px">
     <div class="card-head"><h2>Was ist neu in 2.8.0?</h2></div>
     <div class="card-body notes">
-      <div class="note-item">${chip("chip-accent", "", "Neu")}<p>Die Übersicht zeigt den nächsten Termin und alles, was auf Ihre Entscheidung wartet.</p></div>
-      <div class="note-item">${chip("chip-accent", "", "Neu")}<p>Zusammenfassungen lassen sich mit einer vorhandenen Aufnahme testen, bevor Sie geänderte Anweisungen speichern.</p></div>
+      <div class="note-item">${chip("chip-accent", "", "Neu")}<p>Die Übersicht zeigt den nächsten Termin und alles, was auf eine Entscheidung wartet.</p></div>
+      <div class="note-item">${chip("chip-accent", "", "Neu")}<p>Zusammenfassungen lassen sich mit einer vorhandenen Aufnahme testen, bevor geänderte Anweisungen gespeichern.</p></div>
       <div class="note-item">${chip("chip-info", "", "Besser")}<p>Die Verbindung zu Claude bricht bei einem blockierenden VPN schneller ab und nennt die Ursache.</p></div>
       <div class="note-item">${chip("", "", "Behoben")}<p>Bluetooth-Headsets, die während der Aufnahme das Profil wechseln, beenden die Aufnahme nicht mehr zu früh.</p></div>
     </div>
     <div class="card-foot" style="flex-wrap:wrap">${btn("Jetzt aktualisieren", { cls: "btn-primary", icon: "download", act: "toast-msg", attrs: 'data-msg="Update wird geladen – CallRecorder startet danach neu"' })}<span class="caption muted" style="flex:1;min-width:220px">Dauert etwa eine Minute. CallRecorder startet danach neu. Läuft gerade eine Aufnahme oder Verarbeitung, wartet das Update, bis sie fertig ist.</span></div>
   </section>
   <section class="card" style="margin-top:16px">
-    ${setting("Automatisch nach Updates suchen", "Einmal täglich. Installiert wird nur auf Ihren Klick. Zuletzt gesucht: heute, 08:10.", sw(true, "Automatisch suchen"))}
-    ${setting("Vorherige Version wiederherstellen", "Falls nach einem Update etwas nicht stimmt: zurück zu 2.6.3. Ihre Aufnahmen und Einstellungen bleiben.", btn("Version 2.6.3 wiederherstellen …", { icon: "undo" }))}
+    ${setting("Automatisch nach Updates suchen", "Einmal täglich. Installiert wird nur nach einem Klick. Zuletzt gesucht: heute, 08:10.", sw(true, "Automatisch suchen"))}
+    ${setting("Vorherige Version wiederherstellen", "Falls nach einem Update etwas nicht stimmt: zurück zu 2.6.3. Aufnahmen und Einstellungen bleiben.", btn("Version 2.6.3 wiederherstellen …", { icon: "undo" }))}
   </section>`;
 }
 function secCalendar() {
   return `<h2 class="group-title">Kalender und Microsoft-Konto</h2>
   <section class="card">
     ${setting("Microsoft-Konto", S.calendar ? "Angemeldet als Martina Ehlers · m.ehlers@nordhafen-bau.example" : "Nicht angemeldet", S.calendar ? btn("Abmelden") : btn("Bei Microsoft anmelden …", { cls: "btn-primary" }))}
-    ${setting("Wofür?", "Aufnahmen heißen wie der Termin, und nur Teilnehmende des Termins werden automatisch als Sprecher erkannt. Gelesen wird nur Ihr eigener Kalender.", "")}
+    ${setting("Wofür?", "Aufnahmen heißen wie der Termin, und nur Teilnehmende des Termins werden automatisch als Sprecher erkannt. Gelesen wird nur der eigene Kalender.", "")}
   </section>
   <details class="adv"><summary>${I("right", "ico-sm")}Technische Angaben (von der IT)</summary><section class="card" style="margin-top:8px">
     ${setting("Anwendungs-ID (Client)", "", `<input class="input num" style="width:340px" value="7f3c1a52-0d4e-4b7a-9e21-5c8d6a0b3f19" aria-label="Client-ID">`)}
@@ -1534,7 +1546,7 @@ function secCalendar() {
 }
 function secAdvanced() {
   return `<h2 class="group-title">Für Fortgeschrittene</h2>
-  <p class="muted" style="margin:-4px 0 16px;max-width:70ch">Diese Einstellungen braucht man selten. Geänderte Werte gelten für neue Aufnahmen; ältere verbessern Sie über „Neu transkribieren“ – die alte Fassung bleibt als Version erhalten.</p>
+  <p class="muted" style="margin:-4px 0 16px;max-width:70ch">Diese Einstellungen braucht man selten. Geänderte Werte gelten für neue Aufnahmen; ältere lassen sich über „Neu transkribieren“ – die alte Fassung bleibt als Version erhalten.</p>
   <section class="card">
     ${setting("Sprache der Gespräche", "„Automatisch“ misst je Aufnahme an mehreren Stellen und wählt zwischen Deutsch und Englisch.", `<select class="select" style="width:220px" aria-label="Sprache"><option>Automatisch (Deutsch, Englisch)</option><option>Immer Deutsch</option><option>Immer Englisch</option></select>`)}
     ${setting("Erkennungsmodell", "„Automatisch“: large-v3 mit NVIDIA-Grafikkarte, sonst large-v3-turbo.", `<select class="select" style="width:220px" aria-label="Modell"><option>Automatisch</option><option>large-v3</option><option>large-v3-turbo</option><option>medium</option></select>`)}
@@ -1604,7 +1616,7 @@ function screenPrompt() {
       <div style="display:grid;gap:16px;min-width:0">
         <section class="card"><div class="card-head"><h2>Prüfung</h2></div><div class="card-body">
           <ul class="outline-check">${["Kurzfassung", "Entscheidungen", "Aufgaben (Tabelle)", "Projektstand und Updates", "Offene Fragen", "Nächste Termine"].map(h => `<li>${I("check")}${h}</li>`).join("")}<li>${I("check")}Platzhalter {material} vorhanden</li></ul>
-          <p class="help" style="margin-top:12px">Alle sechs Abschnitte sind enthalten – Ihr Assistent in SharePoint findet Aufgaben und Projektstände wie gewohnt.</p></div></section>
+          <p class="help" style="margin-top:12px">Alle sechs Abschnitte sind enthalten – der Assistent in SharePoint findet Aufgaben und Projektstände wie gewohnt.</p></div></section>
         <section class="card"><div class="card-head"><h2>Mit dieser Aufnahme testen</h2></div><div class="card-body" style="display:grid;gap:12px">
           <div style="display:flex;gap:8px;flex-wrap:wrap"><label class="sr-only" for="testrec">Aufnahme</label><select class="select" id="testrec" style="flex:1;min-width:200px"><option>Jour fixe Neubau Hafenkante · 13.11.</option><option>Kundengespräch Lindqvist Logistik · 20.11.</option></select>${btn(S.promptTested ? "Erneut testen" : "Testen", { cls: "btn-primary", icon: "play", act: "prompt-test" })}</div>
           <p class="help">Erstellt eine neue Version der Zusammenfassung dieser Aufnahme. Die bisherige bleibt zum Vergleich erhalten. ${chip("chip-warn", "cloud", "geht an Claude")}</p>
@@ -1619,17 +1631,17 @@ function screenPrompt() {
    ===================================================================== */
 function toastWindow(fixed = true) {
   return `<div class="miniwin toastwin" role="dialog" aria-labelledby="tw-t" style="${fixed ? "" : "position:absolute"}">
-    <div class="th"><div class="app-tag">${I("mic", "ico-sm")}CallRecorder</div><button class="icon-btn x" aria-label="Schließen" data-act="dismiss-toast">${I("x", "ico-sm")}</button></div>
-    <div><div class="strong" id="tw-t" style="font-size:15px;line-height:22px">Call erkannt: ${esc(NEXT.title)} – aufnehmen?</div><p class="muted" style="margin-top:4px">Teams nutzt das Mikrofon. Es wird nichts aufgenommen, bevor Sie die Einwilligung bestätigt haben.</p></div>
-    <div class="btn-row">${btn("Aufnahme vorbereiten …", { cls: "btn-primary", act: "consent" })}${btn("Nein, danke", { act: "dismiss-toast" })}</div>
-    <span class="caption faint">Nach „Nein“ fragt CallRecorder 10 Minuten nicht mehr.</span>
+    <div class="th"><div class="app-tag"><span style="width:16px;height:16px;display:inline-grid"><svg width="16" height="16" viewBox="0 0 32 32" aria-hidden="true"><rect x="1" y="1" width="30" height="30" rx="8" fill="var(--accent-fill)"/><rect x="12" y="7" width="8" height="12" rx="4" fill="#fff"/><path d="M9 15.5a7 7 0 0 0 14 0" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/><path d="M16 22.5V25" stroke="#fff" stroke-width="2" stroke-linecap="round"/><circle cx="24.5" cy="8" r="3.2" fill="#fff"/><circle cx="24.5" cy="8" r="1.8" fill="var(--rec)"/></svg></span>CallRecorder</div><button class="icon-btn x" aria-label="Schließen" data-act="dismiss-toast">${I("x", "ico-sm")}</button></div>
+    <div><div class="strong" id="tw-t" style="font-size:15px;line-height:22px">Call erkannt: ${esc(NEXT.title)} – aufnehmen?</div><p class="muted" style="margin-top:4px">Die Anruf-App nutzt das Mikrofon.</p></div>
+    <p class="caption muted">Hinweis: Aufnehmen nur, wenn alle Teilnehmenden informiert sind und zugestimmt haben (§ 201 StGB).</p>
+    <div class="btn-row">${btn("Aufnehmen", { cls: "btn-record", icon: "rec", act: "do-start" })}${btn("Nicht aufnehmen", { act: "dismiss-toast" })}<span style="flex:1"></span>${btn("Details …", { cls: "btn-subtle btn-sm", act: "consent" })}</div>
   </div>`;
 }
 function screenMini() {
   return `<div class="page">
-    <header class="page-head"><div class="grow"><h1 tabindex="-1" data-focus>Begleitfenster</h1><p class="sub" style="max-width:90ch">Diese kleinen Fenster erscheinen auch, wenn das Hauptfenster geschlossen ist (CallRecorder läuft im Infobereich). Sie stehlen nie den Fokus und bleiben über Teams sichtbar.</p></div></header>
+    <header class="page-head"><div class="grow"><h1 tabindex="-1" data-focus>Begleitfenster</h1><p class="sub" style="max-width:90ch">Diese kleinen Fenster erscheinen auch, wenn das Hauptfenster geschlossen ist (CallRecorder läuft im Infobereich). Die Fenster nehmen nie den Tastaturfokus und bleiben über Teams sichtbar.</p></div></header>
     <div class="desk" role="img" aria-label="Schematischer Windows-Desktop mit den Begleitfenstern">
-      <div class="teams-mock">${I("teams", "ico-lg")}&nbsp;Teams-Besprechung</div>
+      <div class="teams-mock">${I("video", "ico-lg")}&nbsp;Teams-Besprechung</div>
       <span class="lbl" style="right:24px;top:12px">1 · Aufnahme-Anzeige (immer im Vordergrund, verschiebbar)</span>
       <div class="miniwin pillwin" style="position:absolute;right:24px;top:40px"><span class="rec-dot" aria-hidden="true"></span><span class="num strong">00:23:41</span><span class="t ellipsis muted">${esc(NEXT.title)}</span><button class="btn btn-record btn-sm" aria-label="Aufnahme beenden">${I("stop", "ico-sm")}Beenden</button></div>
       <span class="lbl" style="right:24px;top:100px">2 · Dieselbe Anzeige beim Countdown</span>
@@ -1661,31 +1673,31 @@ const MODALS = {
   consent: () => modal("consent", `<h2>Aufnahme vorbereiten</h2><p class="muted" style="margin-top:2px">Termin aus Outlook: ${esc(NEXT.title)} · heute ${NEXT.time}</p>`, `
     <div class="field"><label class="label" for="c-title">Titel</label><input class="input" id="c-title" value="${esc(NEXT.title)}"></div>
     <div class="field"><span class="label" id="c-pl">Teilnehmende</span>
-      <div class="people" aria-labelledby="c-pl"><span class="person">${av("me")}<span>Sie</span></span>${NEXT.people.map(k => `<span class="person">${av(k)}<span>${P[k].name}</span><button class="icon-btn" style="width:22px;height:22px" aria-label="${P[k].name} entfernen">${I("x", "ico-sm")}</button></span>`).join("")}</div>
+      <div class="people" aria-labelledby="c-pl"><span class="person">${av("me")}<span>${ME.name}</span></span>${NEXT.people.map(k => `<span class="person">${av(k)}<span>${P[k].name}</span><button class="icon-btn" style="width:22px;height:22px" aria-label="${P[k].name} entfernen">${I("x", "ico-sm")}</button></span>`).join("")}</div>
       <div style="display:flex;gap:8px;margin-top:4px"><input class="input" placeholder="Name oder E-Mail hinzufügen" aria-label="Person hinzufügen" style="flex:1">${btn(".ics-Einladung importieren …", { cls: "btn-subtle", icon: "calendar" })}</div>
       <p class="help">Nur diese Personen werden später automatisch als Sprecher erkannt.</p></div>
     <fieldset style="margin:20px 0 0;padding:16px;border:1px solid var(--border-strong);border-radius:var(--r-lg);display:grid;gap:10px">
-      <legend class="label" style="padding:0 6px">Einwilligung aller Teilnehmenden (§ 201 StGB)</legend>
-      <p class="muted">Bitte nehmen Sie nur auf, wenn alle Teilnehmenden informiert sind und ausdrücklich zugestimmt haben – am besten zu Beginn des Gesprächs, damit die Zustimmung in der Aufnahme enthalten ist.</p>
+      <legend class="label" style="padding:0 6px">Zustimmung aller Teilnehmenden (§ 201 StGB)</legend>
+      <p class="muted">Hinweis: Aufnehmen nur, wenn alle Teilnehmenden informiert sind und zugestimmt haben (§ 201 StGB). Das Transkript (Text mit den Namen der Teilnehmenden) wird zur Erstellung der Zusammenfassung an Anthropic (Claude-API) übertragen.</p>
       <div class="banner banner-warn" style="padding:10px 12px">${I("cloud", "ico-sm")}<div class="bd">Die Zusammenfassung erstellt Claude (Anthropic). Das Transkript verlässt dafür diesen Rechner.</div></div>
-      <label class="check"><input type="checkbox" id="c-ok" data-act="consent-check" ${S.consent ? "checked" : ""}><span class="t"><b>Ja, alle Teilnehmenden haben der Aufnahme und der Übertragung an Anthropic zugestimmt.</b></span></label>
+      <p class="caption muted">Modus „Eine Frage vor der Aufnahme“ (Einstellungen › Aufnahme). Im Modus „Ausdrückliche Bestätigung“ steht hier zusätzlich ein Häkchen.</p>
     </fieldset>`,
-    `<span class="caption muted left">Wird mit Zeit und Ihrem Namen in der Aufnahme vermerkt.</span>${btn("Abbrechen", { act: "close" })}<button class="btn btn-record" data-act="do-start" ${S.consent ? "" : "disabled"} id="c-start">${I("rec", "ico-sm")}Aufnahme starten</button>`),
+    `<span class="caption muted left">Vermerkt wird: gestartet mit diesem Hinweis, mit Zeit und Namen.</span>${btn("Nicht aufnehmen", { act: "close" })}<button class="btn btn-record" data-act="do-start" id="c-start">${I("rec", "ico-sm")}Aufnehmen</button>`),
   postcall: () => modal("pc", `<div class="eyebrow" style="color:var(--ok-text)">${I("check-circle", "ico-sm")} Aufnahme gespeichert · 46 Min</div><h2>Aufnahme beendet – jetzt vollständig verarbeiten?</h2><p class="muted" style="margin-top:2px">${esc(NEXT.title)} · heute 14:00</p>`, `
-    <p style="margin-bottom:12px">Das passiert nacheinander im Hintergrund. Sie können währenddessen weiterarbeiten.</p>
+    <p style="margin-bottom:12px">Das passiert nacheinander im Hintergrund. Weiterarbeiten ist währenddessen möglich.</p>
     <ol class="pipe" aria-label="Schritte">
       ${[["Transkript", "Lokal auf diesem Rechner. Etwa 6 Minuten.", true, true],
-         ["Sprecher", "Erkennt bekannte Stimmen. Bei offenen Stimmen fragen wir Sie.", true, false],
+         ["Sprecher", "Erkennt bekannte Stimmen. Offene Stimmen werden danach abgefragt.", true, false],
          ["Zusammenfassung", "Mit Claude – der Transkripttext geht dafür an Anthropic.", true, false],
-         ["An SharePoint übergeben", "Nur die Zusammenfassung, für Ihren Claude-Assistenten. Ohne weitere Vorschau.", false, false]]
+         ["An SharePoint übergeben", "Nur die Zusammenfassung, für den Assistenten in SharePoint. Ohne weitere Vorschau.", false, false]]
         .map(([t, d, on, fixed], i) => `<li class="pipe-step ${on ? "" : "off"}" data-step="${i}"><div class="top"><span class="n">${i + 1}</span><label class="switch"><input type="checkbox" role="switch" ${on ? "checked" : ""} ${fixed ? "disabled" : ""} aria-label="${t}" data-act="pipe-toggle"></label></div><span class="st">${t}</span><span class="sd">${d}</span></li>`).join("")}
     </ol>
-    <p class="help" style="margin-top:12px">Die Vorauswahl ändern Sie unter Einstellungen › Allgemein. Ohne Übergabe können Sie später jederzeit mit Vorschau übergeben.</p>`,
+    <p class="help" style="margin-top:12px">Vorauswahl: Einstellungen › Allgemein. Ohne Übergabe ist später jederzeit eine Übergabe mit Vorschau möglich.</p>`,
     `<button class="btn btn-subtle btn-danger left" data-act="modal" data-m="discard">${I("trash", "ico-sm")}Verwerfen …</button>${btn("Später", { act: "close-later" })}${btn("Vollständig verarbeiten", { cls: "btn-primary", act: "process" })}`, "wide"),
   discard: () => modal("dc", `<h2>Aufnahme verwerfen?</h2>`, `<p>„${esc(NEXT.title)}“ wird mit Audio und allen Daten in den Papierkorb verschoben. Von dort lässt sie sich wiederherstellen.</p>`,
     `${btn("Abbrechen", { act: "modal", attrs: 'data-m="postcall"' })}<button class="btn btn-record" data-act="close">${I("trash", "ico-sm")}In den Papierkorb</button>`),
   retranscribe: () => modal("rt", `<h2>Neu transkribieren</h2><p class="muted" style="margin-top:2px">${esc(rec(S.selected).title)}</p>`, `
-    <p style="margin-bottom:16px">Es entsteht eine neue Version. Die bisherige bleibt erhalten, und Ihre Sprecherzuordnungen gelten weiter.</p>
+    <p style="margin-bottom:16px">Es entsteht eine neue Version. Die bisherige bleibt erhalten, und die Sprecherzuordnungen gelten weiter.</p>
     <fieldset style="border:0;padding:0;margin:0;display:grid;gap:8px"><legend class="label" style="margin-bottom:8px">Sprache des Gesprächs</legend>
       <label class="rcard"><input type="radio" name="lang" checked><span class="rt">Automatisch erkennen</span><span></span><span class="rd">Misst an mehreren Stellen beider Spuren (Deutsch oder Englisch).</span></label>
       <label class="rcard"><input type="radio" name="lang"><span class="rt">Deutsch</span><span></span><span class="rd">Wenn die automatische Erkennung danebenlag.</span></label>
@@ -1696,21 +1708,21 @@ const MODALS = {
   handoff: () => modal("ho", `<h2>Zusammenfassung an SharePoint übergeben</h2><p class="muted" style="margin-top:2px">${esc(rec(S.selected).title)}</p>`, `
     <div class="handoff" style="margin-bottom:16px"><span class="ico-wrap">${I("folder")}</span><div><div class="strong">Ziel</div><div class="hd">SharePoint › Geschäftsführung › Protokolle › 2026-11-19_1030_Budgetvorbereitung-mit-Controlling.md</div></div><span></span></div>
     <p class="label" style="margin-bottom:8px">Vorschau – genau dieser Text wird übergeben</p>
-    <div class="test-out" style="max-height:260px"><div class="reader"><p class="src">Budgetvorbereitung mit Controlling · 19.11.2026 10:30 · Teilnehmende: Martina Ehlers, Nadine Krüger · Einwilligung bestätigt</p><h2>Kurzfassung</h2><p>Das Budget 2027 wird mit 3 % Kostensteigerung geplant. Die Personalplanung für die Bauleitung bleibt offen, bis die Auftragslage im Januar feststeht.</p><h2>Entscheidungen</h2><ul><li>Investitionsbudget Fuhrpark wird auf zwei Fahrzeuge begrenzt.</li></ul><h2>Aufgaben</h2><table><thead><tr><th>Aufgabe</th><th>Verantwortlich</th><th>Frist</th></tr></thead><tbody><tr><td>Entwurf Budget an Beirat senden</td><td>Nadine Krüger</td><td>04.12.</td></tr></tbody></table></div></div>
+    <div class="test-out" style="max-height:260px"><div class="reader"><p class="src">Budgetvorbereitung mit Controlling · 19.11.2026 10:30 · Teilnehmende: Martina Ehlers, Nadine Krüger · gestartet mit Hinweis auf die Zustimmung</p><h2>Kurzfassung</h2><p>Das Budget 2027 wird mit 3 % Kostensteigerung geplant. Die Personalplanung für die Bauleitung bleibt offen, bis die Auftragslage im Januar feststeht.</p><h2>Entscheidungen</h2><ul><li>Investitionsbudget Fuhrpark wird auf zwei Fahrzeuge begrenzt.</li></ul><h2>Aufgaben</h2><table><thead><tr><th>Aufgabe</th><th>Verantwortlich</th><th>Frist</th></tr></thead><tbody><tr><td>Entwurf Budget an Beirat senden</td><td>Nadine Krüger</td><td>04.12.</td></tr></tbody></table></div></div>
     <p class="help" style="margin-top:12px">${I("lock", "ico-sm")} Übergeben wird nur die Zusammenfassung – nie Transkript, Audio oder Stimmprofile. Die Zusammenfassung kann einzelne Aussagen wörtlich zitieren.</p>`,
     `${btn("Abbrechen", { act: "close" })}${btn("An SharePoint übergeben", { cls: "btn-primary", icon: "send", act: "close-msg", attrs: 'data-msg="Übergeben – SharePoint › Geschäftsführung › Protokolle"' })}`, "wide"),
   delete: () => modal("del", `<h2>Aufnahme löschen?</h2>`, `<p>„${esc(rec(S.selected).title)}“ wird mit Audio, Transkript, Zusammenfassung und Stimmdaten in den Windows-Papierkorb verschoben.</p><p class="muted" style="margin-top:8px">Bereits an SharePoint übergebene Zusammenfassungen bleiben in SharePoint.</p>`,
     `${btn("Abbrechen", { act: "close" })}<button class="btn btn-record" data-act="close-msg" data-msg="In den Papierkorb verschoben">${I("trash", "ico-sm")}In den Papierkorb</button>`),
-  rename: () => modal("rn", `<h2>Umbenennen</h2>`, `<div class="field"><label class="label" for="rn-i">Angezeigter Titel</label><input class="input" id="rn-i" value="${esc(rec(S.selected).title)}"><p class="help">Der Ordnername bleibt gleich, damit SharePoint und Ihr Assistent die Aufnahme wiedererkennen.</p></div>`,
+  rename: () => modal("rn", `<h2>Umbenennen</h2>`, `<div class="field"><label class="label" for="rn-i">Angezeigter Titel</label><input class="input" id="rn-i" value="${esc(rec(S.selected).title)}"><p class="help">Der Ordnername bleibt gleich, damit SharePoint und der Assistent die Aufnahme wiedererkennen.</p></div>`,
     `${btn("Abbrechen", { act: "close" })}${btn("Speichern", { cls: "btn-primary", act: "close-msg", attrs: 'data-msg="Titel geändert"' })}`),
   event: () => modal("ev", `<h2>Termin zuordnen</h2><p class="muted" style="margin-top:2px">Termine im Zeitraum der Aufnahme, der passendste zuerst</p>`, `<div class="radio-cards">
     <label class="rcard"><input type="radio" name="ev" checked><span class="rt">14:00–14:45 · Jour fixe Neubau Hafenkante</span>${chip("chip-accent", "", "passt am besten")}<span class="rd">Teams · 4 Teilnehmende</span></label>
     <label class="rcard"><input type="radio" name="ev"><span class="rt">14:30–15:00 · Telefonat Bauleitung</span><span></span><span class="rd">1 Teilnehmer</span></label></div>
-    <label class="check" style="margin-top:16px"><input type="checkbox"><span class="t">Betreff als Titel übernehmen</span></label><p class="help" style="margin-top:8px">Danach läuft die Sprechererkennung mit diesen Teilnehmenden erneut. Ihre manuellen Zuordnungen bleiben.</p>`,
+    <label class="check" style="margin-top:16px"><input type="checkbox"><span class="t">Betreff als Titel übernehmen</span></label><p class="help" style="margin-top:8px">Danach läuft die Sprechererkennung mit diesen Teilnehmenden erneut. Manuelle Zuordnungen bleiben.</p>`,
     `${btn("Abbrechen", { act: "close" })}${btn("Zuordnen", { cls: "btn-primary", act: "close-msg", attrs: 'data-msg="Termin zugeordnet"' })}`),
   participants: () => modal("pa", `<h2>Teilnehmende bearbeiten</h2>`, `<div class="people" style="margin-bottom:12px">${rec(S.selected).people.map(k => `<span class="person">${av(k)}<span>${P[k].name}</span></span>`).join("")}</div><input class="input" placeholder="Name oder E-Mail hinzufügen"><p class="help" style="margin-top:8px">Nur diese Personen werden automatisch als Sprecher erkannt.</p>`,
     `${btn("Abbrechen", { act: "close" })}${btn("Speichern", { cls: "btn-primary", act: "close" })}`),
-  restore: () => modal("rs", `<h2>Standard wiederherstellen?</h2>`, `<p>Ihre angepasste Hauptanweisung wird durch die aktuelle Standardvorlage ersetzt. Ihre Fassung wird als „summary_final.eigene.txt“ gesichert.</p>`,
+  restore: () => modal("rs", `<h2>Standard wiederherstellen?</h2>`, `<p>Die angepasste Hauptanweisung wird durch die aktuelle Standardvorlage ersetzt. Die bisherige Fassung wird als „summary_final.eigene.txt“ gesichert.</p>`,
     `${btn("Abbrechen", { act: "close" })}${btn("Standard wiederherstellen", { cls: "btn-primary", act: "close-msg", attrs: 'data-msg="Standard wiederhergestellt"' })}`),
 };
 

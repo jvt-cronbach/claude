@@ -150,6 +150,12 @@ class TkUi:
         self.summary_provider: Callable[[], str] = lambda: ""
         # main window hook: called on the Tk thread with (title, message) of every notification
         self.notify_listeners: list[Callable[[str, str], None]] = []
+        # consent mode ("ask" | "confirm") and the user's own name, set by the app
+        self.consent_mode: Callable[[], str] = lambda: "confirm"
+        self.me_provider: Callable[[], Person] = lambda: Person(name="Ich", role="self")
+        from callrec.ui.startflow import PreparedStart
+
+        self.prepared = PreparedStart()
         self.root.after(100, self._pump)
 
     # -- threading helpers ---------------------------------------------
@@ -200,13 +206,26 @@ class TkUi:
 
     # -- UiPort ----------------------------------------------------------
     def ask_start(self, suggestion: Suggestion, me: Person) -> StartDecision | None:
+        prepared = self.prepared.take()
+        if prepared is not None:  # "Aufnehmen" was clicked in the call-detected prompt (mode "ask")
+            return prepared  # type: ignore[no-any-return]
         provider = self.summary_provider()
-        return self.call(lambda: dialogs.ask_start(self.root, suggestion, me, self.calendar, summary_provider=provider))
+        mode = self.consent_mode()
+        return self.call(lambda: dialogs.ask_start(self.root, suggestion, me, self.calendar, summary_provider=provider,
+                                                   mode=mode))
 
     def ask_record_prompt(self, prompt: Prompt) -> bool:
         if self.tray is not None:
             self.tray.notify("Gespräch aufnehmen?", prompt.message())
-        return self.call(lambda: dialogs.ask_record_prompt(self.root, prompt))
+        if self.consent_mode() != "ask":
+            return self.call(lambda: dialogs.ask_record_prompt(self.root, prompt))
+        provider = self.summary_provider()
+        choice = self.call(lambda: dialogs.ask_record_prompt_choice(self.root, prompt, provider))
+        if choice == "record":
+            from callrec.ui.startflow import decision_from_prompt
+
+            self.prepared.put(decision_from_prompt(prompt, self.me_provider(), provider))
+        return choice in ("record", "details")
 
     def notify(self, title: str, message: str) -> None:
         log.info("Hinweis: %s - %s", title, message)

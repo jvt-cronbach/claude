@@ -805,10 +805,9 @@ class SettingsDialog:
 
     def confirm_auto_handoff(self, cfg: Config) -> bool:
         """Handing over without asking is an explicit choice: confirm it once when it is switched on."""
-        p = cfg.processing
-        if not (p.after_recording == "full" and p.handoff_without_asking):
-            return True
-        if self.cfg.processing.after_recording == "full" and self.cfg.processing.handoff_without_asking:
+        from callrec.ui.settingsmodel import needs_auto_handoff_confirmation
+
+        if not needs_auto_handoff_confirmation(self.cfg, cfg):
             return True
         return bool(messagebox.askyesno(
             "Ohne Rückfrage übergeben?",
@@ -820,11 +819,13 @@ class SettingsDialog:
         """Selecting Claude (Anthropic) needs an explicit confirmation; switching away revokes it."""
         from callrec.llm_anthropic import ANTHROPIC_SETTINGS_WARNING
 
+        from callrec.ui.settingsmodel import needs_cloud_confirmation
+
         s = cfg.summary
         if s.provider != "anthropic":
             s.anthropic_transcripts_leave_this_computer_confirmed = False
             return True
-        if s.anthropic_transcripts_leave_this_computer_confirmed:
+        if not needs_cloud_confirmation(self.cfg, cfg):
             return True
         if not messagebox.askyesno("Transkripte an Anthropic senden?", ANTHROPIC_SETTINGS_WARNING,
                                    icon="warning", parent=self.win):
