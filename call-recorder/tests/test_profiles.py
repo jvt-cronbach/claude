@@ -48,30 +48,26 @@ def test_match_threshold_and_one_to_one(store: ProfileStore):
     store.add_sample("Anna Beispiel", "anna@firma.de", ANNA, MODEL)
     store.add_sample("Bernd Muster", "bernd@firma.de", BERND, MODEL)
     emb = {"S1": vec(11, 0.2, BERND), "S2": vec(12, 0.2, ANNA), "S3": CARLA, "S4": vec(13, 0.15, ANNA)}
-    m = store.match(emb, MODEL, candidates=[], threshold=0.6, reuse_margin=1.0)
+    m = store.match(emb, MODEL, candidates=[], threshold=0.6)
     assert m["S1"].profile.name == "Bernd Muster"
     assert "S3" not in m
-    # Anna is assigned once (to the closer one of S2/S4) ...
+    # Anna is assigned once (to the closer one of S2/S4); the other one only gets a suggestion
     anna = [k for k, v in m.items() if v.profile.name == "Anna Beispiel"]
     assert len(anna) == 1
-    # ... unless the second cluster is clearly her as well (diarization split one person)
-    m2 = store.match(emb, MODEL, candidates=[], threshold=0.6, reuse_margin=0.05)
-    assert m2["S2"].profile.name == m2["S4"].profile.name == "Anna Beispiel"
+    dec = store.decide(emb, MODEL, participants=None, threshold=0.6)
+    other = ({"S2", "S4"} - set(anna)).pop()
+    assert dec[other].match is None and dec[other].suggestion is not None
+    assert "gleiche Stimme" in dec[other].reason
 
 
-def test_invitee_bonus_prefers_candidates(store: ProfileStore):
+def test_invitee_bonus_in_all_profiles_mode(store: ProfileStore):
     store.add_sample("Anna Beispiel", "anna@firma.de", ANNA, MODEL)
-    store.add_sample("Doppelgängerin", "dg@extern.de", vec(21, 0.05, ANNA), MODEL)
     probe = {"S1": vec(22, 0.3, ANNA)}
-    sim_anna = cosine(probe["S1"], store.find("Anna Beispiel", "", MODEL).embedding)  # type: ignore[union-attr]
-    sim_dg = cosine(probe["S1"], store.find("Doppelgängerin", "", MODEL).embedding)  # type: ignore[union-attr]
-    m = store.match(probe, MODEL, candidates=[Person("Anna Beispiel", "anna@firma.de")], threshold=0.5, invitee_bonus=0.2)
-    assert m["S1"].profile.name == "Anna Beispiel"
-    assert m["S1"].score == pytest.approx(sim_anna + 0.2)
-    assert abs(sim_anna - sim_dg) < 0.2
-    # bonus can lift a borderline invitee above the threshold
-    m2 = store.match(probe, MODEL, candidates=[], threshold=max(sim_anna, sim_dg) + 0.01)
-    assert m2 == {}
+    sim = cosine(probe["S1"], store.find("Anna Beispiel", "", MODEL).embedding)  # type: ignore[union-attr]
+    m = store.match(probe, MODEL, candidates=[Person("Anna Beispiel", "anna@firma.de")], threshold=sim + 0.1,
+                    invitee_bonus=0.2)
+    assert m["S1"].score == pytest.approx(sim + 0.2)
+    assert store.match(probe, MODEL, candidates=[], threshold=sim + 0.01) == {}
 
 
 def test_model_isolation_and_exclude_self(store: ProfileStore):

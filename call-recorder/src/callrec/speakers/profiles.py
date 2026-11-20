@@ -306,7 +306,9 @@ class ProfileStore:
         emb = _normalize(embedding)
         with self._lock:
             if recording:
-                self._drop(recording, speaker)
+                # a user decision replaces anything this speaker taught before; an automatic match
+                # only replaces an earlier automatic one
+                self._drop(recording, speaker, None if source in USER_SOURCES else ("auto",))
             existing = self.find(name, email, model_id)
             now = _now()
             contrib = Contribution(recording, speaker, source, emb, SOURCE_WEIGHT[source], seconds, now, title)

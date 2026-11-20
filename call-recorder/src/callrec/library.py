@@ -62,6 +62,8 @@ class RecordingInfo:
     error: str = ""  # meta.json unreadable etc.
     chain_stage: str = ""  # guided processing after the recording (processing.chain.stage)
     handoff_skipped: str = ""  # why the chain did not hand over
+    old_identification: bool = False  # speakers matched automatically under the rule of earlier versions
+    capture_warnings: list[str] = field(default_factory=list)  # mic track checks (processing.identification)
 
     @property
     def id(self) -> str:
@@ -191,6 +193,14 @@ def read_info(folder: Path) -> RecordingInfo:
             remote = [s for s in speakers.values() if s.id not in ("ME", "S?")]
             info.speakers_unassigned = sum(1 for s in remote if not s.name)
             info.speakers_spoken = len(remote)
+        except (OSError, ValueError, KeyError):
+            pass
+    ident = proc.get("identification")
+    if isinstance(ident, dict):
+        info.capture_warnings = [str(w) for w in ((ident.get("trackcheck") or {}).get("warnings") or [])]
+    elif rec.speakers_path.exists():
+        try:
+            info.old_identification = any(s.source == "auto" for s in rec.load_speakers().values())
         except (OSError, ValueError, KeyError):
             pass
     handoffs = meta.get("handoffs") or []
@@ -372,6 +382,11 @@ def status_description(info: RecordingInfo) -> str:
     if info.speakers_state() == OPEN:
         n = info.speakers_unassigned
         parts.append(f"{n} Stimme(n) noch keiner Person zugeordnet („Sprecher zuordnen“).")
+    if info.old_identification:
+        parts.append("Stimmen wurden nach dem früheren Verfahren automatisch erkannt (auch Personen, die nicht "
+                     "eingeladen waren) – „Weitere … → Sprecherzuordnung neu prüfen“.")
+    for w in info.capture_warnings:
+        parts.append(f"Mikrofon prüfen: {w}")
     return " ".join(parts)
 
 

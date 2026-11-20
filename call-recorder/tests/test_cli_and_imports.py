@@ -77,7 +77,7 @@ def test_cli_profiles_and_assign(tmp_path: Path, capsys, monkeypatch):
     rec.save_asr("mic", seg)
     rec.save_asr("remote", seg)
     rec.save_speakers({"ME": SpeakerInfo("ME", "Ich", name="Ich Selbst", source="self"), "S1": SpeakerInfo("S1", "Sprecher 1")})
-    rec.turns_path.write_text('[{"start": 0, "end": 1, "speaker": "S1"}]', encoding="utf-8")
+    rec.turns_path.write_text('[{"start": 0, "end": 25, "speaker": "S1"}]', encoding="utf-8")
     rec.save_embeddings({"S1": np.ones(8, dtype=np.float32)}, "m")
     assert cli.main(["speakers", str(rec.folder)]) == 0
     out = capsys.readouterr().out

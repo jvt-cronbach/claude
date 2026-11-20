@@ -101,7 +101,15 @@ def make_pipeline(profiles: ProfileStore, summarizer: FakeSummarizer | None = No
         summarizer_factory=lambda: summ,
         audio_loader=load_mono,
     )
-    return Pipeline(cfg or Config(), comps), tr, summ
+    return Pipeline(cfg or short_cfg(), comps), tr, summ
+
+
+def short_cfg() -> Config:
+    """The fake calls are a few seconds long: no minimum speech time for matching/learning."""
+    cfg = Config()
+    cfg.speakers.min_match_speech_s = 0.0
+    cfg.speakers.min_learn_speech_s = 0.0
+    return cfg
 
 
 def recording_with_voices(root: Path, first: float, second: float) -> Recording:
@@ -122,10 +130,10 @@ def test_full_pipeline_then_review_then_auto_recognition(tmp_path: Path, profile
     assert not (rec.folder / "audio" / MIC_PART).exists()
     assert tr.calls[0][1].startswith("Gespräch mit Ich Selbst, Olga Organisatorin")
     md = rec.transcript_path.read_text(encoding="utf-8")
-    assert "**[00:00:00] Ich Selbst:** Hallo zusammen." in md
+    assert "**[00:00:00] Ich:** Hallo zusammen." in md  # first name of "Ich Selbst"
     assert "**[00:00:01] Sprecher 1:** Hallo, erste Stimme." in md
     assert "**[00:00:03] Sprecher 2:** Und zweite Stimme." in md
-    assert md.index("Ich Selbst:** Hallo") < md.index("Sprecher 1:") < md.index("Sprecher 2:") < md.index("Danke.")
+    assert md.index("Ich:** Hallo") < md.index("Sprecher 1:") < md.index("Sprecher 2:") < md.index("Danke.")
     assert rec.summary_path.read_text(encoding="utf-8").startswith("# Zusammenfassung: Projekt Jour fixe")
     assert result.unassigned_speakers == 2
     meta = rec.load_meta()
@@ -144,7 +152,7 @@ def test_full_pipeline_then_review_then_auto_recognition(tmp_path: Path, profile
     assert "Anna Beispiel" in choices and "Ich Selbst" not in choices
     msgs = apply_assignments(
         rec, [Assignment("S1", "Anna Beispiel"), Assignment("S2", "Bernd Muster")], profiles,
-        lambda: pipeline.run(rec, {"render"}),
+        lambda: pipeline.run(rec, {"render"}), min_learn_speech_s=0,
     )
     assert len(msgs) == 2 and len(profiles.all_profiles()) == 2
     assert profiles.find("Anna Beispiel", "", "fake-embedder").email == "anna@firma.de"  # type: ignore[union-attr]

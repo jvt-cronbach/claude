@@ -425,19 +425,30 @@ class SettingsDialog:
         self._bg(lambda: fn(force), done)
 
     def _speakers(self) -> None:
+        from callrec.speakers.threads import describe
+
         t = self._tab("Sprecher")
-        rows = [
-            ("diarization", "cluster_threshold", "Clusterschwelle (kleiner = mehr Sprecher):"),
-            ("diarization", "num_speakers", "Feste Sprecheranzahl Gegenseite (0 = auto):"),
-            ("diarization", "min_duration_on", "Mindestdauer Sprechabschnitt (s):"),
-            ("diarization", "min_duration_off", "Mindestpause zwischen Abschnitten (s):"),
-            ("speakers", "match_threshold", "Schwelle Wiedererkennung (0..1):"),
-            ("speakers", "invitee_bonus", "Bonus für Eingeladene:"),
-            ("speakers", "auto_update_on_match", "Profile bei sicherer Erkennung nachschärfen:"),
-            ("speakers", "auto_update_threshold", "… ab Ähnlichkeit:"),
+        rows: list[tuple[str, str, str, list[str] | None]] = [
+            ("speakers", "match_scope", "Automatisch zuordnen (participants = nur Teilnehmende des Termins, "
+             "all_profiles = alle Profile):", ["participants", "all_profiles"]),
+            ("diarization", "cluster_threshold", "Clusterschwelle (kleiner = mehr Sprecher):", None),
+            ("diarization", "num_speakers", "Feste Sprecheranzahl Gegenseite (0 = auto):", None),
+            ("diarization", "min_duration_on", "Mindestdauer Sprechabschnitt (s):", None),
+            ("diarization", "min_duration_off", "Mindestpause zwischen Abschnitten (s):", None),
+            ("diarization", "num_threads", "Rechen-Threads Sprechertrennung (0 = automatisch):", None),
+            ("speakers", "match_threshold", "Schwelle Wiedererkennung (0..1):", None),
+            ("speakers", "match_margin", "Mindestabstand zum zweitbesten Profil:", None),
+            ("speakers", "min_match_speech_s", "Mindest-Sprechzeit für automatische Erkennung (s):", None),
+            ("speakers", "min_learn_speech_s", "Mindest-Sprechzeit, damit ein Profil lernt (s):", None),
+            ("speakers", "invitee_bonus", "Bonus für Eingeladene (nur bei all_profiles):", None),
+            ("speakers", "auto_update_on_match", "Profile bei sicherer Erkennung nachschärfen:", None),
+            ("speakers", "auto_update_threshold", "… ab Ähnlichkeit:", None),
         ]
-        for i, (sec, key, label) in enumerate(rows):
-            self.field(t, i, label, sec, key)
+        for i, (sec, key, label, values) in enumerate(rows):
+            self.field(t, i, label, sec, key, values)
+        ttk.Label(t, text="Threads: " + describe(self.cfg.diarization.num_threads) + ". „all_profiles“ ordnet auch "
+                  "Personen zu, die nicht eingeladen waren (früheres Verhalten) und lässt sich nicht per Preset setzen.",
+                  wraplength=520, foreground="#555").grid(row=len(rows), column=0, columnspan=2, sticky="w", **PAD)
 
     def _rendering(self) -> None:
         t = self._tab("Darstellung")
@@ -447,9 +458,17 @@ class SettingsDialog:
         self.field(t, 3, "Neuer Absatz nach Pause (s):", "transcript", "split_pause_s")
         self.field(t, 4, "Maximale Absatzlänge (s):", "transcript", "max_paragraph_s")
         self.field(t, 5, "Korrekturliste anwenden:", "transcript", "apply_replacements")
+        self.field(t, 6, "Ihr Name im Transkript (leer = automatisch):", "transcript", "self_display_name")
+        from callrec.selfname import display_name
+
+        ttk.Label(t, text=f"Automatisch: Vorname aus dem Microsoft-Konto, sonst aus „Ihr Name“, sonst „Ich“ "
+                  f"(derzeit: {display_name(self.cfg)}). Gilt beim nächsten Erstellen von Transkript und Zusammenfassung; "
+                  "bestehende Aufnahmen: „Weitere … → Transkript neu darstellen“ (ohne neue Transkription), danach "
+                  "„Zusammenfassung neu erstellen“.",
+                  wraplength=520, foreground="#555").grid(row=7, column=0, columnspan=2, sticky="w", **PAD)
         ttk.Label(t, text="Geänderte Einstellungen erzeugen beim erneuten Verarbeiten eine neue Version "
                   "(transcript.v2.md …); frühere Versionen bleiben zum Vergleich erhalten.",
-                  wraplength=520, foreground="#555").grid(row=6, column=0, columnspan=2, sticky="w", **PAD)
+                  wraplength=520, foreground="#555").grid(row=8, column=0, columnspan=2, sticky="w", **PAD)
 
     def _summary(self) -> None:
         from callrec.llm import OLLAMA_UPDATE_HINT

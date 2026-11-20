@@ -122,16 +122,21 @@ def _cloud_consent_ok(cfg, rec, confirm: bool) -> bool:  # type: ignore[no-untyp
 
 def cmd_speakers(args: argparse.Namespace) -> int:
     from callrec.factory import profile_store
-    from callrec.review import name_choices, speaker_overview
+    from callrec.review import name_choices, self_overview, speaker_overview
     from callrec.transcript import fmt_ts
 
+    cfg = load_config()
     rec = _recording(args.folder)
+    me = self_overview(rec)
+    print(f"ME   Ich – {me.name} (Mikrofonspur, immer Sie): {me.utterances} Beiträge, {fmt_ts(me.talk_time_s)} Sprechzeit")
     for ov in speaker_overview(rec):
         state = f"= {ov.name}" + (f" (automatisch, {ov.score:.2f})" if ov.source == "auto" and ov.score is not None else "") if ov.name else "(nicht zugeordnet)"
         print(f"{ov.id:<4} {ov.label:<12} {fmt_ts(ov.talk_time_s)}  {state}")
+        if ov.note and not ov.name:
+            print(f"      {ov.note}")
         if ov.sample_text:
             print(f"      „{ov.sample_text}“")
-    choices = name_choices(rec, profile_store())
+    choices = name_choices(rec, profile_store(), all_profiles=cfg.speakers.match_scope == "all_profiles")
     if choices:
         print("\nMögliche Namen: " + ", ".join(choices))
     print('\nZuordnen mit: callrec assign "<Ordner>" S1="Vorname Nachname" ...')
@@ -147,7 +152,7 @@ def cmd_assign(args: argparse.Namespace) -> int:
     profiles = profile_store()
     pipeline = build_pipeline(cfg, profiles)
     msgs = apply_assignments(rec, parse_cli_assignments(args.assignments, args.no_profile), profiles,
-                             lambda: pipeline.run(rec, {"render"}))
+                             lambda: pipeline.run(rec, {"render"}), min_learn_speech_s=cfg.speakers.min_learn_speech_s)
     for m in msgs:
         print(m)
     if args.resummarize:
@@ -169,7 +174,7 @@ def cmd_review(args: argparse.Namespace) -> int:
     root = tk.Tk()
     root.withdraw()
     review_speakers(root, rec, profiles, lambda: pipeline.run(rec, {"render"}),
-                    lambda: pipeline.run(rec, {"summarize"}, _print_progress))
+                    lambda: pipeline.run(rec, {"summarize"}, _print_progress), speaker_cfg=cfg.speakers)
     root.destroy()
     return 0
 
@@ -201,7 +206,56 @@ def cmd_profiles(args: argparse.Namespace) -> int:
             return 1
         print(f"{store.delete_all()} Profil(e) gelöscht.")
         return 0
+    if args.action in ("show", "reset", "rebuild"):
+        if not args.key:
+            raise SystemExit("Bitte Name, E-Mail oder ID angeben")
+        k = args.key.strip().casefold()
+        found = [p for p in store.all_profiles() if k in (p.id.casefold(), p.id[:8].casefold(), p.name.casefold(),
+                                                          p.email.casefold())]
+        if not found:
+            print(f"Kein Profil für {args.key!r} gefunden.")
+            return 1
+        from callrec.review import SOURCE_TEXT
+
+        for p in found:
+            if args.action == "reset":
+                left = store.reset_to_confirmed(p.id)
+                print(f"{p.name}: nur Bestätigtes behalten" + ("" if left else " - nichts bestätigt, Profil gelöscht"))
+                continue
+            if args.action == "rebuild":
+                from callrec.review import rebuild_profile
+
+                print(rebuild_profile(store, p.id, load_config().recordings_path()))
+                continue
+            print(f"{p.name} <{p.email}> ({p.id[:8]}), Modell {p.model_id}, gelernt aus:")
+            for i, c in enumerate(p.contributions):
+                where = f"{c.recording} {c.speaker}" if c.recording else "–"
+                print(f"  [{i}] {SOURCE_TEXT.get(c.source, c.source):<38} {where:<50} {c.seconds:5.0f} s  {c.at}")
+        return 0
     return 2
+
+
+def cmd_recheck(args: argparse.Namespace) -> int:
+    """ "Sprecherzuordnung neu prüfen" for one recording (automatic assignments only)."""
+    from callrec.factory import build_pipeline, profile_store
+    from callrec.review import archive_speakers
+
+    cfg = load_config()
+    rec = _recording(args.folder)
+    pipeline = build_pipeline(cfg, profile_store())
+    changes = pipeline.preview_identification(rec)
+    if not changes:
+        print("Keine Änderung nach der aktuellen Regel. Manuelle Zuordnungen werden nie geändert.")
+        return 0
+    for label, before, after in changes:
+        print(f"{label}: {before} -> {after}")
+    if not args.yes and input("Übernehmen? (ja/nein) ").strip().lower() != "ja":
+        print("Nichts geändert.")
+        return 1
+    archive_speakers(rec)
+    pipeline.run(rec, {"identify", "render"}, _print_progress)
+    print(f"Transkript aktualisiert: {rec.transcript_path}")
+    return 0
 
 
 def cmd_purge_voiceprints(args: argparse.Namespace) -> int:
@@ -765,10 +819,15 @@ def build_parser() -> argparse.ArgumentParser:
     rv.set_defaults(func=cmd_review)
 
     pf = sub.add_parser("profiles", help="Stimmprofile anzeigen/löschen")
-    pf.add_argument("action", choices=["list", "delete", "delete-all"])
+    pf.add_argument("action", choices=["list", "show", "reset", "rebuild", "delete", "delete-all"])
     pf.add_argument("key", nargs="?")
     pf.add_argument("--yes", action="store_true")
     pf.set_defaults(func=cmd_profiles)
+
+    rc = sub.add_parser("recheck", help="Sprecherzuordnung neu prüfen (nur automatische, nach Teilnehmenden)")
+    rc.add_argument("folder")
+    rc.add_argument("--yes", action="store_true")
+    rc.set_defaults(func=cmd_recheck)
 
     ho = sub.add_parser("handoff", help="Zusammenfassung (nur diese!) an SharePoint übergeben")
     ho.add_argument("folder")

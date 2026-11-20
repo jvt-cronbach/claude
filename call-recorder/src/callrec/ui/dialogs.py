@@ -23,7 +23,15 @@ from callrec.detect import Prompt
 from callrec.models import Person
 from callrec.people import format_participants, parse_participants_text
 from callrec.recording import Recording
-from callrec.review import Assignment, apply_assignments, name_choices, speaker_overview
+from callrec.review import (
+    SELF_CHOICE,
+    SOURCE_TEXT,
+    Assignment,
+    apply_assignments,
+    row_choices,
+    self_overview,
+    speaker_overview,
+)
 from callrec.speakers.profiles import ProfileStore
 from callrec.transcript import fmt_ts
 
@@ -215,66 +223,103 @@ def review_speakers(
     resummarize: Callable[[], object],
     handoff: Callable[[], object] | None = None,
     in_chain: bool = False,
+    speaker_cfg: Any = None,
 ) -> bool:
     """``in_chain``: part of the guided processing - "Überspringen" instead of "Abbrechen", and
-    no re-summary checkbox (the chain creates the summary next, with the names)."""
+    no re-summary checkbox (the chain creates the summary next, with the names).
+    ``speaker_cfg``: the [speakers] settings (match scope, minimum speech for learning)."""
     from callrec.audio.finalize import find_audio, write_clip
+    from callrec.config import SpeakerConfig
 
+    sc = speaker_cfg or SpeakerConfig()
     overview = speaker_overview(rec)
+    me_row = self_overview(rec)
     win = tk.Toplevel(root)
     win.title(f"Sprecher zuordnen – {rec.title()}")
-    if not overview:
-        ttk.Label(win, text="In dieser Aufnahme wurden keine Sprecher der Gegenseite erkannt.").pack(padx=12, pady=12)
-        ttk.Button(win, text="Schließen", command=win.destroy).pack(pady=8)
-        _modal(win)
-        root.wait_window(win)
-        return False
-
-    choices = name_choices(rec, profiles)
     audio = find_audio(rec.folder)
     tmpdir = Path(tempfile.mkdtemp(prefix="callrec_"))
-    ttk.Label(
-        win,
-        text="Ordnen Sie jede Stimme einer Person zu. Gespeicherte Stimmprofile werden bei künftigen Gesprächen "
-        "automatisch erkannt. Stimmprofile sind biometrische Daten und bleiben ausschließlich auf diesem Rechner.",
-        wraplength=640,
-    ).grid(row=0, column=0, columnspan=5, sticky="w", **PAD)
-    for col, head in enumerate(["Sprecher", "Beispiel", "", "Name", "Stimme merken"]):
-        ttk.Label(win, text=head, font=("Segoe UI", 9, "bold")).grid(row=1, column=col, sticky="w", **PAD)
 
-    rows: list[tuple[str, tk.StringVar, tk.BooleanVar]] = []
-    for i, ov in enumerate(overview, start=2):
-        info = f"{ov.label}\n{fmt_ts(ov.talk_time_s)} Redezeit, {ov.utterances} Beiträge"
-        if ov.source == "auto" and ov.score is not None:
-            info += f"\nerkannt ({ov.score:.2f})"
-        ttk.Label(win, text=info).grid(row=i, column=0, sticky="nw", **PAD)
-        ttk.Label(win, text=f"„{ov.sample_text}“" if ov.sample_text else "-", wraplength=300, foreground="#333").grid(
-            row=i, column=1, sticky="nw", **PAD
-        )
-
-        def play(ov: Any = ov) -> None:
+    def player(track: str, ov: Any) -> Callable[[], None]:
+        def play() -> None:
             if audio is None or ov.sample_span is None:
                 return
             clip = tmpdir / f"{ov.id}.wav"
             try:
-                write_clip(audio.remote, ov.sample_span[0], ov.sample_span[1], clip)
+                write_clip(getattr(audio, track), ov.sample_span[0], ov.sample_span[1], clip)
                 _play(clip)
             except Exception as exc:
                 messagebox.showerror("Wiedergabe", str(exc), parent=win)
+        return play
 
-        btn = ttk.Button(win, text="▶ Anhören", command=play)
+    ttk.Label(
+        win,
+        text="Ordnen Sie jede Stimme der Gegenseite einer Person zu. Angeboten werden die Teilnehmenden dieses "
+        "Termins; Sie können auch einen Namen eintippen (die Person wird dann als Teilnehmende ergänzt). Ihre eigene "
+        "Stimme steht nicht zur Auswahl: Die Mikrofonspur ist immer Ihnen zugeordnet (erste Zeile). Gespeicherte "
+        "Stimmprofile sind biometrische Daten und bleiben ausschließlich auf diesem Rechner.",
+        wraplength=720,
+    ).grid(row=0, column=0, columnspan=5, sticky="w", **PAD)
+    warnings = list((((rec.load_meta().get("processing") or {}).get("identification") or {}).get("trackcheck")
+                     or {}).get("warnings") or [])
+    row = 1
+    for w in warnings:
+        ttk.Label(win, text="Mikrofon prüfen: " + w, wraplength=720, foreground="#b00020").grid(
+            row=row, column=0, columnspan=5, sticky="w", **PAD)
+        row += 1
+    for col, head in enumerate(["Sprecher", "Beispiel", "", "Name", "Stimme merken"]):
+        ttk.Label(win, text=head, font=("Segoe UI", 9, "bold")).grid(row=row, column=col, sticky="w", **PAD)
+    row += 1
+    # fixed row: your own track
+    ttk.Label(win, text=f"Ich – {me_row.name} (Mikrofonspur)\n{me_row.utterances} Beiträge, "
+              f"{fmt_ts(me_row.talk_time_s, 'mm:ss')} Sprechzeit").grid(row=row, column=0, sticky="nw", **PAD)
+    ttk.Label(win, text=f"„{me_row.sample_text}“" if me_row.sample_text else "-", wraplength=300,
+              foreground="#333").grid(row=row, column=1, sticky="nw", **PAD)
+    me_btn = ttk.Button(win, text="▶ Anhören", command=player("mic", me_row))
+    if audio is None or me_row.sample_span is None:
+        me_btn.state(["disabled"])
+    me_btn.grid(row=row, column=2, sticky="nw", **PAD)
+    ttk.Label(win, text="immer Sie – Name unter Einstellungen → Darstellung", foreground="#555").grid(
+        row=row, column=3, columnspan=2, sticky="nw", **PAD)
+    row += 1
+    if not overview:
+        ttk.Label(win, text="In dieser Aufnahme wurden keine Sprecher der Gegenseite erkannt.").grid(
+            row=row, column=0, columnspan=5, sticky="w", **PAD)
+        ttk.Button(win, text="Schließen", command=win.destroy).grid(row=row + 1, column=4, sticky="e", **PAD)
+        _modal(win)
+        root.wait_window(win)
+        _stop_playback()
+        return False
+
+    all_profiles = getattr(sc, "match_scope", "participants") == "all_profiles"
+    rows: list[tuple[str, tk.StringVar, tk.BooleanVar]] = []
+    for i, ov in enumerate(overview, start=row):
+        info = f"{ov.label}\n{fmt_ts(ov.talk_time_s, 'mm:ss')} Sprechzeit, {ov.utterances} Beiträge"
+        if ov.source == "auto" and ov.score is not None:
+            info += f"\nautomatisch erkannt ({ov.score:.2f})"
+        elif ov.source == "self_echo":
+            info += "\nals Ihre Stimme markiert"
+        ttk.Label(win, text=info).grid(row=i, column=0, sticky="nw", **PAD)
+        sample = f"„{ov.sample_text}“" if ov.sample_text else "-"
+        if ov.note and not ov.name:
+            sample += f"\n({ov.note})"
+        ttk.Label(win, text=sample, wraplength=300, foreground="#333").grid(row=i, column=1, sticky="nw", **PAD)
+        btn = ttk.Button(win, text="▶ Anhören", command=player("remote", ov))
         if audio is None or ov.sample_span is None:
             btn.state(["disabled"])
         btn.grid(row=i, column=2, sticky="nw", **PAD)
-        name_var = tk.StringVar(value=ov.name)
-        ttk.Combobox(win, textvariable=name_var, values=choices, width=28).grid(row=i, column=3, sticky="nw", **PAD)
-        keep_var = tk.BooleanVar(value=True)
+        initial = SELF_CHOICE if ov.source == "self_echo" else ov.name
+        name_var = tk.StringVar(value=initial)
+        ttk.Combobox(win, textvariable=name_var, values=row_choices(rec, profiles, ov, all_profiles),
+                     width=44).grid(row=i, column=3, sticky="nw", **PAD)
+        # an automatic match is only learned when you confirm it here
+        keep_var = tk.BooleanVar(value=ov.source != "auto")
         ttk.Checkbutton(win, variable=keep_var).grid(row=i, column=4, sticky="n", **PAD)
         rows.append((ov.id, name_var, keep_var))
+    last = row + len(overview)
 
     resum_var = tk.BooleanVar(value=not in_chain)
     bottom = ttk.Frame(win)
-    bottom.grid(row=len(overview) + 2, column=0, columnspan=5, sticky="we", **PAD)
+    bottom.grid(row=last, column=0, columnspan=5, sticky="we", **PAD)
     if in_chain:
         ttk.Label(bottom, text="Danach wird die Zusammenfassung mit diesen Namen erstellt.", foreground="#555").pack(
             side="left")
@@ -286,7 +331,8 @@ def review_speakers(
         _stop_playback()
         assignments = [Assignment(sid, nv.get(), bool(kv.get())) for sid, nv, kv in rows]
         try:
-            msgs = apply_assignments(rec, assignments, profiles, rerender)
+            msgs = apply_assignments(rec, assignments, profiles, rerender,
+                                     min_learn_speech_s=getattr(sc, "min_learn_speech_s", None))
         except Exception as exc:
             log.exception("Zuordnung fehlgeschlagen")
             messagebox.showerror("Fehler", str(exc), parent=win)
@@ -310,18 +356,64 @@ def review_speakers(
 
 
 # ---------------------------------------------------------------------------
+# Participants of a recording / re-check of the assignment
+# ---------------------------------------------------------------------------
+def edit_participants(root: tk.Misc, rec: Recording) -> list[Person] | None:
+    """The participants of this recording (for the speaker identification); None = cancelled."""
+    win = tk.Toplevel(root)
+    win.title(f"Teilnehmende – {rec.title()}")
+    result: dict[str, list[Person] | None] = {"v": None}
+    ttk.Label(win, text="Eine Person pro Zeile, optional mit E-Mail: Name <E-Mail>. Stimmen werden automatisch nur "
+              "Personen aus dieser Liste zugeordnet; manuelle Zuordnungen bleiben erhalten. Die bei der Aufnahme "
+              "bestätigte Einwilligung bleibt unverändert.", wraplength=480).pack(anchor="w", **PAD)
+    txt = tk.Text(win, width=60, height=10, wrap="none")
+    txt.insert("1.0", format_participants(rec.participants()))
+    txt.pack(fill="both", expand=True, **PAD)
+    bar = ttk.Frame(win)
+    bar.pack(fill="x", **PAD)
+
+    def ok() -> None:
+        result["v"] = parse_participants_text(txt.get("1.0", "end"))
+        win.destroy()
+
+    ttk.Button(bar, text="Speichern und Sprecher neu erkennen", command=ok).pack(side="right", padx=4)
+    ttk.Button(bar, text="Abbrechen", command=win.destroy).pack(side="right", padx=4)
+    win.bind("<Escape>", lambda e: win.destroy())
+    _modal(win)
+    txt.focus_set()
+    root.wait_window(win)
+    return result["v"]
+
+
+def confirm_recheck(root: tk.Misc, rec: Recording, changes: list[tuple[str, str, str]]) -> bool:
+    """Preview of "Sprecherzuordnung neu prüfen" (automatic assignments only)."""
+    if not changes:
+        messagebox.showinfo("Sprecherzuordnung neu prüfen", "Nach der neuen Regel (nur Teilnehmende dieses Termins) "
+                            "ändert sich nichts. Manuelle Zuordnungen werden nie geändert.", parent=root)
+        return False
+    lines = "\n".join(f"• {label}: {before} → {after}" for label, before, after in changes)
+    return bool(messagebox.askyesno(
+        "Sprecherzuordnung neu prüfen",
+        f"Automatische Zuordnungen in „{rec.title()}“ nach der neuen Regel (nur Teilnehmende dieses Termins):\n\n"
+        f"{lines}\n\nManuelle Zuordnungen bleiben unverändert. Übernehmen? Das Transkript wird danach neu erstellt "
+        "(die bisherige Zuordnung wird unter data\\archive gesichert).", parent=root))
+
+
+# ---------------------------------------------------------------------------
 # Voice profiles
 # ---------------------------------------------------------------------------
-def manage_profiles(root: tk.Tk, profiles: ProfileStore) -> None:
+def manage_profiles(root: tk.Tk, profiles: ProfileStore, rebuild: Callable[[str], str] | None = None) -> None:
+    """``rebuild(profile_id) -> message``: rebuild a profile from your assignments in the recordings."""
     win = tk.Toplevel(root)
     win.title("Stimmprofile (biometrische Daten)")
     ttk.Label(
         win,
         text="Stimmprofile werden nur lokal und verschlüsselt (Windows-DPAPI) gespeichert. "
-        "Löschen Sie Profile, wenn eine Person das verlangt oder sie nicht mehr benötigt werden.",
-        wraplength=560,
+        "Löschen Sie Profile, wenn eine Person das verlangt oder sie nicht mehr benötigt werden. Unten steht, "
+        "was ein Profil aus welcher Aufnahme gelernt hat; falsche Einträge lassen sich einzeln entfernen.",
+        wraplength=640,
     ).pack(anchor="w", **PAD)
-    tree = ttk.Treeview(win, columns=("name", "email", "samples", "model", "updated"), show="headings", height=10)
+    tree = ttk.Treeview(win, columns=("name", "email", "samples", "model", "updated"), show="headings", height=8)
     for col, head, w in (
         ("name", "Name", 160), ("email", "E-Mail", 180), ("samples", "Proben", 60),
         ("model", "Modell", 140), ("updated", "Aktualisiert", 150),
@@ -329,11 +421,66 @@ def manage_profiles(root: tk.Tk, profiles: ProfileStore) -> None:
         tree.heading(col, text=head)
         tree.column(col, width=w, anchor="w")
     tree.pack(fill="both", expand=True, **PAD)
+    ttk.Label(win, text="Gelernt aus:").pack(anchor="w", padx=8)
+    origins = ttk.Treeview(win, columns=("rec", "spk", "source", "secs", "at"), show="headings", height=6)
+    for col, head, w in (("rec", "Aufnahme", 260), ("spk", "Sprecher", 70), ("source", "Herkunft", 200),
+                         ("secs", "Sprechzeit", 80), ("at", "Datum", 150)):
+        origins.heading(col, text=head)
+        origins.column(col, width=w, anchor="w")
+    origins.pack(fill="both", expand=True, **PAD)
 
     def refresh() -> None:
         tree.delete(*tree.get_children())
         for p in profiles.all_profiles():
             tree.insert("", "end", iid=p.id, values=(p.name, p.email, p.samples, p.model_id, p.updated_at))
+        show_origins()
+
+    def show_origins(*_a: Any) -> None:
+        origins.delete(*origins.get_children())
+        sel = tree.selection()
+        p = profiles.get(sel[0]) if sel else None
+        if p is None:
+            return
+        for i, c in enumerate(p.contributions):
+            rec_text = c.title or c.recording or "–"
+            if c.recording and c.title:
+                rec_text = f"{c.title} ({c.recording})"
+            origins.insert("", "end", iid=str(i), values=(rec_text, c.speaker if c.recording else "–",
+                                                          SOURCE_TEXT.get(c.source, c.source),
+                                                          f"{c.seconds:.0f} s" if c.seconds else "–", c.at))
+
+    tree.bind("<<TreeviewSelect>>", show_origins)
+
+    def selected_profile() -> str:
+        sel = tree.selection()
+        return sel[0] if sel else ""
+
+    def remove_origin() -> None:
+        pid, sel = selected_profile(), origins.selection()
+        if not pid or not sel:
+            return
+        if messagebox.askyesno("Eintrag entfernen", "Diesen gelernten Eintrag aus dem Profil entfernen?", parent=win):
+            for idx in sorted((int(s) for s in sel), reverse=True):
+                profiles.remove_contribution(pid, idx)
+            refresh()
+            if profiles.get(pid) is not None:
+                tree.selection_set(pid)
+
+    def reset_confirmed() -> None:
+        pid = selected_profile()
+        if pid and messagebox.askyesno("Zurücksetzen", "Nur behalten, was Sie selbst zugeordnet oder bestätigt haben? "
+                                       "Automatisch Gelerntes und Einträge früherer Versionen werden entfernt.",
+                                       parent=win):
+            if profiles.reset_to_confirmed(pid) is None:
+                messagebox.showinfo("Zurücksetzen", "Das Profil enthielt nichts Bestätigtes und wurde gelöscht.",
+                                    parent=win)
+            refresh()
+
+    def do_rebuild() -> None:
+        pid = selected_profile()
+        if pid and rebuild is not None:
+            messagebox.showinfo("Neu aufbauen", rebuild(pid), parent=win)
+            refresh()
 
     def delete_selected() -> None:
         sel = tree.selection()
@@ -352,9 +499,15 @@ def manage_profiles(root: tk.Tk, profiles: ProfileStore) -> None:
 
     bar = ttk.Frame(win)
     bar.pack(fill="x", **PAD)
-    ttk.Button(bar, text="Ausgewählte löschen", command=delete_selected).pack(side="left", padx=4)
-    ttk.Button(bar, text="Alle löschen", command=delete_all).pack(side="left", padx=4)
-    ttk.Button(bar, text="Schließen", command=win.destroy).pack(side="right", padx=4)
+    ttk.Button(bar, text="Eintrag entfernen", command=remove_origin).pack(side="left", padx=4)
+    ttk.Button(bar, text="Nur Bestätigtes behalten", command=reset_confirmed).pack(side="left", padx=4)
+    if rebuild is not None:
+        ttk.Button(bar, text="Aus Ihren Zuordnungen neu aufbauen", command=do_rebuild).pack(side="left", padx=4)
+    bar2 = ttk.Frame(win)
+    bar2.pack(fill="x", **PAD)
+    ttk.Button(bar2, text="Ausgewählte löschen", command=delete_selected).pack(side="left", padx=4)
+    ttk.Button(bar2, text="Alle löschen", command=delete_all).pack(side="left", padx=4)
+    ttk.Button(bar2, text="Schließen", command=win.destroy).pack(side="right", padx=4)
     refresh()
     _modal(win)
     root.wait_window(win)

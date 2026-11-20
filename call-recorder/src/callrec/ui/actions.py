@@ -200,7 +200,7 @@ class AppActions:
     def review_in_chain(self, rec: Recording) -> bool:
         pipeline = build_pipeline(self.cfg, self.profiles)
         return bool(dialogs.review_speakers(self.root, rec, self.profiles, rerender=lambda: pipeline.run(rec, {"render"}),
-                                            resummarize=lambda: None, in_chain=True))
+                                            resummarize=lambda: None, in_chain=True, speaker_cfg=self.cfg.speakers))
 
     # -- helpers ------------------------------------------------------
     def last_recording(self) -> Recording | None:
@@ -279,8 +279,67 @@ class AppActions:
             rerender=lambda: pipeline.run(rec, {"render"}),
             resummarize=lambda: self.resummarize(rec),
             handoff=lambda: self.handoff(rec),
+            speaker_cfg=self.cfg.speakers,
         )
         self._changed(rec)
+
+    def rerender(self, rec: Recording | None = None) -> bool:
+        """Transcript again from the existing recognition (current names/settings, no new transcription)."""
+        rec = self._resolve(rec)
+        if rec is None or self.controller.is_busy(rec):
+            return False
+        self.controller.process(rec, STEP_PRESETS["render"])
+        self.ui.notify("Transkript wird neu erstellt", rec.folder.name)
+        self._changed(rec)
+        return True
+
+    def edit_participants(self, rec: Recording | None = None) -> bool:
+        """ "Teilnehmende bearbeiten": who may be recognised automatically; identification runs again
+        (manual assignments stay)."""
+        from callrec.review import set_participants
+
+        rec = self._resolve(rec)
+        if rec is None:
+            return False
+        if self.controller.is_busy(rec):
+            self.ui.notify("Wird noch verarbeitet", f"{rec.folder.name}: Teilnehmende sind danach änderbar.")
+            return False
+        people = dialogs.edit_participants(self.root, rec)
+        if people is None:
+            return False
+        msgs = set_participants(rec, people)
+        if rec.speakers_path.exists():
+            self.controller.process(rec, frozenset({"identify", "render"}))
+            msgs.append("Sprechererkennung läuft erneut mit diesen Teilnehmenden (manuelle Zuordnungen bleiben).")
+        self.ui.notify("Teilnehmende gespeichert", " ".join(msgs))
+        self._changed(rec)
+        return True
+
+    def recheck_speakers(self, rec: Recording | None = None) -> bool:
+        """ "Sprecherzuordnung neu prüfen": automatic assignments under the participants rule, after a
+        preview; manual ones are never touched."""
+        from callrec.review import archive_speakers
+
+        rec = self._resolve(rec)
+        if rec is None or not rec.speakers_path.exists():
+            return False
+        if self.controller.is_busy(rec):
+            self.ui.notify("Wird noch verarbeitet", f"{rec.folder.name}: erst nach der Verarbeitung möglich.")
+            return False
+        pipeline = build_pipeline(self.cfg, self.profiles)
+        try:
+            changes = pipeline.preview_identification(rec)
+        except Exception as exc:
+            log.exception("Vorschau der Sprecherzuordnung fehlgeschlagen")
+            self.ui.notify("Sprecherzuordnung neu prüfen", f"Nicht möglich: {exc}")
+            return False
+        if not dialogs.confirm_recheck(self.root, rec, changes):
+            return False
+        archive_speakers(rec)
+        self.controller.process(rec, frozenset({"identify", "render"}))
+        self.ui.notify("Sprecherzuordnung wird neu geprüft", rec.folder.name)
+        self._changed(rec)
+        return True
 
     def handoff_ready(self) -> tuple[bool, str]:
         h = self.cfg.handoff
@@ -360,7 +419,8 @@ class AppActions:
         if rec.speakers_path.exists():
             # recognise voices again with the invitees as preferred candidates (manual assignments stay)
             self.controller.process(rec, frozenset({"identify", "render"}))
-            msgs.append("Sprechererkennung läuft erneut mit den Eingeladenen.")
+            msgs.append("Sprechererkennung läuft erneut: automatisch zugeordnet werden nur noch Personen dieses Termins "
+                        "(manuelle Zuordnungen bleiben).")
         self.ui.notify("Termin zugeordnet", " ".join(msgs))
         self._changed(rec)
         if done is not None:
@@ -439,7 +499,10 @@ class AppActions:
         threading.Thread(target=worker, name="login", daemon=True).start()
 
     def manage_profiles(self) -> None:
-        dialogs.manage_profiles(self.root, self.profiles)
+        from callrec.review import rebuild_profile
+
+        dialogs.manage_profiles(self.root, self.profiles,
+                                rebuild=lambda pid: rebuild_profile(self.profiles, pid, self.cfg.recordings_path()))
 
     # -- files --------------------------------------------------------
     def _open(self, path: Any) -> bool:

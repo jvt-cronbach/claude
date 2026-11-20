@@ -19,6 +19,8 @@ from callrec.models import (
 from callrec.recording import Recording
 from callrec.speakers.profiles import ProfileStore
 
+SOURCE_TEXT = {"manual": "von Ihnen zugeordnet", "confirmed": "von Ihnen bestätigt", "auto": "automatisch",
+               "legacy": "frühere Version (Herkunft unbekannt)"}
 SELF_CHOICE = "Das bin ich (meine Stimme auf der Spur der Gegenseite)"
 SUGGESTION_SUFFIX = " (kein Teilnehmer dieses Termins)"
 
@@ -248,6 +250,19 @@ def apply_assignments(
     return messages
 
 
+def archive_speakers(rec: Recording) -> Any:
+    """Keep a copy of speakers.json before a re-check rewrites the automatic assignments."""
+    import shutil
+    from datetime import datetime
+
+    if not rec.speakers_path.exists():
+        return None
+    dst = rec.data_dir / "archive" / f"speakers.{datetime.now():%Y%m%dT%H%M%S}.json"
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(rec.speakers_path, dst)
+    return dst
+
+
 def set_participants(rec: Recording, people: list[Person], by: str = "user") -> list[str]:
     """Replace the participants of a recording ("Teilnehmende bearbeiten"). The consent record is
     not changed (it keeps the list confirmed at the start). Returns German messages."""
@@ -310,3 +325,40 @@ def carry_over_assignments(
         if info is not None and info.source in USER_DECIDED and info.name and ov / total >= min_fraction:
             out[nid] = dataclasses.replace(info, id=nid)
     return out
+
+
+def rebuild_profile(profiles: ProfileStore, profile_id: str, recordings_root: Any) -> str:
+    """Rebuild a profile only from the assignments you made in the recordings (manual speakers
+    with this profile's person). Replaces everything it learned so far (incl. entries of earlier
+    versions without origin). Returns a German message."""
+    from callrec.recording import list_recordings
+    from callrec.speakers.diarize import speech_seconds
+    from callrec.speakers.profiles import SOURCE_WEIGHT, Contribution
+
+    prof = profiles.get(profile_id)
+    if prof is None:
+        return "Profil nicht gefunden."
+    found: list[Contribution] = []
+    for rec in list_recordings(recordings_root):
+        try:
+            speakers = rec.load_speakers()
+            embeddings, model_id = rec.load_embeddings()
+        except (OSError, ValueError):
+            continue
+        if model_id != prof.model_id:
+            continue
+        speech: dict[str, float] | None = None
+        for sid, info in speakers.items():
+            if info.source != SOURCE_MANUAL or sid not in embeddings:
+                continue
+            if info.profile_id != prof.id and not prof.matches_person(Person(info.name, info.email)):
+                continue
+            if speech is None:
+                speech = speech_seconds(load_turns(rec))
+            found.append(Contribution(rec.folder.name, sid, "manual", embeddings[sid], SOURCE_WEIGHT["manual"],
+                                      speech.get(sid, 0.0), title=rec.title()))
+    if not found:
+        return (f"Für {prof.name} gibt es keine von Ihnen zugeordneten Stimmen mit gespeicherten Stimmmerkmalen - "
+                "das Profil bleibt unverändert.")
+    profiles.replace_contributions(prof.id, found)
+    return f"{prof.name}: neu aufgebaut aus {len(found)} Zuordnung(en) in Ihren Aufnahmen."
