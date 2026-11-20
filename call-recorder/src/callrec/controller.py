@@ -310,11 +310,21 @@ class Controller:
         return title
 
     def delete(self, rec: Recording, permanent: bool = False) -> str:
-        from callrec.library import LibraryError, delete_recording
+        """The whole recording ("recycled" / "deleted") - through :meth:`remove`."""
+        from callrec.retention import SCOPE_RECORDING
+
+        text = self.remove(rec, SCOPE_RECORDING, "permanent" if permanent else "recycle_bin")
+        return "recycled" if "Papierkorb" in text else "deleted"
+
+    def remove(self, rec: Recording, scope: str, mode: str, by: str = "user", reason: str = "") -> str:
+        """The one delete path (manual deletion in both UIs, the CLI and the automatic retention):
+        never while the recording is recorded, queued or processed."""
+        from callrec.library import LibraryError
+        from callrec.retention import remove
 
         if self.is_busy(rec):
             raise LibraryError("Die Aufnahme wird gerade aufgenommen oder verarbeitet - Löschen ist erst danach möglich.")
-        return delete_recording(rec, self.cfg.recordings_path(), permanent=permanent)
+        return remove(rec, self.cfg.recordings_path(), scope, mode, by=by, reason=reason)
 
     def _on_processed(self, job: Any, result: ProcessResult | None, error: BaseException | None) -> None:
         rec: Recording = job.recording
