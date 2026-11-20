@@ -22,6 +22,29 @@ class Prompt:
         return "Teams nutzt gerade das Mikrofon - beginnt ein Anruf? Möchten Sie das Gespräch aufnehmen?"
 
 
+def _norm_process(name: str) -> str:
+    n = name.strip().lower()
+    return n[:-4] if n.endswith(".exe") else n
+
+
+def match_call_process(name: str, ancestors: list[str], wanted: set[str] | list[str]) -> str | None:
+    """Which configured call app an audio session belongs to, or None.
+
+    Matched generously: case-insensitive, ".exe" optional, and also when one of the process's
+    ancestors matches - the new Teams may run audio in helper processes (e.g. msedgewebview2.exe
+    started by ms-teams.exe). A helper of an unrelated app (Outlook's WebView) does not match.
+    Returns a readable description such as "msedgewebview2.exe (gestartet von ms-teams.exe)"."""
+    want = {_norm_process(w) for w in wanted if w.strip()}
+    if not want or not name:
+        return None
+    if _norm_process(name) in want:
+        return name
+    for parent in ancestors:
+        if _norm_process(parent) in want:
+            return f"{name} (gestartet von {parent})"
+    return None
+
+
 @dataclass
 class CallDetector:
     cooldown: timedelta = timedelta(minutes=10)

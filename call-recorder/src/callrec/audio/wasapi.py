@@ -11,10 +11,12 @@ import logging
 import sys
 import time
 from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import Any
 
 from callrec.audio.capture import DataCallback, DeviceSpec
 from callrec.audio.devices import base_name, match_device
+from callrec.detect import match_call_process
 
 log = logging.getLogger(__name__)
 
@@ -63,39 +65,74 @@ def default_endpoint_name(flow: int, role: int = E_COMMUNICATIONS) -> tuple[str,
     return str(wrapped.FriendlyName or ""), str(wrapped.id or "")
 
 
-def endpoints_with_active_session(flow: int, process_names: set[str]) -> list[str]:
-    """Friendly names of endpoints on which one of ``process_names`` has an *active* audio session."""
+@dataclass(frozen=True)
+class CallAppSession:
+    """An audio session of the call app (or a helper process it started) on a capture endpoint."""
+
+    endpoint: str
+    process: str  # e.g. "ms-teams.exe" or "msedgewebview2.exe (gestartet von ms-teams.exe)"
+    pid: int
+    active: bool  # AudioSessionStateActive (the app is capturing right now)
+
+    def describe(self) -> str:
+        return f"{self.process} (PID {self.pid}) auf {self.endpoint}"
+
+
+def _ancestor_names(proc: Any, limit: int = 4) -> list[str]:
+    names: list[str] = []
+    try:
+        for parent in proc.parents()[:limit]:
+            with contextlib.suppress(Exception):
+                names.append(str(parent.name()))
+    except Exception:
+        pass
+    return names
+
+
+def call_app_sessions(flow: int, process_names: set[str] | list[str]) -> list[CallAppSession]:
+    """All audio sessions (active or not) of the configured call app on active endpoints of ``flow``.
+
+    Must run in a thread with COM initialised (:func:`com_initialized`). Errors for single
+    devices/sessions are skipped (devices come and go, e.g. Bluetooth profile switches)."""
     _require_windows()
-    from pycaw.pycaw import AudioUtilities
+    from pycaw.pycaw import AudioUtilities, IAudioSessionControl2
     from pycaw.utils import AudioSession
 
-    names: list[str] = []
-    wanted = {p.lower() for p in process_names}
+    found: list[CallAppSession] = []
     for dev in AudioUtilities.GetAllDevices(flow, DEVICE_STATE_ACTIVE):
         if dev is None:
             continue
         try:
-            mgr = dev.AudioSessionManager
-            enum = mgr.GetSessionEnumerator()
+            enum = dev.AudioSessionManager.GetSessionEnumerator()
             count = enum.GetCount()
         except Exception:
             continue
-        from pycaw.pycaw import IAudioSessionControl2
-
         for i in range(count):
             try:
                 ctl = enum.GetSession(i)
                 if ctl is None:
                     continue
                 session = AudioSession(ctl.QueryInterface(IAudioSessionControl2))
-                if int(session.State) != 1:  # AudioSessionStateActive
-                    continue
                 proc = session.Process
-                if proc is not None and proc.name().lower() in wanted:
-                    names.append(str(dev.FriendlyName))
-                    break
+                if proc is None:
+                    continue
+                matched = match_call_process(str(proc.name()), _ancestor_names(proc), process_names)
+                if matched is None:
+                    continue
+                found.append(CallAppSession(str(dev.FriendlyName), matched, int(proc.pid),
+                                            int(session.State) == 1))  # 1 = AudioSessionStateActive
             except Exception:
                 continue
+    return found
+
+
+def endpoints_with_active_session(flow: int, process_names: set[str]) -> list[str]:
+    """Friendly names of endpoints on which one of ``process_names`` (or a helper process started
+    by one of them) has an *active* audio session."""
+    names: list[str] = []
+    for s in call_app_sessions(flow, process_names):
+        if s.active and s.endpoint not in names:
+            names.append(s.endpoint)
     return names
 
 

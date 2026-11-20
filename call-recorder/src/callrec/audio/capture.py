@@ -69,6 +69,11 @@ def downmix_int16(data: bytes, channels: int) -> np.ndarray:
     return (multi.sum(axis=1) // channels).astype(np.int16)
 
 
+def dbfs_to_level(dbfs: float) -> float:
+    """-45 dBFS -> 0.0056 (peak, full scale = 1.0)."""
+    return float(10.0 ** (dbfs / 20.0))
+
+
 def peak_level(mono: np.ndarray) -> float:
     """Peak of an int16 block as 0..1 (cheap: one pass over a block that is written anyway)."""
     if mono.size == 0:
@@ -95,6 +100,7 @@ class TrackWriter:
         t0: float,
         gap_threshold_s: float = 0.5,
         checkpoint_interval_s: float = 2.0,
+        loud_level: float = 0.0056,
     ) -> None:
         self.path = path
         self.device = device
@@ -104,6 +110,10 @@ class TrackWriter:
         self.stats = TrackStats()
         self.last_data_t: float | None = None  # timestamp of the last chunk delivered by the device
         self.level = 0.0  # peak of the last written chunk, 0..1 (for the level meter; read from the UI)
+        # silence detection for the automatic end: timestamp of the last chunk whose peak reached
+        # ``loud_level`` (every chunk is checked on the writer thread, not just a sample)
+        self.loud_level = loud_level
+        self.last_loud_t: float | None = None
         self._queue: queue.Queue[tuple[bytes, float] | None] = queue.Queue()
         self._thread = threading.Thread(target=self._run, name=f"writer-{device.kind}", daemon=True)
         self._lock = threading.Lock()
@@ -133,6 +143,8 @@ class TrackWriter:
         if n == 0:
             return
         self.level = peak_level(mono)
+        if self.level >= self.loud_level:
+            self.last_loud_t = t
         rate = self.device.sample_rate
         with self._lock:
             expected_start = (t - self.t0) - n / rate
@@ -179,6 +191,7 @@ class DualTrackRecorder:
         gap_threshold_s: float = 0.5,
         frames_per_buffer: int = 2048,
         clock: Callable[[], float] = time.monotonic,
+        silence_dbfs: float = -45.0,
     ) -> None:
         self.backend = backend
         self.folder = folder
@@ -187,6 +200,7 @@ class DualTrackRecorder:
         self.gap_threshold_s = gap_threshold_s
         self.frames_per_buffer = frames_per_buffer
         self.clock = clock
+        self.loud_level = dbfs_to_level(silence_dbfs)
         self.t0: float | None = None
         self._streams: list[CaptureStream] = []
         self._writers: dict[str, TrackWriter] = {}
@@ -209,8 +223,8 @@ class DualTrackRecorder:
         audio_dir = self.folder / "audio"
         audio_dir.mkdir(parents=True, exist_ok=True)
         t0 = self.clock()
-        mic_w = TrackWriter(audio_dir / MIC_PART, self.mic, t0, self.gap_threshold_s)
-        rem_w = TrackWriter(audio_dir / REMOTE_PART, self.loopback, t0, self.gap_threshold_s)
+        mic_w = TrackWriter(audio_dir / MIC_PART, self.mic, t0, self.gap_threshold_s, loud_level=self.loud_level)
+        rem_w = TrackWriter(audio_dir / REMOTE_PART, self.loopback, t0, self.gap_threshold_s, loud_level=self.loud_level)
         mic_w.start()
         rem_w.start()
         self._writers = {"mic": mic_w, "remote": rem_w}
@@ -239,6 +253,19 @@ class DualTrackRecorder:
         for key, w in self._writers.items():
             if w.last_data_t is not None and now - w.last_data_t <= self.LEVEL_HOLD_S:
                 out[key] = w.level
+        return out
+
+    def silence_durations(self) -> dict[str, float]:
+        """Seconds since each track last reached the "loud" level (since the start if never).
+
+        The loopback delivers no packets while nothing is played - that counts as silence, too."""
+        out = {"mic": 0.0, "remote": 0.0}
+        if self.t0 is None:
+            return out
+        now = self.clock()
+        for key, w in self._writers.items():
+            last = w.last_loud_t if w.last_loud_t is not None else self.t0
+            out[key] = max(0.0, now - max(last, self.t0))
         return out
 
     # A microphone delivers packets continuously (also during silence); the loopback

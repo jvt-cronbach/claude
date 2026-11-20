@@ -176,6 +176,34 @@ class DetectionConfig:
 
 
 @dataclass
+class AutoStopConfig:
+    """Ending a recording when the call is over (starting always stays manual, behind the consent).
+
+    Nothing is ever cut off silently: every automatic end first shows a countdown with
+    "Weiter aufnehmen" / "Jetzt beenden"; without a reaction the recording is stopped through
+    the normal stop path (same finalisation and processing as a manual stop)."""
+
+    enabled: bool = True  # call-end detection (call app session + silence + calendar hint)
+    # signal 1: the call app's (Teams) microphone session is no longer active
+    # (process names: detection.teams_processes, matched incl. helper processes started by them)
+    call_app_session: bool = True
+    session_gone_s: float = 20.0  # gone this long AND the remote track quiet as long -> "call ended"
+    session_gone_max_s: float = 120.0  # gone this long -> "call ended" even while something plays
+    # signal 2: both tracks silent (also for calls without Teams: other apps, softphone)
+    silence_minutes: float = 3.0
+    silence_dbfs: float = -45.0  # a track is "silent" while its peak level stays below this
+    # weak hint: once the calendar event of the recording has ended, a shorter silence suffices
+    silence_after_event_end_s: float = 60.0
+    countdown_s: int = 30  # notice "Aufnahme endet in N s" before stopping
+    snooze_minutes: float = 15.0  # "Weiter aufnehmen": no further prompt for this long
+    # safety nets - active even when enabled = false (0 = off)
+    max_duration_minutes: float = 240.0
+    max_duration_warning_minutes: float = 10.0
+    max_duration_extend_minutes: float = 60.0  # "Weiter aufnehmen" at the limit extends by this
+    silence_safety_minutes: float = 15.0  # only silence for this long -> prompt
+
+
+@dataclass
 class HotkeyConfig:
     toggle: str = "ctrl+alt+shift+r"
 
@@ -199,6 +227,7 @@ class Config:
     summary: SummaryConfig = field(default_factory=SummaryConfig)
     handoff: HandoffConfig = field(default_factory=HandoffConfig)
     detection: DetectionConfig = field(default_factory=DetectionConfig)
+    autostop: AutoStopConfig = field(default_factory=AutoStopConfig)
     hotkey: HotkeyConfig = field(default_factory=HotkeyConfig)
     ui: UiConfig = field(default_factory=UiConfig)
 
@@ -251,6 +280,23 @@ class Config:
         s = self.summary
         if min(s.anthropic_connect_timeout_s, s.anthropic_read_timeout_s, s.anthropic_retry_budget_s) <= 0:
             raise ConfigError("summary.anthropic_*_timeout_s / anthropic_retry_budget_s müssen > 0 sein")
+        a = self.autostop
+        if not 10 <= a.countdown_s <= 600:
+            raise ConfigError("autostop.countdown_s muss zwischen 10 und 600 Sekunden liegen")
+        if not -90.0 <= a.silence_dbfs <= -10.0:
+            raise ConfigError("autostop.silence_dbfs muss zwischen -90 und -10 liegen")
+        if a.session_gone_s < 3 or a.session_gone_max_s < a.session_gone_s:
+            raise ConfigError("autostop.session_gone_s muss >= 3 und session_gone_max_s >= session_gone_s sein")
+        if a.silence_minutes < 0.5 or a.silence_after_event_end_s < 10:
+            raise ConfigError("autostop.silence_minutes muss >= 0,5 und silence_after_event_end_s >= 10 sein")
+        if a.snooze_minutes < 1 or a.max_duration_extend_minutes < 1:
+            raise ConfigError("autostop.snooze_minutes / max_duration_extend_minutes müssen >= 1 sein")
+        if min(a.max_duration_minutes, a.max_duration_warning_minutes, a.silence_safety_minutes) < 0:
+            raise ConfigError("autostop.max_duration_minutes / max_duration_warning_minutes / "
+                              "silence_safety_minutes dürfen nicht negativ sein (0 = aus)")
+        if 0 < a.max_duration_minutes < 5 or 0 < a.silence_safety_minutes < 1:
+            raise ConfigError("autostop.max_duration_minutes muss 0 (aus) oder >= 5, silence_safety_minutes "
+                              "0 (aus) oder >= 1 sein")
 
 
 _LANG_RE = re.compile(r"[a-z]{2,3}")
@@ -272,6 +318,7 @@ _SECTION_TYPES: dict[str, type] = {
     "summary": SummaryConfig,
     "handoff": HandoffConfig,
     "detection": DetectionConfig,
+    "autostop": AutoStopConfig,
     "hotkey": HotkeyConfig,
     "ui": UiConfig,
 }
@@ -652,10 +699,39 @@ include_participant_emails = false
 
 [detection]
 enabled = true
+# Prozessnamen der Anruf-App (Erinnerung beim Start und Erkennung des Gesprächsendes). Auch
+# Hilfsprozesse, die von einem dieser Prozesse gestartet wurden (z.B. msedgewebview2.exe), zählen.
 teams_processes = ["ms-teams.exe", "teams.exe"]
 poll_interval_s = 3.0
 calendar_reminder = true
 cooldown_minutes = 10
+
+[autostop]
+# Aufnahme beenden, wenn das Gespräch vorbei ist - nie still: vorher erscheint ein Countdown
+# mit "Weiter aufnehmen" / "Jetzt beenden". Der Start bleibt immer manuell (Einwilligung).
+enabled = true
+# Signal 1: Mikrofon-Sitzung der Anruf-App (Teams) nicht mehr aktiv
+call_app_session = true
+# so lange weg UND Gegenseite so lange still -> Gespräch beendet (überbrückt Bluetooth-Wechsel)
+session_gone_s = 20.0
+# so lange weg -> Gespräch beendet, auch wenn etwas abgespielt wird
+session_gone_max_s = 120.0
+# Signal 2: beide Spuren still (auch ohne Teams, z.B. andere App oder Softphone)
+silence_minutes = 3.0
+# "still" = Spitzenpegel unter diesem Wert (dBFS)
+silence_dbfs = -45.0
+# schwacher Hinweis: nach dem Ende des Kalendertermins genügt eine kürzere Stille (Sekunden)
+silence_after_event_end_s = 60.0
+# so viele Sekunden Countdown vor dem Beenden
+countdown_s = 30
+# "Weiter aufnehmen": so lange keine weitere Nachfrage (Minuten)
+snooze_minutes = 15.0
+# Sicherheitsnetz (gilt auch bei enabled = false; 0 = aus): Höchstdauer mit Vorwarnung ...
+max_duration_minutes = 240.0
+max_duration_warning_minutes = 10.0
+max_duration_extend_minutes = 60.0
+# ... und Nachfrage, wenn so lange nur Stille aufgenommen wurde
+silence_safety_minutes = 15.0
 
 [hotkey]
 toggle = "ctrl+alt+shift+r"
