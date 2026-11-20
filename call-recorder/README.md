@@ -124,7 +124,8 @@ die Embeddings der Sprecher dieses Gesprächs (für die spätere Zuordnung); lö
    wenn ausdrücklich gewählt – über Claude (Anthropic-API; dafür verlässt der Transkripttext den
    Rechner) → `summary.md`.
 6. **Unbekannte Stimmen** erscheinen als „Sprecher 1 … n“. Der Zuordnungsdialog öffnet sich
-   automatisch; einmal zugeordnete Stimmen werden beim nächsten Gespräch erkannt.
+   automatisch; einmal zugeordnete Stimmen werden bei späteren Gesprächen erkannt – automatisch aber
+   nur, wenn die Person an diesem Gespräch teilnimmt (Einladung oder von Ihnen eingetragen).
 
 Die Mikrofonspur ist immer **Sie** (Name aus dem Microsoft-Konto bzw. den Einstellungen).
 
@@ -249,12 +250,12 @@ nur lesend). Es wird **kein** geheimer Schlüssel benötigt („öffentlicher Cl
    Teilnehmenden („Termine prüfen“ fragt erneut ab).
 
    **Wofür die Kalenderdaten genutzt werden:** Die Aufnahme heißt wie der Termin (Ordner
-   `2026-11-19_1400_<Betreff>`); die Teilnehmenden werden bei der Stimmerkennung bevorzugt
-   (`speakers.invitee_bonus`) und stehen im Dialog „Sprecher zuordnen“ als erste Vorschläge.
+   `2026-11-19_1400_<Betreff>`); nur die Teilnehmenden können bei der Stimmerkennung automatisch
+   zugeordnet werden (Abschnitt 8) und stehen im Dialog „Sprecher zuordnen“ zur Auswahl.
    **Nachträglich:** Für Aufnahmen von vor der Anmeldung im Hauptfenster die Aufnahme wählen → *Weitere … →
    Termin zuordnen …*. CallRecorder sucht die Termine im Zeitraum der Aufnahme (der am besten passende
    zuerst), übernimmt nach Ihrer Wahl Teilnehmende (und auf Wunsch den Betreff als Titel; der Ordnername
-   bleibt) und lässt die Sprechererkennung mit den Eingeladenen erneut laufen – manuelle Zuordnungen
+   bleibt) und lässt die Sprechererkennung mit den Teilnehmenden erneut laufen – manuelle Zuordnungen
    bleiben.
 
 ### Optional: Berechtigung für den direkten SharePoint-Upload
@@ -638,29 +639,101 @@ eigener Bestätigung; nie über ein Preset).
 
 ## 8. Sprecher zuordnen und Stimmprofile
 
+**Ihre eigene Stimme** wird nicht erkannt, sondern ist die Mikrofonspur: Alles, was dort gesprochen wird,
+steht unter Ihrem Namen im Transkript (Vorname aus dem Microsoft-Konto, sonst aus *Ihr Name*, sonst
+„Ich“; eigener Name unter *Einstellungen → Darstellung → Ihr Name im Transkript*). Deshalb steht Ihre
+Stimme nicht in der Liste der zuzuordnenden Sprecher – der Dialog und der Transkriptkopf zeigen sie als
+feste Zeile („Ich – Joost (Mikrofonspur), 12 Beiträge, 04:31 Sprechzeit“, mit „▶ Anhören“). Ein neuer
+Name gilt beim nächsten Erstellen des Transkripts: *Weitere … → Transkript neu darstellen* (ohne neue
+Transkription), danach „Zusammenfassung neu erstellen“.
+
 Nach der Verarbeitung öffnet sich – falls es unbekannte Stimmen gibt – der Dialog
 **„Sprecher zuordnen“**:
 
-- je Stimme: Redezeit, ein Beispielsatz und **„▶ Anhören“** (spielt einen kurzen Ausschnitt),
-- Auswahlliste mit den Eingeladenen und bekannten Profilen; freie Eingabe ist möglich,
-- **„Stimme merken“**: legt das Stimmprofil an bzw. verbessert ein bestehendes,
+- je Stimme: Sprechzeit, ein Beispielsatz und **„▶ Anhören“** (spielt einen kurzen Ausschnitt),
+- Auswahlliste mit den **Teilnehmenden dieses Termins** (noch nicht zugeordnete zuerst); freie Eingabe
+  ist möglich – die Person wird dann als Teilnehmende der Aufnahme ergänzt,
+- klingt eine Stimme wie jemand, der **nicht** eingeladen war, steht das nur als Vorschlag
+  „klingt wie … (kein Teilnehmer dieses Termins)“ in der Liste; erst Ihre Auswahl ordnet zu (und ergänzt
+  die Person als Teilnehmende),
+- **„Das bin ich (meine Stimme auf der Spur der Gegenseite)“**: falls Ihre Stimme durch Mithören/Sidetone
+  auch auf der Gegenseite landet; diese Beiträge werden Ihnen zugeordnet, doppelte Stellen der
+  Mikrofonspur entfallen,
+- **„Stimme merken“**: legt das Stimmprofil an bzw. verbessert ein bestehendes. Bei automatisch
+  erkannten Stimmen ist es aus: eine unveränderte automatische Zuordnung bleibt automatisch (und wird bei
+  „neu prüfen“ neu bewertet); erst mit Häkchen gilt sie als von Ihnen bestätigt,
 - **„Übernehmen“** aktualisiert `transcript.md` (und auf Wunsch `summary.md`).
 
 Werden zwei „Sprecher“ derselben Person zugeordnet (die Sprechertrennung teilt eine Stimme
 gelegentlich auf), werden sie im Transkript zusammengeführt.
 
-Bei späteren Gesprächen wird jede Stimme mit den Profilen verglichen (Kosinus-Ähnlichkeit,
-Schwelle `speakers.match_threshold`, Standard 0,55). Eingeladene Personen erhalten einen
-kleinen Bonus (`invitee_bonus`). Bei sicherer Erkennung (≥ `auto_update_threshold`) wird das
-Profil automatisch nachgeschärft. Ihre eigene Stimme wird nie einem Sprecher der Gegenseite
-zugeordnet.
+**Automatische Erkennung – nur Teilnehmende.** Eine Stimme wird automatisch nur einer Person
+zugeordnet, die an *dieser* Aufnahme teilnimmt: aus der Kalendereinladung, beim Start eingetragen, über
+*Weitere … → Teilnehmende bearbeiten …* oder *Termin zuordnen …* (beides vor oder nach der Verarbeitung;
+die Erkennung läuft dann erneut, Ihre manuellen Zuordnungen bleiben immer) oder von Ihnen im Dialog
+zugeordnet. Ohne Teilnehmerliste wird nichts automatisch zugeordnet („Sprecher 1 … n“). Zusätzlich gilt:
+
+- Ähnlichkeit (Kosinus) mindestens `speakers.match_threshold` (0,55) **und** mindestens
+  `match_margin` (0,08) besser als jedes andere Profil – auch als Profile von Nicht-Teilnehmenden; sonst
+  „nicht eindeutig“ bzw. nur ein Vorschlag,
+- jedes Profil höchstens einmal pro Aufnahme (ein zweiter, ähnlicher Sprecher bekommt nur einen
+  Vorschlag),
+- mindestens `min_match_speech_s` (8 s) Sprache ohne Überlappung; Stimmmerkmale werden nur aus
+  Abschnitten ohne gleichzeitiges Sprechen anderer gebildet,
+- Ihre eigene Identität (Name/E-Mail, auch Varianten wie „Nachname, Vorname“) wird nie einem Sprecher
+  der Gegenseite zugeordnet.
+
+Namen werden robust verglichen: per E-Mail, wenn beide Seiten eine haben, sonst nach Namen ohne Titel
+(„Dr.“, „Herr“ …), Klammerzusatz, mit umgestelltem „Nachname, Vorname“ und Umlauten (ä = ae).
+`speakers.match_scope = "all_profiles"` stellt das frühere Verhalten (alle bekannten Profile,
+`invitee_bonus` für Eingeladene) wieder her – nur in `config.toml` bzw. den Einstellungen, nie per Preset.
+
+**Was ein Profil lernt.** Ein Profil entsteht nur aus einer Zuordnung, die Sie gemacht oder bestätigt
+haben (mit mindestens `min_learn_speech_s` = 20 s Sprache), und wird automatisch nur bei sehr sicherer
+Erkennung (≥ `auto_update_threshold` = 0,75) nachgeschärft – mit halbem Gewicht. Jeder Beitrag ist mit
+Aufnahme und Sprecher gespeichert: Korrigieren Sie eine Zuordnung, wird der frühere Beitrag dieses
+Sprechers zurückgenommen; erneutes Erkennen ersetzt den automatischen Beitrag einer Aufnahme, statt ihn
+zu wiederholen. *Extras → Stimmprofile verwalten …* zeigt je Profil „Gelernt aus“ (Aufnahme, Sprecher,
+Herkunft) mit „Eintrag entfernen“, „Nur Bestätigtes behalten“ und „Aus Ihren Zuordnungen neu aufbauen“
+(baut das Profil nur aus Ihren manuellen Zuordnungen in den Aufnahmen neu auf – auch für Profile älterer
+Versionen, deren Herkunft unbekannt ist).
+
+**Ältere Aufnahmen.** Aufnahmen, die nach dem früheren Verfahren automatisch zugeordnet wurden, zeigen
+im Hauptfenster einen Hinweis. *Weitere … → Sprecherzuordnung neu prüfen …* zeigt zuerst, was sich ändern
+würde, und ändert nach Bestätigung nur automatische Zuordnungen (die bisherige `speakers.json` wird unter
+`data\archive` gesichert); manuelle bleiben. Ohne diesen Klick wird kein altes Transkript verändert.
+
+**Mikrofonspur prüfen.** Nach der Sprechertrennung prüft CallRecorder, ob die Mikrofonspur plausibel
+Ihre Stimme enthält, und warnt im Transkriptkopf, im Hauptfenster und im Dialog, wenn
+
+- die Mikrofonspur kaum Sprache enthält, die Gegenseite aber viel (falsches/stummes Mikrofon),
+- die Mikrofonspur im Wesentlichen ein Echo der Gegenseite ist oder Teile davon enthält (Lautsprecher
+  statt Headset, Bluetooth-Freisprechprofil, „Abhören“) – erkannt an gleichen Wörtern zur gleichen Zeit
+  auf beiden Spuren und am Lautstärkeverlauf,
+- Ihre Stimme auf der Spur der Gegenseite als „Sprecher n“ auftaucht (Mithören/Sidetone) – erkannt an
+  den gleichen Wörtern bzw. am Stimmvergleich mit der Mikrofonspur; dieser Sprecher wird nie automatisch
+  jemandem zugeordnet.
+
+Die Meldung nennt die wahrscheinliche Ursache und wo das Mikrofon geändert wird.
+
+**Geschwindigkeit.** Die Sprechertrennung nutzt automatisch so viele Rechen-Threads, wie physische
+Kerne vorhanden sind (minus einen, höchstens 8; während einer laufenden Aufnahme etwa die Hälfte).
+Fest einstellen: `diarization.num_threads`. Ein `num_threads = 2` aus einer älteren `config.toml` (der
+frühere Standardwert) gilt als „automatisch“. Dauer der Sprechertrennung (`processing.diarization.timing`)
+und der Erkennung (`processing.identification.timing`) stehen in `meta.json`. Neu zuordnen, Teilnehmende
+ändern und „neu prüfen“ verwenden die gespeicherten Stimmmerkmale der Aufnahme – das Audio wird dafür
+nicht erneut ausgewertet.
 
 Profile ansehen/löschen: Hauptfenster *Extras → Stimmprofile verwalten …* oder
 
 ```powershell
 .venv\Scripts\python -m callrec profiles list
+.venv\Scripts\python -m callrec profiles show "Anna Beispiel"      # gelernt aus welchen Aufnahmen
+.venv\Scripts\python -m callrec profiles reset "Anna Beispiel"     # nur Bestätigtes behalten
+.venv\Scripts\python -m callrec profiles rebuild "Anna Beispiel"   # aus Ihren Zuordnungen neu aufbauen
 .venv\Scripts\python -m callrec profiles delete "Anna Beispiel"
 .venv\Scripts\python -m callrec profiles delete-all
+.venv\Scripts\python -m callrec recheck "<Ordner>"                  # Sprecherzuordnung neu prüfen
 ```
 
 ---
@@ -946,7 +1019,12 @@ Wichtige Einstellungen:
 | `summary.anthropic_connect_timeout_s` / `anthropic_read_timeout_s` / `anthropic_retry_budget_s` / `anthropic_max_retries` | `15` / `180` / `300` / `4` | Claude: Verbindungsaufbau, max. Funkstille während der Antwort, Zeitbudget für Wiederholungen, Versuche |
 | `diarization.cluster_threshold` | `0.4` | kleiner = Stimmen werden feiner getrennt |
 | `diarization.num_speakers` | `0` | feste Sprecheranzahl der Gegenseite (0 = automatisch) |
-| `speakers.match_threshold` | `0.55` | Schwelle für die Wiedererkennung |
+| `diarization.num_threads` | `0` | Rechen-Threads der Sprechertrennung; `0` = automatisch (physische Kerne − 1, höchstens 8; während einer Aufnahme etwa die Hälfte). Der wirksame Wert steht unter *Einstellungen → Sprecher* und in `meta.json` (`processing.diarization.timing`) |
+| `speakers.match_scope` | `participants` | `participants` = automatisch nur Teilnehmende dieser Aufnahme; `all_profiles` = alle Profile (früheres Verhalten). Nur in `config.toml`/Einstellungen, nie per Preset |
+| `speakers.match_threshold` / `match_margin` | `0.55` / `0.08` | Schwelle für die Wiedererkennung; Mindestabstand zum zweitbesten Profil |
+| `speakers.min_match_speech_s` / `min_learn_speech_s` | `8` / `20` | Mindest-Sprechzeit (ohne Überlappung) für die automatische Erkennung bzw. damit ein Profil lernt |
+| `speakers.auto_update_on_match` / `auto_update_threshold` | `true` / `0.75` | Profil bei sehr sicherer automatischer Erkennung nachschärfen (rücknehmbar) |
+| `transcript.self_display_name` | leer | Ihr Name für die eigenen Beiträge; leer = Vorname aus dem Microsoft-Konto, sonst aus `general.user_name`, sonst „Ich“ |
 | `general.preset` | leer | aktives Preset |
 | `transcription.initial_prompt` | leer | Zusatz-Kontext für Whisper |
 | `transcription.use_glossary` | `true` | Glossar als Hotwords |
