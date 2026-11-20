@@ -169,10 +169,20 @@ def test_settings_dialog_all_tabs_and_llm(root, tmp_path: Path):
             progress("success", 1.0)
             pulled.append(model)
 
+    from callrec import paths
+
+    snap = paths.models_dir() / "whisper" / "models--mobiuslabsgmbh--faster-whisper-large-v3-turbo" / "snapshots" / "c1"
+    snap.mkdir(parents=True)
+    for f in ("config.json", "tokenizer.json", "vocabulary.json"):
+        (snap / f).write_text("{}")
+    (snap / "model.bin").write_bytes(b"x" * 2_000_000)
     dlg = st.SettingsDialog(root, cfg, ["Headset Mikrofon (Jabra)"], ["Kopfhörer (Jabra)"],
                             lambda c: save_config(c, path), provider_factory=lambda c: FakeProvider())
     tabs = [dlg.nb.tab(t, "text") for t in dlg.nb.tabs()]
-    assert tabs == ["Allgemein", "Transkription", "Sprecher", "Darstellung", "Zusammenfassung", "SharePoint"]
+    assert tabs == ["Allgemein", "Transkription", "Sprache & Qualität", "Sprecher", "Darstellung", "Zusammenfassung",
+                    "SharePoint"]
+    assert dlg.vars[("transcription", "language_candidates")].get() == "de, en"
+    dlg.vars[("transcription", "language_candidates")].set("de, en; fr")
     dlg.vars[("audio", "mic_device")].set("Headset Mikrofon (Jabra)")
     dlg.vars[("transcription", "beam_size")].set("7")
     dlg.vars[("transcription", "vad_threshold")].set("0,35")  # German decimal comma accepted
@@ -183,10 +193,12 @@ def test_settings_dialog_all_tabs_and_llm(root, tmp_path: Path):
     dlg.pull_model()
 
     def wait_then_save():
-        if not pulled or "Ollama-Version 0.13.1" not in dlg.status_var.get():
+        if not pulled or "Ollama-Version 0.13.1" not in dlg.status_var.get() or dlg.models_list.size() == 0:
             root.after(100, wait_then_save)
             return
         assert "gemma3:4b" in dlg.model_combo.cget("values")
+        assert dlg.models_list.get(0).startswith("large-v3-turbo") and "2 MB" in dlg.models_list.get(0)
+        assert "vollständig" in dlg.models_list.get(0)
         find(dlg.win, ttk.Button, "Speichern").invoke()
 
     root.after(100, wait_then_save)
@@ -197,6 +209,7 @@ def test_settings_dialog_all_tabs_and_llm(root, tmp_path: Path):
     assert c.transcript.timestamp_format == "mm:ss" and c.summary.model == "gemma3:4b"
     assert c.handoff.folder == str(tmp_path) and c.general.preset == ""
     assert pulled == ["gemma3:4b"]
+    assert c.transcription.language_candidates == ["de", "en", "fr"] and c.transcription.language == "auto"
 
     bad = st.SettingsDialog(root, Config(), [], [], lambda c: None)
     bad.vars[("transcription", "beam_size")].set("viele")
