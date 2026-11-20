@@ -180,6 +180,7 @@ class SettingsDialog:
         self._summary()
         self._microsoft()
         self._handoff()
+        self._retention()
         for tab in self.nb.tabs():
             if initial_tab and self.nb.tab(tab, "text") == initial_tab:
                 self.nb.select(tab)
@@ -312,6 +313,31 @@ class SettingsDialog:
                   "Bestätigung der Einwilligung (vermerkt wird: bestätigt). Die rechtliche Verantwortung für die "
                   "Zustimmung aller Teilnehmenden bleibt bei der Person, die aufnimmt.", wraplength=520,
                   foreground="#555").grid(row=21, column=0, columnspan=3, sticky="w", **PAD)
+
+    def _retention(self) -> None:
+        from callrec.retention import log_path, read_log
+
+        t = self._tab("Löschen")
+        ttk.Label(t, text="Alte Aufnahmen werden automatisch gelöscht – das Alter zählt ab Beginn der Aufnahme. "
+                  "Aufnahmen mit „Behalten“ bleiben immer; an SharePoint übergebene Zusammenfassungen löscht "
+                  "CallRecorder nie. „permanent“ ist endgültig (nicht rückgängig zu machen; gewöhnliches Löschen, "
+                  "kein sicheres Überschreiben). Nicht per Preset einstellbar.", wraplength=520).grid(
+            row=0, column=0, columnspan=3, sticky="w", **PAD)
+        rows: list[tuple[str, str, list[str] | None]] = [
+            ("Alte Aufnahmen automatisch löschen:", "enabled", None),
+            ("Löschen nach (Tagen):", "max_age_days", None),
+            ("Was (audio_transcript = Audio und Transkript, Zusammenfassung bleibt; recording = alles; audio = nur "
+             "Audio):", "scope", ["audio_transcript", "recording", "audio"]),
+            ("Wie (permanent = endgültig, recycle_bin = Papierkorb):", "delete_mode", ["permanent", "recycle_bin"]),
+            ("Nachfragen, wenn mehr als dieser Anteil auf einmal ginge (0..1):", "max_share_per_run", None),
+        ]
+        for i, (label, key, values) in enumerate(rows, start=1):
+            self.field(t, i, label, "retention", key, values)
+        entries = read_log(8)
+        text = "\n".join(f"{e.get('at', '')[:16]}  {e.get('folder', '')}: {e.get('scope', '')} ({e.get('by', '')})"
+                         for e in reversed(entries)) or "Noch nichts gelöscht."
+        ttk.Label(t, text=f"Löschprotokoll ({log_path()}):\n{text}", foreground="#555", wraplength=520).grid(
+            row=len(rows) + 1, column=0, columnspan=3, sticky="w", **PAD)
 
     def _autostop(self) -> None:
         t = self._tab("Aufnahme-Ende")

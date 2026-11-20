@@ -231,6 +231,10 @@ def run_tray_app(cfg: Config | None = None, start_minimized: bool = False, front
     """``frontend``: "web" (new interface, preview) or "tk" (classic); default from ``[ui] frontend``.
     The web UI falls back to the classic window when it cannot start (with a notice)."""
     log_file = setup_logging(console=sys.stderr is not None)
+    from callrec.ui.appid import set_app_user_model_id
+
+    # before any window exists: taskbar button with CallRecorder's name and icon, pinnable (both UIs)
+    set_app_user_model_id()
     if not acquire_single_instance():
         if signal_running_instance():
             log.info("CallRecorder läuft bereits - das Hauptfenster der laufenden Instanz wird gezeigt")

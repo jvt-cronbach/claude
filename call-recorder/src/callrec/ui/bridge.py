@@ -272,7 +272,7 @@ class Bridge:
 
         infos = _core(self).index.scan()
         return recordings_list(infos, str(flt or "all"), str(query or "")[:200], self._busy_ids(),
-                               self._recording_id())
+                               self._recording_id(), _core(self).cfg.retention)
 
     @safe
     def get_recording(self, rec_id: str) -> dict[str, Any]:
@@ -283,7 +283,7 @@ class Bridge:
         core = _core(self)
         busy = core.controller.is_busy(rec)
         return recording_detail(info, busy, self._recording_id() == rec.folder.name,
-                                core.controller.calendar.source is not None)
+                                core.controller.calendar.source is not None, core.cfg.retention)
 
     @safe
     def get_text(self, rec_id: str, kind: str, file: str = "") -> dict[str, Any]:
@@ -321,27 +321,87 @@ class Bridge:
         return {"ok": True, "title": new}
 
     @safe
-    def delete_info(self, rec_id: str) -> dict[str, Any]:
+    def delete_info(self, rec_id: Any, scope: str = "recording") -> dict[str, Any]:
+        """The confirmation for deleting ``scope`` of one recording or a list of them (multi-select):
+        the same wording as the classic window (viewmodel.delete_question)."""
         from callrec.library import recycle_bin_available
+        from callrec.ui.viewmodel import delete_question
 
-        rec = self._rec(rec_id)
-        info = self._info(rec)
-        return {"title": info.title, "recycle_bin": recycle_bin_available(), "handed_over": bool(info.handoff),
-                "busy": _core(self).controller.is_busy(rec)}
+        if scope not in ("recording", "audio_transcript", "audio"):
+            raise BridgeError("Unbekannter Umfang.")
+        ids = [str(x) for x in rec_id][:500] if isinstance(rec_id, list) else [str(rec_id)]
+        recs = [self._rec(i) for i in ids]
+        infos = [self._info(r) for r in recs]
+        busy = [i.title for r, i in zip(recs, infos, strict=True) if _core(self).controller.is_busy(r)]
+        # the whole recording goes to the recycle bin where there is one; the partial deletions are
+        # permanent (the remaining recording would otherwise point at files in the recycle bin)
+        permanent = scope != "recording" or not recycle_bin_available()
+        title, message, button = delete_question(infos, scope, permanent)
+        return {"ids": ids, "scope": scope, "title": title, "message": message, "confirm": button,
+                "permanent": permanent, "recycle_bin": recycle_bin_available(),
+                "handed_over": any(bool(i.handoff) for i in infos), "busy": busy}
 
     @safe
-    def delete(self, rec_id: str, permanent: bool = False) -> dict[str, Any]:
-        """``{"ok": True, "where": ...}``; when the recycle bin fails ``{"confirm": {"kind": "permanent"}}``."""
+    def delete(self, rec_id: Any, permanent: bool = False, scope: str = "recording") -> dict[str, Any]:
+        """``{"ok": True, "done": n, "errors": [...]}``; when the recycle bin fails
+        ``{"confirm": {"kind": "permanent"}}`` (nothing deleted then)."""
         from callrec.library import LibraryError
 
-        rec = self._rec(rec_id)
-        try:
-            where = _core(self).loop.call(lambda: _core(self).actions.delete(rec, permanent=permanent is True))
-        except LibraryError as exc:
-            if permanent is not True and "Papierkorb" in str(exc):
-                return {"confirm": {"kind": "permanent", "message": str(exc)}}
-            raise BridgeError(str(exc)) from exc
-        return {"ok": True, "where": where}
+        if scope not in ("recording", "audio_transcript", "audio"):
+            raise BridgeError("Unbekannter Umfang.")
+        ids = [str(x) for x in rec_id][:500] if isinstance(rec_id, list) else [str(rec_id)]
+        recs = [self._rec(i) for i in ids]
+        a = _core(self).actions
+        done, errors = 0, []
+        for rec in recs:
+            try:
+                if scope == "recording":
+                    _core(self).loop.call(lambda rec=rec: a.delete(rec, permanent=permanent is True))
+                else:
+                    _core(self).loop.call(lambda rec=rec: a.remove(rec, scope, permanent=permanent is True))
+                done += 1
+            except LibraryError as exc:
+                if scope == "recording" and permanent is not True and "Papierkorb" in str(exc) and not done:
+                    return {"confirm": {"kind": "permanent", "message": str(exc)}}
+                errors.append(f"{rec.folder.name}: {exc}")
+        if errors and not done:
+            raise BridgeError(" ".join(errors))
+        return {"ok": True, "done": done, "errors": errors}
+
+    @safe
+    def pin(self, rec_id: Any, on: bool = True) -> dict[str, Any]:
+        """ "Behalten" (never deleted automatically) for one or several recordings."""
+        ids = [str(x) for x in rec_id][:500] if isinstance(rec_id, list) else [str(rec_id)]
+        recs = [self._rec(i) for i in ids]
+        for rec in recs:
+            _core(self).loop.call(lambda rec=rec: _core(self).actions.set_pinned(rec, on is True))
+        return {"ok": True}
+
+    @safe
+    def retention_overview(self) -> dict[str, Any]:
+        """What the automatic deletion removes next (home view, library, settings)."""
+        from datetime import datetime
+
+        from callrec.retention import SCOPE_TEXT, mark_surfaced, read_log
+
+        core = _core(self)
+        plan = core.actions.retention_plan()
+        now = datetime.now().astimezone()
+        mark_surfaced(plan, now)  # shown: an unprocessed one may be removed after 24 h
+        rt = core.cfg.retention
+        items = [{"id": i.id, "title": i.title, "when": i.when_text(now), "warning": i.warning,
+                  "due": i.due, "waiting": i.waiting} for i in plan.removable + plan.waiting + plan.upcoming]
+        return {"enabled": plan.enabled, "notice": plan.notice(now), "items": items,
+                "next24": [i.id for i in plan.next_24h(now)], "scope": SCOPE_TEXT.get(rt.scope, rt.scope),
+                "days": rt.max_age_days, "permanent": rt.delete_mode == "permanent",
+                "blocked": plan.blocked, "log": read_log(50)[::-1]}
+
+    @safe
+    def retention_now(self, ids: Any) -> dict[str, Any]:
+        """ "Jetzt löschen" in the pre-notice: those recordings, with the configured scope and mode."""
+        rt = _core(self).cfg.retention
+        return self.delete([str(x) for x in ids] if isinstance(ids, list) else [], rt.delete_mode == "permanent",
+                           rt.scope)
 
     @safe
     def cancel_processing(self, job_id: Any = None) -> dict[str, Any]:

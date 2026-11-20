@@ -284,15 +284,11 @@ def create_start_menu_shortcut() -> None:  # pragma: no cover - Windows only
     import subprocess
 
     from callrec.autostart import pythonw_for
+    from callrec.ui.appid import icon_path, shortcut_script
     from callrec.updater import app_root
 
-    target = ps_quote(str(pythonw_for()))
-    script = (
-        "$s = New-Object -ComObject WScript.Shell; "
-        "$l = $s.CreateShortcut([IO.Path]::Combine([Environment]::GetFolderPath('Programs'), 'CallRecorder.lnk')); "
-        f"$l.TargetPath = {target}; $l.Arguments = '-m callrec tray'; $l.WorkingDirectory = {ps_quote(str(app_root()))}; "
-        "$l.Description = 'CallRecorder - lokale Gesprächsaufnahme'; $l.Save()"
-    )
+    # target, icon and the AppUserModelID of the running app: a pinned taskbar button starts CallRecorder
+    script = shortcut_script(str(pythonw_for()), "-m callrec tray", str(app_root()), str(icon_path()))
     subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script], check=True,  # noqa: S603, S607
                    capture_output=True, timeout=60)
 
@@ -883,6 +879,60 @@ def cmd_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_retention(args: argparse.Namespace, out: Callable[[str], None] = print) -> int:
+    """``callrec retention status|run|pin <Ordner>|unpin <Ordner>``."""
+    from datetime import datetime
+
+    from callrec import retention
+    from callrec.config import load_config
+
+    cfg = load_config()
+    root = cfg.recordings_path()
+    if args.action in ("pin", "unpin"):
+        if not args.folder:
+            out("Bitte den Aufnahmeordner angeben.")
+            return 2
+        try:
+            rec = retention.resolve_folder(root, args.folder)
+        except retention.RetentionError as exc:
+            out(str(exc))
+            return 1
+        retention.set_pinned(rec, args.action == "pin")
+        out(f"{rec.folder.name}: " + ("Behalten – wird nie automatisch gelöscht." if args.action == "pin"
+                                      else "wird wieder automatisch gelöscht, sobald sie alt genug ist."))
+        return 0
+    now = datetime.now().astimezone()
+    rt = cfg.retention
+    if args.action == "status":
+        plan = retention.plan(root, cfg, now)
+        out(f"Automatisches Löschen: {'an' if rt.enabled else 'aus'} – nach {rt.max_age_days} Tagen "
+            f"{retention.SCOPE_TEXT.get(rt.scope, rt.scope)}, {'endgültig' if rt.delete_mode == 'permanent' else 'Papierkorb'}.")
+        for title, items in (("Beim nächsten Lauf", plan.removable), ("Zurückgehalten", plan.waiting),
+                             ("Demnächst", plan.upcoming)):
+            for i in items:
+                out(f"  {title}: {i.id} – {i.when_text(now)}" + (f" ({i.warning})" if i.warning else ""))
+        if plan.blocked:
+            out(f"Rückfrage nötig: {plan.blocked_text} („callrec retention run --yes“ löscht wie eingestellt.)")
+        return 0
+    from callrec.ui.app import acquire_single_instance
+
+    if not acquire_single_instance():
+        out("CallRecorder läuft – dort wird automatisch gelöscht (beim Start und täglich).")
+        return 1
+    res = retention.run(root, cfg, lambda rec, scope, mode: retention.remove(
+        rec, root, scope, mode, by="cli", reason=f"älter als {rt.max_age_days} Tage"), now=now, confirmed=args.yes)
+    if res.blocked:
+        out(f"Nichts gelöscht: {res.blocked_text}" + ("" if res.blocked == "future" else
+                                                     " Mit --yes wie eingestellt löschen."))
+        return 1
+    for rid in res.removed:
+        out(f"Gelöscht: {rid}")
+    for rid, err in res.failed:
+        out(f"Fehlgeschlagen: {rid}: {err}")
+    out(f"{len(res.removed)} Aufnahme(n) gelöscht.")
+    return 0 if not res.failed else 1
+
+
 def cmd_config(args: argparse.Namespace) -> int:
     from callrec.userfiles import ensure_user_files
 
@@ -1035,6 +1085,13 @@ def build_parser() -> argparse.ArgumentParser:
     an.set_defaults(func=cmd_anthropic)
 
     sub.add_parser("list", help="Aufnahmen auflisten").set_defaults(func=cmd_list)
+
+    rt = sub.add_parser("retention", help="Automatisches Löschen alter Aufnahmen: Stand, Lauf, Behalten")
+    rt.add_argument("action", choices=["status", "run", "pin", "unpin"])
+    rt.add_argument("folder", nargs="?", help="Aufnahmeordner (bei pin/unpin)")
+    rt.add_argument("--yes", action="store_true", help="bei run: auch bei der Rückfrage (erste Aktivierung, "
+                    "ungewöhnlich viele) wie eingestellt löschen")
+    rt.set_defaults(func=cmd_retention)
 
     c = sub.add_parser("config", help="Pfad der Konfigurationsdatei / Prüfung")
     c.add_argument("action", choices=["path", "check", "files"], nargs="?", default="path")

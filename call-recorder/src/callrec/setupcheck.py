@@ -192,6 +192,24 @@ def check_sharepoint(cfg: Config, is_dir: Callable[[Path], bool] = Path.is_dir,
                      required=False, actions=fix)
 
 
+def check_retention(cfg: Config) -> CheckItem:
+    """Automatic deletion of old recordings: what, when, how (no probe needed)."""
+    from callrec.retention import SCOPE_TEXT
+
+    rt = cfg.retention
+    title = "Automatisches Löschen alter Aufnahmen"
+    actions = [("Einstellungen …", "settings:Löschen")]
+    if not rt.enabled:
+        return CheckItem("retention", title, OPTIONAL, "Aus: Aufnahmen bleiben, bis sie von Hand gelöscht werden "
+                         "(Aufnahme › Löschen …).", required=False, actions=actions)
+    how = ("endgültig (nicht rückgängig zu machen)" if rt.delete_mode == "permanent"
+           else "in den Windows-Papierkorb")
+    return CheckItem("retention", title, OK,
+                     f"Nach {rt.max_age_days} Tagen wird {SCOPE_TEXT.get(rt.scope, rt.scope)} gelöscht, {how}. Vorher "
+                     "zeigt die Übersicht „wird in … Tagen gelöscht“; „Behalten“ nimmt eine Aufnahme aus. "
+                     "An SharePoint übergebene Zusammenfassungen bleiben dort.", required=False, actions=actions)
+
+
 def check_autostop(cfg: Config, windows: bool | None = None) -> CheckItem:
     """Informs what happens at the end of a call (no probe needed)."""
     from callrec.autostop import fmt_minutes
@@ -362,6 +380,7 @@ def run_all(cfg: Config, summary_test: tuple[str, bool] | None = None, *, resolv
     items.append(safe(lambda: check_microsoft(cfg, signed_in or real_signed_in(cfg), pv), "microsoft", "Microsoft"))
     items.append(safe(lambda: check_sharepoint(cfg), "sharepoint", "SharePoint"))
     items.append(safe(lambda: check_autostop(cfg), "autostop", "Aufnahme-Ende"))
+    items.append(safe(lambda: check_retention(cfg), "retention", "Automatisches Löschen"))
     if autostart is not None:
         items.append(safe(lambda: check_autostart(autostart.status()), "autostart", "Autostart"))
     items.append(safe(check_updates_item, "updates", "Version und Updates"))

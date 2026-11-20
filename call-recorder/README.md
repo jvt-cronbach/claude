@@ -38,7 +38,7 @@ geschieht nie automatisch.
 8. [Sprecher zuordnen und Stimmprofile](#8-sprecher-zuordnen-und-stimmprofile)
 9. [Transkript schrittweise verbessern](#9-transkript-schrittweise-verbessern)
 10. [Zusammenfassung an SharePoint übergeben](#10-zusammenfassung-an-sharepoint-übergeben)
-11. [Ergebnisse einer Aufnahme](#11-ergebnisse-einer-aufnahme)
+11. [Ergebnisse einer Aufnahme](#11-ergebnisse-einer-aufnahme) (11a. [Löschen und automatisches Löschen](#11a-löschen-und-automatisches-löschen))
 12. [Kommandozeile](#12-kommandozeile)
 13. [Konfiguration](#13-konfiguration)
 14. [Wo liegen welche Daten?](#14-wo-liegen-welche-daten)
@@ -507,9 +507,24 @@ Ihrem Benutzerkonto (keine Administratorrechte); Details und Reparatur siehe Abs
 
 | Symbol | Bedeutung |
 |---|---|
-| grau mit Mikrofon | bereit |
-| **rot mit weißem Punkt** + roter Balken oben rechts | **Aufnahme läuft** |
-| orange | Verarbeitung läuft (Fortschritt im Tooltip) |
+| ![](src/callrec/ui/assets/png/callrec-32.png) indigo mit Mikrofon und rotem Punkt | bereit |
+| ![](src/callrec/ui/assets/png/callrec-recording-32.png) **rot mit weißem Punkt** + roter Balken oben rechts | **Aufnahme läuft** (auch das Fenstersymbol in der Taskleiste wird rot) |
+| ![](src/callrec/ui/assets/png/callrec-busy-32.png) orange | Verarbeitung läuft (Fortschritt im Tooltip) |
+
+**An die Taskleiste anheften:** CallRecorder hat ein eigenes Logo und erscheint in der Taskleiste als
+„CallRecorder“ (nicht als Python). Zum Anheften: CallRecorder starten, Rechtsklick auf das Symbol in der
+Taskleiste → **„An Taskleiste anheften“** (oder im Startmenü Rechtsklick auf *CallRecorder* → *An Taskleiste
+anheften*). Ein Klick auf den angehefteten Knopf startet CallRecorder bzw. holt das laufende Fenster nach
+vorn. Nach dem Update auf 0.3.1 erneuert der Installationsschritt (`callrec postinstall`, läuft beim Update
+automatisch) die Startmenü-Verknüpfung mit Logo und App-Kennung; ein früher angehefteter Python-Knopf
+sollte einmal gelöst und neu angeheftet werden.
+
+**Zweiter Start:** Läuft CallRecorder schon, holt ein weiterer Start (Startmenü, angehefteter Knopf) nur
+das Hauptfenster der laufenden Instanz nach vorn.
+
+**Herunterfahren / Abmelden:** Läuft beim Herunterfahren oder Abmelden von Windows eine Aufnahme, wird sie
+regulär beendet und gespeichert (Ende „Windows wurde heruntergefahren oder abgemeldet“); die Frage zur
+Verarbeitung kommt beim nächsten Start. Das Schließen des Fensters blockiert das Herunterfahren nicht.
 
 **Tastenkürzel:** **Strg+Alt+Umschalt+R** startet bzw. beendet die Aufnahme
 (änderbar unter *Einstellungen* oder `[hotkey] toggle`).
@@ -751,7 +766,12 @@ Transkription), danach „Zusammenfassung neu erstellen“.
 Nach der Verarbeitung öffnet sich – falls es unbekannte Stimmen gibt – der Dialog
 **„Sprecher zuordnen“**:
 
-- je Stimme: Sprechzeit, ein Beispielsatz und **„▶ Anhören“** (spielt einen kurzen Ausschnitt),
+- je Stimme: Sprechzeit, ein Beispielsatz und **„▶ Anhören“**. Die Hörprobe ist die längste Stelle, an
+  der nur diese Stimme spricht (keine andere Stimme der Gegenseite und nicht die eigene Mikrofonspur
+  gleichzeitig), etwa 8–15 s mit etwas Rand; gibt es keine so lange Stelle, werden die längsten
+  Beiträge mit kurzen Pausen aneinandergehängt. Angezeigt werden die Länge der Probe und die gesamte
+  Sprechzeit; **„Weiteres Beispiel“** spielt eine andere Stelle (Probendateien liegen nur kurz in einem
+  temporären Ordner und werden beim Schließen gelöscht),
 - Auswahlliste mit den **Teilnehmenden dieses Termins** (noch nicht zugeordnete zuerst); freie Eingabe
   ist möglich – die Person wird dann als Teilnehmende der Aufnahme ergänzt,
 - klingt eine Stimme wie jemand, der **nicht** eingeladen war, steht das nur als Vorschlag
@@ -767,6 +787,21 @@ Nach der Verarbeitung öffnet sich – falls es unbekannte Stimmen gibt – der 
 
 Werden zwei „Sprecher“ derselben Person zugeordnet (die Sprechertrennung teilt eine Stimme
 gelegentlich auf), werden sie im Transkript zusammengeführt.
+
+**Kurze Fragmente werden nicht abgefragt.** Die Sprechertrennung erzeugt manchmal Mini-„Sprecher“ aus
+einem Husten, einem „mhm“, Störgeräuschen oder kurzem Durcheinanderreden. Eine Stimme mit weniger als
+`[speakers] min_named_speech_s` Sekunden Sprache (Standard 5 s; *Einstellungen → Sprecher → Kurze
+Fragmente ausblenden unter*) gilt als **kurzes Fragment**: Sie wird nicht zur Zuordnung angeboten, zählt
+nirgends als offene Stimme (Liste, „Wartet“, Verarbeitungskette), wird nie mit Stimmprofilen verglichen
+und trainiert keines. Ihr Text bleibt vollständig erhalten: Er geht an die passende Person, wenn das gut
+begründet ist (die Stimme ähnelt einer erkannten Stimme mindestens mit der Erkennungsschwelle, oder das
+Fragment liegt in bzw. direkt neben – höchstens 1 s – einem Beitrag genau einer Person), sonst steht er
+im Transkript und in der Zusammenfassung als **„Unklar“**. Was zugeordnet oder offen gelassen wurde und
+warum, steht in `meta.json` unter `processing.fragments`. Fragmente zählen nicht für die Begrenzung auf
+die Teilnehmenden und nicht für die Regel „einzige eingeladene Person“. Im Dialog zeigt **„Kurze Fragmente
+anzeigen“** sie trotzdem; ein dort benanntes Fragment bleibt benannt (ohne Stimmprofil).
+*Sprecherzuordnung neu prüfen* wendet die Regel auch auf ältere Aufnahmen an; manuelle Zuordnungen
+bleiben unverändert.
 
 **Automatische Erkennung – nur Teilnehmende.** Eine Stimme wird automatisch nur einer Person
 zugeordnet, die an *dieser* Aufnahme teilnimmt: aus der Kalendereinladung, beim Start eingetragen, über
@@ -894,10 +929,13 @@ neue Standardvorlage liegt daneben als `summary_final.default.txt` (bzw. `summar
 `summary_chunk…`). Übernehmen: eigene Datei löschen (wird beim nächsten Start aus der Standardvorlage
 neu angelegt) oder Inhalt der `.default.txt` hineinkopieren und eigene Ergänzungen wieder einfügen.
 
-**Nur Geschäftliches.** Die Standardvorlagen lassen Smalltalk und Privates bewusst weg (Begrüßung,
-private Gespräche, persönliche Neuigkeiten, Gesundheit, Familie, Gerede über Dritte). War ein Gespräch
-ausschließlich privat, besteht die Zusammenfassung nur aus der Zeile „Privates Gespräch – keine
-geschäftlichen Inhalte protokolliert.“
+**Nur Geschäftsrelevantes.** Die Zusammenfassung konzentriert sich ausschließlich auf geschäftsrelevante
+Inhalte; Smalltalk, Tratsch und Witze werden nicht berücksichtigt (ebenso Begrüßung, private Gespräche,
+persönliche Neuigkeiten, Geplänkel über Dritte). Ein Witz oder eine Randbemerkung erscheint nie als
+Entscheidung, Aufgabe, Projektstand oder offene Frage. Gab es nichts Geschäftsrelevantes, besteht die
+Zusammenfassung nur aus der Zeile „Keine geschäftsrelevanten Inhalte – nichts protokolliert.“ Unveränderte
+Vorlagen früherer Versionen werden beim Update auf diese Fassung umgestellt; angepasste bleiben, die neue
+Standardvorlage liegt daneben als `.default.txt`.
 
 **Prompt bearbeiten:** Hauptfenster *Extras → Zusammenfassungs-Prompt bearbeiten …* (auch unter
 *Einstellungen → Zusammenfassung*): je Vorlage ein Reiter mit Erklärung der Platzhalter,
@@ -1089,6 +1127,56 @@ wird in `meta.json` unter `handoffs` vermerkt.
 Während der Aufnahme liegen dort `audio\mic.part.wav` und `audio\remote.part.wav`; sie
 werden nach erfolgreicher Umwandlung gelöscht (`audio.keep_wav = true` behält sie).
 
+### 11a. Löschen und automatisches Löschen
+
+**Von Hand:** in der Aufnahme **„Löschen …“** (Knopf), im Menü *Weitere …*, per **Entf** in der Liste
+oder per Rechtsklick auf eine Zeile. Mehrere Aufnahmen: **Strg+Klick** bzw. **Umschalt+Klick** und
+**„Auswahl löschen …“**. Zur Wahl stehen:
+
+- **Aufnahme vollständig löschen** – der ganze Ordner (Audio, Transkript, Zusammenfassung, Sprecherdaten);
+  in den Windows-Papierkorb, wo es keinen gibt endgültig,
+- **Audio und Transkript löschen (Zusammenfassung bleibt)** – Audio, alle Transkript-Versionen und alles,
+  woraus sich das Gespräch rekonstruieren ließe (Whisper-Ergebnisse, Sprechertrennung, Sprecherdaten,
+  Stimmmerkmale dieses Gesprächs, also der ganze Ordner `data\`). Es bleiben `summary.md` mit ihren
+  Versionen und ein verkleinertes `meta.json` (Titel, Datum, Dauer, Teilnehmende, Start-/Einwilligungsvermerk,
+  Modell der Zusammenfassung, Übergaben und ein Vermerk `retention`, was wann gelöscht wurde). Die Aufnahme
+  heißt dann „Nur Zusammenfassung (Audio und Transkript gelöscht am …)“; die Zusammenfassung bleibt lesbar
+  und übergebbar, alles, was Audio oder Transkript braucht, ist gesperrt,
+- **Nur Audio löschen** – spart den meisten Platz; Transkript und Zusammenfassung bleiben, neu
+  transkribieren und Hörproben sind danach nicht mehr möglich („Audio gelöscht“).
+
+Die Teil-Löschungen sind **endgültig**. Jede Löschung wird vorher mit Nennung dessen bestätigt, was
+verschwindet; während einer Aufnahme oder Verarbeitung ist Löschen gesperrt, und gelöscht wird nur
+innerhalb des Aufnahmeordners. **An SharePoint übergebene Zusammenfassungen löscht CallRecorder nie.**
+
+**Automatisch (`[retention]`, Standard: an):** Nach **7 Tagen** (ab Beginn der Aufnahme) werden **Audio und
+Transkript endgültig gelöscht; die Zusammenfassung bleibt**. Einstellbar unter *Einstellungen → Löschen*
+(nie per Preset): Alter, Umfang (`audio_transcript`, `recording` = alles, `audio` = nur Audio) und Art
+(`permanent` oder `recycle_bin`). **Endgültig heißt: nicht rückgängig zu machen.** Es ist gewöhnliches
+Löschen, kein sicheres Überschreiben – auf SSDs, in Sicherungen oder synchronisierten Ordnern können Reste
+bleiben (der Aufnahmeordner liegt standardmäßig nicht in OneDrive).
+
+- **Vorankündigung:** Übersicht und Aufnahmeliste zeigen „wird in 2 Tagen gelöscht“ und „N Aufnahmen
+  werden in den nächsten 24 h gelöscht“ mit **„Behalten“** und **„Jetzt löschen …“**; fehlt einer solchen
+  Aufnahme die Zusammenfassung (oder sind Sprecher offen), steht „Zusammenfassung fehlt – vor dem Löschen
+  erstellen?“ dabei. Einmal am Tag erscheint eine Benachrichtigung, wenn etwas fällig ist.
+- **„Behalten“** (Rechtsklick, *Weitere …* oder in der Vorankündigung) nimmt eine Aufnahme dauerhaft aus.
+- **Nie gelöscht** werden laufende, wartende oder gerade verarbeitete Aufnahmen und solche mitten in der
+  Verarbeitungskette. Eine nie fertig verarbeitete oder fehlgeschlagene Aufnahme wird erst gelöscht, nachdem
+  sie mindestens 24 h als „wird gelöscht“ zu sehen war.
+- **Erstes Einschalten:** Sind beim Update schon Aufnahmen älter als die Grenze, wird nichts sofort
+  gelöscht, sondern einmal gefragt: „Wie eingestellt löschen“, „Diese behalten (anpinnen)“ oder
+  „Automatisches Löschen ausschalten“.
+- **Falsche Systemuhr:** Ist eine Aufnahme in der Zukunft datiert, wird nicht gelöscht; würde ein Lauf mehr
+  als die Hälfte der Aufnahmen löschen (`max_share_per_run`), wird gefragt.
+- Der Lauf geschieht beim Start und danach täglich im Hintergrund über denselben Weg wie das Löschen von
+  Hand. Das **Löschprotokoll** `%LOCALAPPDATA%\CallRecorder\retention.log` (was, wann, warum – kein Inhalt)
+  steht auch unter *Einstellungen → Löschen*.
+- Stimmprofile werden nicht gelöscht; sie behalten, was sie gelernt haben („Gelernt aus“ zeigt die
+  Aufnahme dann als gelöscht bzw. „nur noch Zusammenfassung“).
+- Kommandozeile: `callrec retention status`, `callrec retention run [--yes]`, `callrec retention pin <Ordner>`,
+  `callrec retention unpin <Ordner>`.
+
 ---
 
 ## 12. Kommandozeile
@@ -1206,7 +1294,10 @@ zwischen Frage und Bestätigung); andere Einträge dazu werden ignoriert und gem
 | `%LOCALAPPDATA%\CallRecorder\voiceprints.bin` | **Stimmprofile** (DPAPI-verschlüsselt) |
 | `%LOCALAPPDATA%\CallRecorder\models\` | Whisper- und Sprechertrennungsmodelle |
 | `%LOCALAPPDATA%\CallRecorder\calendar_cache.json`, `me.json` | zuletzt abgerufene Termine, Ihr Name |
-| `%USERPROFILE%\Anrufaufnahmen\` | Aufnahmen (siehe Abschnitt 11) |
+| `%LOCALAPPDATA%\CallRecorder\retention.log`, `retention_state.json` | Löschprotokoll (ohne Inhalt) und Stand des automatischen Löschens |
+| `%LOCALAPPDATA%\CallRecorder\pending_notices.json` | Hinweise nach einem Update, bis eine Oberfläche sie gezeigt hat |
+| `%USERPROFILE%\Anrufaufnahmen\` | Aufnahmen (siehe Abschnitt 11); nach 7 Tagen werden Audio und Transkript automatisch gelöscht, die Zusammenfassung bleibt (Abschnitt 11a) |
+| SharePoint-Übergabeordner | übergebene Zusammenfassungen – werden von CallRecorder **nie** gelöscht, auch nicht beim Löschen der Aufnahme |
 
 **Was verlässt den Rechner?**
 - Anfragen an `login.microsoftonline.com` und `graph.microsoft.com` (Anmeldung,

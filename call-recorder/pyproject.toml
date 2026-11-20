@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "callrec"
-version = "0.3.0"
+version = "0.3.1"
 description = "Lokaler Gesprächsrekorder für Teams-Anrufe mit Transkript, Sprechererkennung und Zusammenfassung (Windows 11)"
 readme = "README.md"
 requires-python = ">=3.12"  # numpy 2.5.x has no wheels for 3.11
@@ -59,7 +59,7 @@ callrec-tray = "callrec.cli:main_tray"
 where = ["src"]
 
 [tool.setuptools.package-data]
-callrec = ["ui/web/*.html", "ui/web/*.css", "ui/web/*.js"]
+callrec = ["ui/web/*.html", "ui/web/*.css", "ui/web/*.js", "ui/web/*.svg", "ui/assets/*.ico", "ui/assets/*.svg", "ui/assets/png/*.png"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

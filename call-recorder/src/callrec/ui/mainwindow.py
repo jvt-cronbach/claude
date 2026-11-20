@@ -48,11 +48,13 @@ from callrec.ui.viewmodel import (
     action_states,
     clamp_geometry,
     default_geometry,
+    delete_question,
     event_label,
     fmt_clock,
     format_geometry,
     markdown_spans,
     parse_geometry,
+    retention_due_text,
     version_choices,
 )
 from callrec.ui.viewmodel import next_action as compact_next_action
@@ -543,7 +545,7 @@ class MainWindow:
         tf.grid(row=1, column=0, columnspan=3, sticky="nsew")
         tf.columnconfigure(0, weight=1)
         tf.rowconfigure(0, weight=1)
-        self.tree = ttk.Treeview(tf, columns=[c[0] for c in COLUMNS], show="headings", selectmode="browse")
+        self.tree = ttk.Treeview(tf, columns=[c[0] for c in COLUMNS], show="headings", selectmode="extended")
         for key, head, width, anchor in COLUMNS:
             self.tree.heading(key, text=head, anchor=anchor)  # type: ignore[call-overload]
             self.tree.column(key, width=self.px(width), minwidth=self.px(90 if key == "title" else 40),  # type: ignore[call-overload]
@@ -555,15 +557,28 @@ class MainWindow:
         self.tree.grid(row=0, column=0, sticky="nsew")
         vsb.grid(row=0, column=1, sticky="ns")
         hsb.grid(row=1, column=0, sticky="we")
-        self.tree.bind("<<TreeviewSelect>>", lambda e: self._on_select())
+        self.tree.bind("<<TreeviewSelect>>", self._on_tree_select)
         self.tree.bind("<Return>", lambda e: self._focus_text())
         self.tree.bind("<Delete>", lambda e: self.delete_selected())
+        self.tree.bind("<Button-3>", self._context_menu)
+        self.tree.bind("<Shift-F10>", self._context_menu)
+        if self.win.tk.call("tk", "windowingsystem") == "win32":
+            self.tree.bind("<KeyPress-App>", self._context_menu)  # the context-menu key (Windows keysym)
         self.tree.bind("<Double-1>", lambda e: self._focus_text())
         self.tree.bind("<Configure>", lambda e: self._fit_columns(e.width))
         foot = ttk.Frame(left)
         foot.grid(row=2, column=0, columnspan=3, sticky="we")
         self.count_var = tk.StringVar(value="Aufnahmen werden geladen …")
         ttk.Label(foot, textvariable=self.count_var).pack(side="left", padx=self.px(4))
+        self.multi_btn = ttk.Button(foot, text="Auswahl löschen …", command=self.delete_selected)
+        self.retention_var = tk.StringVar(value="")
+        ret = ttk.Frame(left)
+        ret.grid(row=3, column=0, columnspan=3, sticky="we")
+        ttk.Label(ret, textvariable=self.retention_var, foreground="#8a4b00", wraplength=self.px(420)).pack(
+            side="left", padx=self.px(4))
+        self.ret_keep_btn = ttk.Button(ret, text="Behalten", command=self.retention_keep)
+        self.ret_now_btn = ttk.Button(ret, text="Jetzt löschen …", command=self.retention_now)
+        self._ret_next: list[str] = []
         ttk.Button(foot, text="Aufnahmeordner öffnen", command=lambda: self.app.open_folder(None)).pack(
             side="right", padx=self.px(2), pady=self.px(2))
         ttk.Button(foot, text="Aktualisieren", command=self.refresh_all).pack(side="right", padx=self.px(2))
@@ -609,6 +624,9 @@ class MainWindow:
             "reprocess": self.reprocess_selected,
             "rename": self.rename_selected,
             "delete": self.delete_selected,
+            "delete_audio": functools.partial(self.delete_selected, "audio"),
+            "delete_material": functools.partial(self.delete_selected, "audio_transcript"),
+            "pin": self.toggle_pin,
         }
         self.buttons: dict[str, ttk.Button] = {}
         for key, text in (
@@ -617,6 +635,7 @@ class MainWindow:
             ("review", "Sprecher zuordnen …"),
             ("resummarize", "Zusammenfassung neu erstellen"),
             ("play", "Anhören"),
+            ("delete", "Löschen …"),
         ):
             b = ttk.Button(self.actions_frame, text=text, command=self.action_commands[key])
             b.state(["disabled"])
@@ -634,12 +653,17 @@ class MainWindow:
             ("retranscribe", "Neu transkribieren …"),
             ("reprocess", "Komplett neu verarbeiten …"),
             ("rename", "Umbenennen …"),
-            ("delete", "Löschen …"),
+            ("pin", "Behalten (nicht automatisch löschen)"),
+            ("delete_audio", "Nur Audio löschen …"),
+            ("delete_material", "Audio und Transkript löschen (Zusammenfassung bleibt) …"),
+            ("delete", "Aufnahme vollständig löschen …"),
         )
+        self._menu_index: dict[str, int] = {}
         for key, text in self.menu_items:
-            if key in ("retranscribe", "delete"):
+            if key in ("retranscribe", "pin"):
                 self.more_menu.add_separator()
             self.more_menu.add_command(label=text, command=self.action_commands[key], state="disabled")
+            self._menu_index[key] = int(self.more_menu.index("end") or 0)
         self.more_btn.configure(menu=self.more_menu)
         self.more_btn.state(["disabled"])
         self.actions_frame.add(self.more_btn)
@@ -1131,6 +1155,9 @@ class MainWindow:
             self.post(lambda: self._apply_infos(infos, final=False))
 
         self.bg(lambda: self.index.scan(batch=100, on_batch=partial), self._list_loaded, "library")
+        plan_fn = getattr(self.app, "retention_plan", None)
+        if callable(plan_fn):
+            self.bg(plan_fn, lambda p: self.show_retention(None if isinstance(p, Exception) else p), "retention")
 
     def _list_loaded(self, res: Any) -> None:
         self._loading = False
@@ -1174,7 +1201,9 @@ class MainWindow:
     def row_values(i: RecordingInfo) -> tuple[str, ...]:
         date = f"{i.started_at:%d.%m.%y %H:%M}" if i.started_at else i.folder.name[:10]
         t, s, z, h = stage_cells(i)
-        return (date, i.title, fmt_duration(i.duration_s), fmt_language(i.language), t, s, z, h)
+        badge = " · Behalten" if i.pinned else (" · Nur Zusammenfassung" if i.reduced else
+                                                 " · Audio gelöscht" if i.removed else "")
+        return (date, i.title + badge, fmt_duration(i.duration_s), fmt_language(i.language), t, s, z, h)
 
     def _fill_tree(self, shown: list[RecordingInfo]) -> None:
         tree = self.tree
@@ -1251,6 +1280,8 @@ class MainWindow:
         people = ", ".join(names[:3]) + (f" und {len(names) - 3} weitere" if len(names) > 3 else "") if names else "–"
         self.d_meta.set(f"{when} · {fmt_duration(info.duration_s)} · {fmt_language(info.language)} · {people}")
         status = status_description(info)
+        due = "Behalten – wird nie automatisch gelöscht." if info.pinned else retention_due_text(info, self.cfg.retention)
+        status = " ".join(x for x in (status, due) if x)
         self.d_status.set(status)
         if status:
             self.d_labels[2].grid()
@@ -1270,8 +1301,10 @@ class MainWindow:
         self._enabled = enabled
         for key, b in self.buttons.items():
             b.state(["!disabled"] if enabled.get(key) else ["disabled"])
-        for key, text in self.menu_items:
-            self.more_menu.entryconfigure(text, state="normal" if enabled.get(key) else "disabled")
+        for key, _text in self.menu_items:
+            self.more_menu.entryconfigure(self._menu_index[key], state="normal" if enabled.get(key) else "disabled")
+        self.more_menu.entryconfigure(self._menu_index["pin"], label="Nicht mehr behalten" if info.pinned
+                                      else "Behalten (nicht automatisch löschen)")
         self.more_btn.state(["!disabled"])
         # the most useful next step stands out by its wording
         self.buttons["review"].configure(
@@ -1414,50 +1447,142 @@ class MainWindow:
         except LibraryError as exc:
             messagebox.showerror("Umbenennen nicht möglich", str(exc), parent=self.win)
 
-    def delete_selected(self) -> None:
-        rec = self.selected_recording()
-        if rec is None or not self.is_enabled("delete"):
-            return
-        title = rec.title()
-        info = self.selected
-        shared = ("\n\nHinweis: Die an SharePoint übergebene Zusammenfassung bleibt dort erhalten."
-                  if info is not None and info.handoff else "")
-        permanent = False
-        if recycle_bin_available():
-            ok = messagebox.askyesno(
-                "Aufnahme löschen",
-                f"„{title}“ in den Papierkorb verschieben?\n\nDer ganze Ordner – Audio, Transkript, Zusammenfassung und "
-                f"die Stimm-Embeddings dieses Gesprächs – kommt in den Windows-Papierkorb und lässt sich dort "
-                f"wiederherstellen, bis der Papierkorb geleert wird.{shared}", icon="warning", parent=self.win)
+    def _on_tree_select(self, _event: Any = None) -> None:
+        self._on_select()
+        self._update_multi()
+
+    def _update_multi(self) -> None:
+        n = len(self.tree.selection())
+        if n > 1:
+            self.multi_btn.configure(text=f"Auswahl löschen ({n}) …")
+            self.multi_btn.pack(side="right", padx=self.px(2))
         else:
-            permanent = True
-            ok = messagebox.askyesno(
-                "Aufnahme ENDGÜLTIG löschen",
-                f"„{title}“ endgültig löschen?\n\nEin Papierkorb ist hier nicht verfügbar. Audio, Transkript, "
-                f"Zusammenfassung und Stimm-Embeddings werden sofort und unwiderruflich gelöscht.{shared}",
-                icon="warning", parent=self.win)
-        if not ok:
+            self.multi_btn.pack_forget()
+
+    def selected_infos(self) -> list[RecordingInfo]:
+        """All recordings selected in the list (Strg/Umschalt+Klick), else the shown one."""
+        out = [self.by_id[i] for i in self.tree.selection() if i in self.by_id]
+        if not out and self.selected is not None:
+            out = [self.selected]
+        return out
+
+    def delete_selected(self, scope: str = "recording") -> None:
+        """ "Löschen …" (button, menu, Entf, context menu) for the selected recording(s). ``scope``:
+        recording | audio_transcript | audio - the same confirmation text as the web UI."""
+        infos = self.selected_infos()
+        if not infos or (len(infos) == 1 and not self.is_enabled("delete")):
             return
-        try:
-            self.app.delete(rec, permanent=permanent)
-        except LibraryError as exc:
-            if permanent or not messagebox.askyesno(
-                "Papierkorb nicht möglich",
-                f"{exc}\n\nStattdessen ENDGÜLTIG löschen? Das lässt sich nicht rückgängig machen.",
-                icon="warning", parent=self.win):
-                if permanent:
-                    messagebox.showerror("Löschen nicht möglich", str(exc), parent=self.win)
-                return
+        busy = [i.title for i in infos if self.controller.is_busy(Recording(i.folder))]
+        if busy:
+            messagebox.showinfo("Löschen nicht möglich", "Wird gerade aufgenommen oder verarbeitet – Löschen ist erst "
+                                "danach möglich: " + ", ".join(busy), parent=self.win)
+            return
+        permanent = scope != "recording" or not recycle_bin_available()
+        title, message, _button = delete_question(infos, scope, permanent)
+        if not messagebox.askyesno(title, message, icon="warning", parent=self.win):
+            return
+        errors: list[str] = []
+        for info in infos:
+            rec = Recording(info.folder)
             try:
-                self.app.delete(rec, permanent=True)
-            except (LibraryError, OSError) as exc2:
-                messagebox.showerror("Löschen nicht möglich", str(exc2), parent=self.win)
-                return
-        except OSError as exc:
-            messagebox.showerror("Löschen nicht möglich", str(exc), parent=self.win)
+                if scope == "recording":
+                    try:
+                        self.app.delete(rec, permanent=permanent)
+                    except LibraryError as exc:
+                        if permanent or "Papierkorb" not in str(exc) or not messagebox.askyesno(
+                                "Papierkorb nicht möglich", f"{exc}\n\nStattdessen ENDGÜLTIG löschen? Das lässt sich "
+                                "nicht rückgängig machen.", icon="warning", parent=self.win):
+                            raise
+                        permanent = True
+                        self.app.delete(rec, permanent=True)
+                else:
+                    self.app.remove(rec, scope, permanent=True)
+            except (LibraryError, OSError) as exc:
+                errors.append(f"{info.title}: {exc}")
+        if errors:
+            messagebox.showerror("Löschen nicht möglich", "\n".join(errors), parent=self.win)
+        if scope == "recording":
+            self.selected = None
+            self._clear_details()
+        self.refresh_all()
+
+    def toggle_pin(self) -> None:
+        infos = self.selected_infos()
+        if not infos:
             return
-        self.selected = None
-        self._clear_details()
+        on = not all(i.pinned for i in infos)
+        for info in infos:
+            self.app.set_pinned(Recording(info.folder), on)
+        self.show_message("Behalten: wird nie automatisch gelöscht." if on else
+                          "Nicht mehr behalten: wird gelöscht, sobald sie alt genug ist.")
+        self.refresh_all()
+
+    def _context_menu(self, event: Any) -> str:
+        iid = self.tree.identify_row(getattr(event, "y", 0)) if getattr(event, "y", None) else self.tree.focus()
+        if iid and iid not in self.tree.selection():
+            self.tree.selection_set(iid)
+            self._on_select()
+        infos = self.selected_infos()
+        if not infos:
+            return "break"
+        m = tk.Menu(self.win, tearoff=False)
+        pinned = all(i.pinned for i in infos)
+        m.add_command(label="Nicht mehr behalten" if pinned else "Behalten (nicht automatisch löschen)",
+                      command=self.toggle_pin)
+        m.add_separator()
+        if any(i.has_audio for i in infos):
+            m.add_command(label="Nur Audio löschen …", command=functools.partial(self.delete_selected, "audio"))
+        if any(not i.reduced for i in infos):
+            m.add_command(label="Audio und Transkript löschen (Zusammenfassung bleibt) …",
+                          command=functools.partial(self.delete_selected, "audio_transcript"))
+        m.add_command(label=("Auswahl" if len(infos) > 1 else "Aufnahme") + " vollständig löschen …",
+                      command=self.delete_selected)
+        x = getattr(event, "x_root", None) or self.tree.winfo_rootx() + 40
+        y = getattr(event, "y_root", None) or self.tree.winfo_rooty() + 40
+        try:
+            m.tk_popup(x, y)
+        finally:
+            m.grab_release()
+        return "break"
+
+    def show_retention(self, plan: Any) -> None:
+        """Pre-notice under the list: what the automatic deletion removes in the next 24 h."""
+        from datetime import datetime
+
+        now = datetime.now().astimezone()
+        text = plan.notice(now) if plan is not None else ""
+        self._ret_next = [i.id for i in plan.next_24h(now)] if plan is not None else []
+        warn = [i for i in (plan.next_24h(now) if plan is not None else []) if i.warning]
+        if warn:
+            text += " – " + "; ".join(f"{i.title}: {i.warning}" for i in warn[:3])
+        self.retention_var.set(text)
+        for b in (self.ret_keep_btn, self.ret_now_btn):
+            if text:
+                b.pack(side="right", padx=self.px(2))
+            else:
+                b.pack_forget()
+
+    def retention_keep(self) -> None:
+        for rid in self._ret_next:
+            info = self.by_id.get(rid)
+            if info is not None:
+                self.app.set_pinned(Recording(info.folder), True)
+        self.refresh_all()
+
+    def retention_now(self) -> None:
+        rt = self.cfg.retention
+        infos = [self.by_id[i] for i in self._ret_next if i in self.by_id]
+        if not infos:
+            return
+        title, message, _b = delete_question(infos, rt.scope, rt.delete_mode == "permanent")
+        if not messagebox.askyesno(title, message, icon="warning", parent=self.win):
+            return
+        for info in infos:
+            try:
+                self.app.remove(Recording(info.folder), rt.scope, permanent=rt.delete_mode == "permanent")
+            except (LibraryError, OSError) as exc:
+                messagebox.showerror("Löschen nicht möglich", f"{info.title}: {exc}", parent=self.win)
+        self.refresh_all()
 
     # ------------------------------------------------------------------
     # setup checklist

@@ -224,12 +224,31 @@ PAGES: tuple[Page, ...] = (
         Field("handoff", "graph_scope", "Graph: Berechtigung", "", "select", tuple((s, s) for s in GRAPH_FILE_SCOPES),
               adv=True),
     )),
+    Page("retention", "Löschen", "Alte Aufnahmen werden automatisch gelöscht – das Alter zählt ab Beginn der Aufnahme. "
+         "Aufnahmen mit „Behalten“ bleiben immer. Bereits an SharePoint übergebene Zusammenfassungen löscht "
+         "CallRecorder nie. Nicht per Preset einstellbar.", (
+        Field("retention", "enabled", "Alte Aufnahmen automatisch löschen"),
+        Field("retention", "max_age_days", "Löschen nach (Tagen)", "Vorher erscheinen sie in der Übersicht als "
+              "„wird in … Tagen gelöscht“, mit „Behalten“."),
+        Field("retention", "scope", "Was gelöscht wird", "", "radio",
+              _c(("audio_transcript", "Audio und Transkript – die Zusammenfassung bleibt (empfohlen)"),
+                 ("recording", "Die ganze Aufnahme, auch die Zusammenfassung"),
+                 ("audio", "Nur das Audio – Transkript und Zusammenfassung bleiben"))),
+        Field("retention", "delete_mode", "Wie gelöscht wird", "Endgültig heißt: Die Dateien werden gelöscht und "
+              "lassen sich nicht wiederherstellen. Das ist gewöhnliches Löschen, kein sicheres Überschreiben (auf SSDs, "
+              "in Sicherungen oder synchronisierten Ordnern können Reste bleiben; der Aufnahmeordner liegt "
+              "standardmäßig nicht in OneDrive).", "radio",
+              _c(("permanent", "Endgültig (nicht rückgängig zu machen)"), ("recycle_bin", "In den Windows-Papierkorb"))),
+        Field("retention", "max_share_per_run", "Sicherheit: nachfragen, wenn mehr als dieser Anteil auf einmal "
+              "gelöscht würde (0..1)", "Schützt bei falsch gestellter Systemuhr.", adv=True),
+    ), ("retention_log",)),
 )
 
 PAGE_BY_TAB = {  # tab names used by setupcheck / hints ("settings:<Tab>") -> page key
     "Allgemein": "general", "Aufnahme-Ende": "autostop", "Transkription": "transcription",
     "Zusammenfassung": "summary", "Microsoft-Konto": "microsoft", "SharePoint": "sharepoint",
     "Sprecher": "speakers", "Darstellung": "rendering", "Sprache & Qualität": "language", "Aufnahme": "recording",
+    "Löschen": "retention",
 }
 
 

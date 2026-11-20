@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import queue
+import sys
 import threading
 import time
 from collections.abc import Callable
@@ -260,6 +261,10 @@ class WebUi:
         self.events.emit("recording", {"on": recording, "title": title})
         if self.windows is not None:
             self.windows.set_indicator(recording and self.show_overlay)
+            if sys.platform == "win32":
+                from callrec.ui.appid import winforms_set_icon
+
+                winforms_set_icon([self.windows.main], recording)  # red taskbar button while recording
 
     def set_status(self, text: str) -> None:
         self.status_text = text

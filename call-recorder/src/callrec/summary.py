@@ -273,10 +273,11 @@ def missing_sections(body: str) -> list[str]:
 
     Used to warn in the log and meta.json - a summary with a different structure is still saved.
     """
-    from callrec.userfiles import PRIVATE_CALL_LINE, SUMMARY_SECTIONS
+    from callrec.userfiles import NO_BUSINESS_LINE, PRIVATE_CALL_LINE, SUMMARY_SECTIONS
 
-    if body.strip().strip('"').startswith(PRIVATE_CALL_LINE[:30]):
-        return []  # an entirely private call: one line instead of the sections, as instructed
+    text = body.strip().strip('"')
+    if text.startswith(NO_BUSINESS_LINE[:30]) or text.startswith(PRIVATE_CALL_LINE[:30]):
+        return []  # nothing business-relevant: one line instead of the sections, as instructed
     headings = [
         re.sub(r"[*_:]+", "", m.group(1)).strip().lower()
         for m in re.finditer(r"^\s{0,3}#{1,4}\s*(.+?)\s*#*\s*$", body, re.MULTILINE)

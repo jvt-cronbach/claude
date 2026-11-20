@@ -565,10 +565,19 @@ def manage_profiles(root: tk.Tk, profiles: ProfileStore, rebuild: Callable[[str]
         p = profiles.get(sel[0]) if sel else None
         if p is None:
             return
+        from callrec.ui.dto import provenance_state
+
+        try:
+            from callrec.config import load_config
+
+            rec_root = load_config(preset="").recordings_path()
+        except Exception:
+            rec_root = None
         for i, c in enumerate(p.contributions):
             rec_text = c.title or c.folder or ("–" if not c.recording else c.recording[:8])
             if c.folder and c.title:
                 rec_text = f"{c.title} ({c.folder})"
+            rec_text += provenance_state(rec_root, c.folder)
             origins.insert("", "end", iid=str(i), values=(rec_text, c.speaker if c.recording else "–",
                                                           SOURCE_TEXT.get(c.source, c.source),
                                                           f"{c.seconds:.0f} s" if c.seconds else "–", c.at))

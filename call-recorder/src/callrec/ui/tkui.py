@@ -137,6 +137,9 @@ class TkUi:
         self.root = tk.Tk()
         self.root.withdraw()
         self.root.title("CallRecorder")
+        from callrec.ui.appid import tk_set_icon
+
+        tk_set_icon(self.root)  # the app icon instead of Tk's feather / Python (taskbar, title bar)
         self.calendar = calendar
         self._calls: queue.Queue[Callable[[], object]] = queue.Queue()
         self._ui_thread = threading.get_ident()
@@ -240,8 +243,11 @@ class TkUi:
 
     def set_recording_state(self, recording: bool, title: str) -> None:
         def apply() -> None:
+            from callrec.ui.appid import tk_set_icon
+
             if self.tray is not None:
                 self.tray.set_recording(recording, title)
+            tk_set_icon(self.root, recording)  # red window/taskbar icon while recording
             if not self.show_overlay:
                 return
             if recording:

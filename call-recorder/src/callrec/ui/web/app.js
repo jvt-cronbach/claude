@@ -104,6 +104,7 @@ const S = {
   selected: "", detail: null, tab: "summary", version_sel: { summary: "", transcript: "" }, text: null, textLimit: 300,
   mobileDetail: false, checks: null, checksBusy: "", settings: null, patch: {}, prompts: null, profiles: null,
   about: null, menu: "", notices: [], dialogs: [], downloads: "", pull: null,
+  multi: [], ctx: null, retention: null,
 };
 const hotkeyText = () => (S.hotkey || "ctrl+alt+shift+r").split("+").map(k => ({ ctrl: "Strg", alt: "Alt", shift: "Umschalt", win: "Win" }[k] || k.toUpperCase()));
 const kbd = () => raw(hotkeyText().map(k => `<kbd>${esc(k)}</kbd>`).join("+"));
@@ -264,6 +265,15 @@ function attentionCard() {
       <p class="ad">${i.reason}</p>
       <div class="btn-row">${i.action && i.action.key !== "open" ? btn(i.action.label + (i.action.key === "handoff" ? " …" : ""), { cls: "btn-primary btn-sm", act: "rec-action", attrs: data({ id: i.id, key: i.action.key }) }) : ""}${btn("Öffnen", { cls: "btn-sm btn-subtle", act: "open", attrs: data({ id: i.id }) })}</div></li>`)}</ul></section>`;
 }
+function retentionCard() {
+  const R = S.retention;
+  if (!R || !R.enabled || !R.items.length) return "";
+  return h`<section class="card" aria-labelledby="h-ret"><div class="card-head"><h2 id="h-ret">Wird gelöscht</h2><span class="badge inline">${R.items.length}</span><span class="grow"></span><span class="caption muted">${R.scope} · nach ${R.days} Tagen${R.permanent ? " · endgültig" : ""}</span></div>
+    ${R.notice ? h`<div class="card-body"><p class="strong">${R.notice}</p><div class="btn-row">${btn("Behalten", { cls: "btn-sm", icon: "lock", act: "ret-keep" })}${btn("Jetzt löschen …", { cls: "btn-sm btn-subtle btn-danger", icon: "trash", act: "ret-now" })}</div></div>` : ""}
+    <ul class="att-list">${R.items.map(i => h`<li class="att"><span class="ic warn">${I("trash")}</span><div class="rec-title"><div class="at">${i.title}</div><div class="att-meta">${i.when}</div></div>
+      ${i.warning ? h`<p class="ad warn-line">${i.warning}</p>` : ""}<div class="btn-row">${btn("Behalten", { cls: "btn-sm", act: "pin", attrs: data({ id: i.id, on: "1" }) })}${btn("Öffnen", { cls: "btn-sm btn-subtle", act: "open", attrs: data({ id: i.id }) })}</div></li>`)}</ul></section>`;
+}
+async function loadRetention() { const r = await call("retention_overview"); if (r && !r.error) S.retention = r; }
 function workCard() {
   const q = S.state.queue || {}, cur = q.current;
   if (!cur && !(q.pending || []).length) return "";
@@ -313,11 +323,11 @@ function screenHome() {
   const setup = S.state.setup || {};
   const ready = setup.ready === false ? h`<button class="chip chip-warn" data-act="go" data-to="setup">${I("warning")}${setup.open === 1 ? "1 Punkt" : `${setup.open || ""} Punkte`} in der Einrichtung offen</button>`
     : h`<span class="chip chip-ok">${I("check")}Bereit</span>`;
-  const c = { now: r.on ? heroRecording() : heroIdle(), att: attentionCard(), work: workCard(), today: todayCard(), recent: recentCard() };
+  const c = { now: r.on ? heroRecording() : heroIdle(), att: attentionCard(), work: workCard(), today: todayCard(), recent: recentCard(), ret: retentionCard() };
   const col = keys => h`<div class="home-col">${keys.map(k => c[k])}</div>`;
-  const grid = MQ_NARROW.matches ? h`<div class="home-grid cols-1">${col(["now", "att", "work", "today", "recent"])}</div>`
-    : MQ_WIDE.matches ? h`<div class="home-grid cols-3">${col(["now", "work"])}${col(["att"])}${col(["today", "recent"])}</div>`
-    : h`<div class="home-grid">${col(["now", "work", "recent"])}${col(["att", "today"])}</div>`;
+  const grid = MQ_NARROW.matches ? h`<div class="home-grid cols-1">${col(["now", "att", "ret", "work", "today", "recent"])}</div>`
+    : MQ_WIDE.matches ? h`<div class="home-grid cols-3">${col(["now", "work"])}${col(["att", "ret"])}${col(["today", "recent"])}</div>`
+    : h`<div class="home-grid">${col(["now", "work", "recent"])}${col(["att", "ret", "today"])}</div>`;
   return h`<div class="page"><header class="page-head"><div class="grow"><h1 tabindex="-1" data-focus>Übersicht</h1><p class="sub">${WDL[now.getDay()]}, ${now.getDate()}. ${MONTHS[now.getMonth()]} ${now.getFullYear()}</p></div>
     ${r.on ? h`<span class="chip chip-rec"><span class="rec-dot" aria-hidden="true"></span>Aufnahme läuft</span>` : ready}</header>${grid}</div>`;
 }
@@ -332,17 +342,29 @@ function listPane() {
   for (const r of L.items) {
     const grp = groupOf(parseDate(r.started_at));
     if (grp !== g) { g = grp; items.push(h`<li class="grp" role="presentation">${grp}</li>`); }
-    items.push(h`<li role="presentation"><button class="rec-item" role="option" aria-selected="${r.id === S.selected}" data-act="select" ${data({ id: r.id })}>
-      <span class="t ellipsis">${r.title}</span><span class="m">${whenText(r.started_at)} · ${r.duration}</span>${statusChip(r)}</button></li>`);
+    const picked = S.multi.includes(r.id);
+    items.push(h`<li role="presentation"><button class="rec-item ${picked ? "picked" : ""}" role="option" aria-selected="${r.id === S.selected || picked}" data-act="select" ${data({ id: r.id })}>
+      <span class="t ellipsis">${r.title}</span><span class="m">${whenText(r.started_at)} · ${r.duration}</span>${statusChip(r)}${r.pinned ? h`<span class="chip">${I("lock")}Behalten</span>` : r.removed_text ? h`<span class="chip">${r.reduced ? "Nur Zusammenfassung" : "Audio gelöscht"}</span>` : r.due ? h`<span class="chip chip-warn">${I("trash")}${r.due.split(": ")[1] || r.due}</span>` : ""}</button></li>`);
   }
   return h`<section class="lib-list" aria-label="Aufnahmeliste"><div class="lib-tools">
       <h1 tabindex="-1" data-focus>Aufnahmen</h1>
       <label class="input-icon"><span class="sr-only">Suchen</span>${I("search", "ico-sm")}<input class="input" id="q" type="search" placeholder="Titel oder Person suchen" value="${S.query}" autocomplete="off"><kbd>Strg+F</kbd></label>
       <div class="seg" role="group" aria-label="Filter">${L.filters.filter(f => f.key === "all" || f.count || f.key === S.filter).map(f => h`<button aria-pressed="${S.filter === f.key}" data-act="filter" ${data({ f: f.key })}>${f.label} <span class="n">${f.count}</span></button>`)}</div></div>
-    <div class="lib-scroll">${L.items.length ? h`<ul role="listbox" aria-label="Aufnahmen" id="reclist">${items}</ul>`
+    <div class="lib-scroll">${L.items.length ? h`<ul role="listbox" aria-label="Aufnahmen" aria-multiselectable="true" id="reclist" title="Strg+Klick oder Umschalt+Klick wählt mehrere Aufnahmen; Rechtsklick: Löschen und Behalten">${items}</ul>`
       : L.total ? h`<div class="empty compact"><h3>Keine Treffer</h3><p>${S.query ? `Für „${S.query}“ gibt es keine Aufnahme. Gesucht wird in Titeln und Namen der Teilnehmenden.` : "In diesem Filter ist nichts."}</p>${btn("Filter zurücksetzen", { act: "clearq" })}</div>`
       : h`<div class="empty compact"><div class="art">${I("mic")}</div><h3>Noch keine Aufnahmen</h3><p>Nach dem ersten Call stehen hier Transkript und Zusammenfassung.</p>${btn("Aufnahme starten …", { cls: "btn-record", icon: "rec", act: "start" })}</div>`}</div>
-    <div class="lib-foot">${L.items.length === L.total ? `${L.total} Aufnahmen` : `${L.items.length} von ${L.total} Aufnahmen`}<span class="spacer"></span>${btn("Ordner öffnen", { cls: "btn-sm btn-subtle", icon: "folder", act: "open-root" })}</div></section>`;
+    ${S.multi.length > 1 ? h`<div class="lib-foot" role="toolbar" aria-label="Auswahl"><b>${S.multi.length} ausgewählt</b><span class="spacer"></span>${btn("Behalten", { cls: "btn-sm", act: "pin-multi" })}${btn("Auswahl löschen …", { cls: "btn-sm btn-danger", icon: "trash", act: "del-multi" })}${btn("Aufheben", { cls: "btn-sm btn-subtle", act: "multi-clear" })}</div>` : ""}
+    ${S.retention && S.retention.notice ? h`<div class="lib-foot"><span class="caption">${I("trash", "ico-sm")} ${S.retention.notice}</span></div>` : ""}
+    <div class="lib-foot">${L.items.length === L.total ? `${L.total} Aufnahmen` : `${L.items.length} von ${L.total} Aufnahmen`}<span class="spacer"></span>${btn("Ordner öffnen", { cls: "btn-sm btn-subtle", icon: "folder", act: "open-root" })}</div></section>${ctxMenu()}`;
+}
+function ctxMenu() {
+  const c = S.ctx; if (!c) return "";
+  const r = ((S.list || {}).items || []).find(x => x.id === c.id); if (!r) return "";
+  return h`<div class="menu ctx" role="menu" data-x="${c.x}" data-y="${c.y}" aria-label="Aktionen für ${r.title}">
+    <button role="menuitem" data-act="ctx" ${data({ key: "pin" })}>${I("lock")}${r.pinned ? "Nicht mehr behalten" : "Behalten (nicht automatisch löschen)"}</button><div class="sep"></div>
+    ${r.has_audio ? h`<button role="menuitem" data-act="ctx" ${data({ key: "audio" })}>${I("trash")}Nur Audio löschen …</button>` : ""}
+    ${!r.reduced ? h`<button role="menuitem" data-act="ctx" ${data({ key: "audio_transcript" })}>${I("trash")}Audio und Transkript löschen …</button>` : ""}
+    <button role="menuitem" class="danger" data-act="ctx" ${data({ key: "recording" })}>${I("trash")}Aufnahme vollständig löschen …<span class="hint">Entf</span></button></div>`;
 }
 const MS_ICON = { ok: "check-circle", running: "clock", missing: "doc", failed: "alert", open: "people", na: "send" };
 function miniSteps(d) {
@@ -358,7 +380,8 @@ const MORE = [
   ["retranscribe", "lang", "Neu transkribieren …"], ["assign_event", "calendar", "Termin zuordnen …"], ["participants", "people", "Teilnehmende bearbeiten …"],
   ["rename", "pencil", "Umbenennen …"], "-", ["rerender", "doc", "Transkript neu darstellen"], ["recheck", "fingerprint", "Sprecherzuordnung neu prüfen …"],
   ["speaker_limit", "people", "Weitere Sprecher zulassen / begrenzen"], ["reprocess", "refresh", "Komplett neu verarbeiten …"], ["folder", "folder", "Ordner öffnen"], "-",
-  ["delete", "trash", "Löschen …", "Entf"],
+  ["pin", "lock", "Behalten (nicht automatisch löschen)"], ["delete_audio", "trash", "Nur Audio löschen …"],
+  ["delete_material", "trash", "Audio und Transkript löschen …"], ["delete", "trash", "Aufnahme vollständig löschen …", "Entf"],
 ];
 function detailPane() {
   const d = S.detail;
@@ -372,9 +395,10 @@ function detailPane() {
   if (!primary || primary.key !== "review") second.push(btn("Sprecher zuordnen …", { icon: "people", act: "rec-action", attrs: raw(`${data({ id: d.id, key: "review" })} ${A.review ? "" : "disabled"}`) }));
   if (!primary || primary.key !== "resummarize") second.push(btn("Zusammenfassung neu erstellen", { cls: "btn-subtle", icon: "sparkle", act: "rec-action", attrs: raw(`${data({ id: d.id, key: "resummarize" })} ${A.resummarize ? "" : "disabled"}`) }));
   const menuOpen = S.menu === "more";
-  const actions = h`${prim}${second}<button class="btn btn-subtle" data-act="rec-action" ${data({ id: d.id, key: "play" })} ${A.play ? "" : raw("disabled")}>${I("play", "ico-sm")}Anhören</button>
+  const actions = h`${prim}${second}<button class="btn btn-subtle" data-act="rec-action" ${data({ id: d.id, key: "play" })} ${A.play ? "" : raw("disabled")} title="${(d.disabled_why || {}).play || ""}">${I("play", "ico-sm")}Anhören</button>
+    <button class="btn btn-subtle btn-danger" data-act="more" ${data({ key: "delete" })} ${A.delete ? "" : raw("disabled")}>${I("trash", "ico-sm")}Löschen …</button>
     <div class="menu-wrap"><button class="btn btn-subtle" data-act="menu" data-menu="more" aria-haspopup="menu" aria-expanded="${menuOpen}" aria-label="Weitere Aktionen" title="Weitere Aktionen">${I("more")}</button>
-    ${menuOpen ? h`<div class="menu" role="menu">${MORE.map(m => m === "-" ? raw('<div class="sep"></div>') : h`<button role="menuitem" class="${m[0] === "delete" ? "danger" : ""}" data-act="more" ${data({ key: m[0] })} ${A[m[0]] === false ? raw("disabled") : ""}>${I(m[1])}${m[0] === "speaker_limit" ? (d.speaker_limit.lifted ? "Wieder auf Teilnehmende begrenzen" : "Weitere Sprecher zulassen") : m[2]}${m[3] ? h`<span class="hint">${m[3]}</span>` : ""}</button>`)}</div>` : ""}</div>`;
+    ${menuOpen ? h`<div class="menu" role="menu">${MORE.map(m => m === "-" ? raw('<div class="sep"></div>') : h`<button role="menuitem" class="${m[0] === "delete" ? "danger" : ""}" data-act="more" ${data({ key: m[0] })} ${A[m[0]] === false ? raw("disabled") : ""} title="${(d.disabled_why || {})[m[0]] || ""}">${I(m[1])}${m[0] === "speaker_limit" ? (d.speaker_limit.lifted ? "Wieder auf Teilnehmende begrenzen" : "Weitere Sprecher zulassen") : m[0] === "pin" && d.pinned ? "Nicht mehr behalten" : m[2]}${m[3] ? h`<span class="hint">${m[3]}</span>` : ""}</button>`)}</div>` : ""}</div>`;
   const h0 = d.handoff;
   const handoff = !d.has_summary ? "" : h`<div class="handoff ${h0.done && !h0.current ? "changed" : ""}"><span class="ico-wrap">${I(h0.done ? (h0.current ? "check" : "refresh") : "send")}</span>
     <div><div class="strong">${h0.done ? (h0.current ? "An SharePoint übergeben" : "Seit der Übergabe geändert") : "Noch nicht übergeben"}</div><div class="hd">${h0.text.replace(/^SharePoint: /, "")}</div></div><span></span></div>`;
@@ -384,7 +408,7 @@ function detailPane() {
     <div class="det-head">
       <button class="btn btn-subtle btn-sm back-to-list" data-act="back">${I("left", "ico-sm")}Alle Aufnahmen</button>
       <h1 id="det-title">${d.title}</h1>
-      <div class="det-meta"><span>${I("calendar")}${whenText(d.started_at)}</span><span>${I("clock")}${d.duration}</span><span>${I("lang")}${d.language}</span>${statusChip(d)}</div>
+      <div class="det-meta"><span>${I("calendar")}${whenText(d.started_at)}</span><span>${I("clock")}${d.duration}</span><span>${I("lang")}${d.language}</span>${statusChip(d)}${d.pinned ? h`<span class="chip">${I("lock")}Behalten</span>` : d.due ? h`<span class="chip chip-warn">${I("trash")}${d.due}</span>` : ""}</div>
       ${d.participants.length ? h`<div class="det-people">${d.participants.slice(0, 6).map(n => avatar(n))}<span class="ellipsis muted">${d.participants.join(", ")}</span></div>` : ""}
       ${miniSteps(d)}
     </div>
@@ -538,6 +562,11 @@ function extraPanel(key) {
   }
   if (key === "prompts") return h`<section class="card"><div class="setting"><div><div class="t">Anweisungen für die Zusammenfassung</div><div class="d">Vorlagen mit Prüfung, Standard wiederherstellen und Test an einer Aufnahme.</div></div><div class="ctl">${btn("Anweisungen bearbeiten …", { act: "go", attrs: data({ to: "prompts" }) })}</div></div></section>`;
   if (key === "login") return h`<section class="card"><div class="setting"><div><div class="t">Anmeldung</div><div class="d">Nach dem Speichern der IDs anmelden; es wird nur gelesen (eigener Kalender).</div></div><div class="ctl">${btn("Bei Microsoft anmelden …", { cls: "btn-primary", act: "setup", attrs: data({ key: "login" }) })}</div></div></section>`;
+  if (key === "retention_log") {
+    const R = S.retention, log = (R && R.log) || [];
+    return h`<section class="card"><div class="card-head"><h2>Löschprotokoll</h2><span class="grow"></span><span class="caption muted">nur was, wann, warum – kein Inhalt</span></div>
+      ${log.length ? h`<ul class="origins">${log.slice(0, 30).map(e => h`<li><span class="ellipsis">${(e.at || "").slice(0, 16).replace("T", " ")} · ${e.folder || ""}</span><span>${{ audio_transcript: "Audio und Transkript", recording: "ganze Aufnahme", audio: "Audio" }[e.scope] || e.scope || ""}${e.by === "retention" ? " · automatisch" : " · von Hand"}${e.error ? " · fehlgeschlagen" : ""}</span></li>`)}</ul>` : h`<div class="card-body muted">Noch nichts gelöscht.</div>`}</section>`;
+  }
   if (key === "profiles_link") return h`<section class="card"><div class="setting"><div><div class="t">Stimmprofile</div><div class="d">Gelernte Stimmen ansehen, einzelne Einträge entfernen, neu aufbauen oder löschen.</div></div><div class="ctl">${btn("Stimmprofile verwalten …", { act: "setpage", attrs: data({ page: "profiles" }) })}</div></div></section>`;
   return "";
 }
@@ -743,10 +772,8 @@ DLG.rename = d => modal(d, h`<h2 id="dlg-t">Umbenennen</h2>`, h`<div class="fiel
   h`${btn("Abbrechen", { act: "dlg-cancel" })}${btn("Umbenennen", { cls: "btn-primary", act: "rn-ok" })}`);
 DLG.delete = d => {
   const x = d.data;
-  return modal(d, h`<h2 id="dlg-t">${x.permanent ? "Aufnahme endgültig löschen?" : "Aufnahme löschen?"}</h2>`, h`<p>„${x.title}“ ${x.permanent ? "endgültig löschen?" : "in den Papierkorb verschieben?"}</p>
-    <p class="muted mt-2">${x.permanent ? (x.reason ? `${x.reason} ` : "Ein Papierkorb ist hier nicht verfügbar. ") + "Audio, Transkript, Zusammenfassung und Stimm-Embeddings werden sofort und unwiderruflich gelöscht." : "Der ganze Ordner – Audio, Transkript, Zusammenfassung und die Stimm-Embeddings dieses Gesprächs – kommt in den Windows-Papierkorb und lässt sich dort wiederherstellen, bis der Papierkorb geleert wird."}</p>
-    ${x.handed_over ? h`<p class="help mt-2">Die an SharePoint übergebene Zusammenfassung bleibt dort erhalten.</p>` : ""}`,
-  h`${btn("Abbrechen", { act: "dlg-cancel" })}${btn(x.permanent ? "Endgültig löschen" : "In den Papierkorb", { cls: "btn-primary btn-danger", icon: "trash", act: "del-ok" })}`);
+  return modal(d, h`<h2 id="dlg-t">${x.title}</h2>`, h`${x.reason ? h`<div class="banner banner-warn mb-4">${I("warning")}<div class="bd">${x.reason} Stattdessen endgültig löschen? Das lässt sich nicht rückgängig machen.</div></div>` : ""}<p class="pre">${x.message}</p>`,
+  h`${btn("Abbrechen", { act: "dlg-cancel" })}${btn(x.reason ? "Endgültig löschen" : x.confirm, { cls: "btn-primary btn-danger", icon: "trash", act: "del-ok" })}`);
 };
 DLG.textfile = d => modal(d, h`<h2 id="dlg-t">${d.data.title}</h2><p class="muted">${d.data.hint}</p>`, h`<label class="sr-only" for="tf">${d.data.title}</label><textarea class="textarea code" id="tf" spellcheck="false">${d.data.text}</textarea><p class="caption muted mt-2 anywhere">${d.data.path}</p>`,
   h`${btn("Abbrechen", { act: "dlg-cancel" })}${btn("Speichern", { cls: "btn-primary", act: "tf-ok" })}`, "reading");
@@ -820,12 +847,12 @@ async function go(route, opts = {}) {
 }
 async function load(route) {
   if (route === "home") {
-    const [home, cal] = await Promise.all([call("get_home"), S.calendar ? null : call("get_calendar", false)]);
+    const [home, cal] = await Promise.all([call("get_home"), S.calendar ? null : call("get_calendar", false), loadRetention()]);
     if (home && !home.error) S.home = home;
     if (cal && !cal.error) S.calendar = cal;
     if (S.route === "home") { renderMain(); renderRail(); }
   } else if (route === "library") {
-    await loadList();
+    await Promise.all([loadList(), loadRetention()]);
     if (!S.selected && S.list && S.list.items.length && !MQ_SINGLE.matches) await select(S.list.items[0].id, false);
   } else if (route === "setup") {
     if (!S.checks) { const r = await call("run_checks", false); if (r && !r.error) S.checks = r; if (S.route === "setup") renderMain(); }
@@ -880,6 +907,7 @@ async function loadSettings() {
   if (S.route === "settings") renderMain();
   if (S.setPage === "transcription") loadWhisper(false);
   if (S.setPage === "profiles") loadProfiles();
+  if (S.setPage === "retention") { await loadRetention(); if (S.route === "settings") renderMain(); }
   if (S.setPage === "updates" || S.setPage === "about") { S.about = await call("about"); if (S.route === "settings") renderMain(); }
 }
 async function loadWhisper(gpu) { const r = await call("whisper_models", gpu ? "gpu" : "list", "", gpu); if (r && !r.error && S.settings) { S.settings.whisper = r; if (S.route === "settings") renderMain(); } }
@@ -958,7 +986,42 @@ A.menu = el => { S.menu = S.menu === el.dataset.menu ? "" : el.dataset.menu; ren
 A.pick = el => { S.menu = ""; S.calPick = Number(el.dataset.i); renderMain(); };
 A["refresh-cal"] = async () => { const r = await act("get_calendar", true); if (r && !r.error) { S.calendar = r; renderMain(); } };
 A.open = el => { S.route = "library"; S.selected = ""; go("library").then(() => select(el.dataset.id)); };
-A.select = el => select(el.dataset.id);
+A.select = (el, e) => {
+  S.ctx = null;
+  const id = el.dataset.id;
+  if (e && (e.ctrlKey || e.metaKey || e.shiftKey)) {  // multi-select ("Auswahl löschen")
+    const ids = ((S.list || {}).items || []).map(r => r.id);
+    let m = S.multi.length ? [...S.multi] : (S.selected ? [S.selected] : []);
+    if (e.shiftKey && S.selected) { const a = ids.indexOf(S.selected), b = ids.indexOf(id); m = ids.slice(Math.min(a, b), Math.max(a, b) + 1); }
+    else m = m.includes(id) ? m.filter(x => x !== id) : [...m, id];
+    S.multi = m; renderMain(); return;
+  }
+  S.multi = [];
+  select(id);
+};
+A["multi-clear"] = () => { S.multi = []; renderMain(); };
+A["del-multi"] = () => deleteFlow([...S.multi], "recording");
+A["pin-multi"] = async () => { await call("pin", [...S.multi], true); S.multi = []; snack("Behalten: wird nie automatisch gelöscht."); loadRetention(); refreshDetail(); };
+A.pin = async el => { await call("pin", el.dataset.id, el.dataset.on === "1"); snack("Behalten: wird nie automatisch gelöscht."); await loadRetention(); load(S.route); };
+A["ret-keep"] = async () => { const R = S.retention; if (!R) return; await call("pin", R.next24, true); snack("Behalten."); await loadRetention(); load(S.route); };
+A["ret-now"] = async () => {
+  const R = S.retention; if (!R || !R.next24.length) return;
+  if (!await confirmLocal("Jetzt löschen?", `${R.next24.length} Aufnahme(n): ${R.scope}${R.permanent ? " – endgültig, nicht rückgängig zu machen" : " – in den Papierkorb"}.`, "Jetzt löschen", { danger: true })) return;
+  const r = await call("retention_now", R.next24); if (r && r.error) showError(r.error); else snack("Gelöscht.");
+  await loadRetention(); load(S.route);
+};
+A.ctx = async el => {
+  const c = S.ctx; S.ctx = null; renderMain(); if (!c) return;
+  const r = ((S.list || {}).items || []).find(x => x.id === c.id); if (!r) return;
+  if (el.dataset.key === "pin") { await call("pin", c.id, !r.pinned); await loadRetention(); loadList(); return; }
+  deleteFlow(S.multi.length > 1 && S.multi.includes(c.id) ? [...S.multi] : [c.id], el.dataset.key);
+};
+document.addEventListener("contextmenu", e => {
+  const item = e.target.closest && e.target.closest(".rec-item");
+  if (!item) { if (S.ctx) { S.ctx = null; renderMain(); } return; }
+  e.preventDefault(); S.ctx = { id: item.dataset.id, x: e.clientX, y: e.clientY }; renderMain();
+  const m = $(".menu.ctx"); if (m) { m.style.left = `${Math.min(e.clientX, innerWidth - 300)}px`; m.style.top = `${Math.min(e.clientY, innerHeight - 200)}px`; const b = $("button", m); if (b) b.focus(); }
+});
 A.back = () => { S.mobileDetail = false; renderMain(); };
 A.filter = el => { S.filter = el.dataset.f; loadList(); call("save_window_state", { route: S.route, filter: S.filter }); };
 A.clearq = () => { S.query = ""; S.filter = "all"; loadList(); };
@@ -972,17 +1035,20 @@ A.more = async el => {
   const d = S.detail; const key = el.dataset.key; S.menu = ""; renderMain();
   if (!d) return;
   if (key === "rename") { openDialog({ id: `rn${Date.now()}`, kind: "rename", data: { title: d.title, id: d.id }, local: {} }); return; }
-  if (key === "delete") return deleteFlow(d.id);
+  if (key === "delete") return deleteFlow([d.id], "recording");
+  if (key === "delete_audio") return deleteFlow([d.id], "audio");
+  if (key === "delete_material") return deleteFlow([d.id], "audio_transcript");
+  if (key === "pin") { await call("pin", d.id, !d.pinned); snack(d.pinned ? "Wird wieder automatisch gelöscht, wenn sie alt genug ist." : "Behalten: wird nie automatisch gelöscht."); refreshDetail(); return; }
   if (key === "reprocess") {
     if (await confirmLocal("Komplett neu verarbeiten?", `„${d.title}“ komplett neu verarbeiten?\n\nAudio, Transkription, Sprechertrennung und Zusammenfassung werden neu berechnet. Es entstehen neue Versionen, die bisherigen bleiben erhalten; manuelle Sprecherzuordnungen werden übernommen, soweit die Stimmen wiedererkannt werden.`, "Neu verarbeiten")) act("recording_action", d.id, "reprocess");
     return;
   }
   act("recording_action", d.id, key);
 };
-async function deleteFlow(id) {
-  const info = await act("delete_info", id); if (!info || info.error) return;
-  if (info.busy) { showError("Die Aufnahme wird gerade aufgenommen oder verarbeitet – Löschen ist erst danach möglich."); return; }
-  openDialog({ id: `del${Date.now()}`, kind: "delete", data: { ...info, id, permanent: !info.recycle_bin }, local: {} });
+async function deleteFlow(ids, scope = "recording") {
+  const info = await act("delete_info", ids, scope); if (!info || info.error) return;
+  if (info.busy && info.busy.length) { showError(`Wird gerade aufgenommen oder verarbeitet – Löschen ist erst danach möglich: ${info.busy.join(", ")}`); return; }
+  openDialog({ id: `del${Date.now()}`, kind: "delete", data: { ...info, id: ids }, local: {} });
 }
 A.setup = async el => {
   const r = await act("setup_action", el.dataset.key);
@@ -1130,12 +1196,15 @@ A["rn-ok"] = async el => {
 };
 A["del-ok"] = async el => {
   const d = curDlg(el); el.disabled = true;
-  const r = await call("delete", d.data.id, !!d.data.permanent);
+  const r = await call("delete", d.data.id, !!d.data.permanent, d.data.scope || "recording");
   if (r && r.confirm && r.confirm.kind === "permanent") { d.data = { ...d.data, permanent: true, reason: r.confirm.message }; renderDialog(); return; }
   closeDialog(d.id);
   if (r && r.error) { showError(r.error); return; }
-  snack(d.data.permanent ? "Aufnahme gelöscht." : "Aufnahme in den Papierkorb verschoben.");
-  S.selected = ""; S.detail = null; S.mobileDetail = false; refreshDetail();
+  if (r && r.errors && r.errors.length) showError(r.errors.join(" "));
+  snack(d.data.scope && d.data.scope !== "recording" ? "Gelöscht – die übrigen Teile bleiben." : d.data.permanent ? "Gelöscht." : "In den Papierkorb verschoben.");
+  S.multi = [];
+  if (!d.data.scope || d.data.scope === "recording") { S.selected = ""; S.detail = null; S.mobileDetail = false; }
+  await loadRetention(); refreshDetail(); if (S.route === "home") load("home");
 };
 A["tf-ok"] = async el => { const d = curDlg(el); const r = await act("text_file", d.data.kind, $("#tf").value); if (r && r.ok) { closeDialog(d.id); snack("Gespeichert."); } };
 A["ask-ok"] = el => { const d = curDlg(el); answer(d, { ok: true, value: ($("#ask-in") || {}).value }); };
@@ -1153,6 +1222,7 @@ document.addEventListener("click", e => {
     return;
   }
   const el = e.target.closest("[data-act]");
+  if (S.ctx && !e.target.closest(".menu.ctx")) { S.ctx = null; if (!el) renderMain(); }
   if (!el || el.disabled) {
     if (S.menu && !e.target.closest(".menu-wrap")) { S.menu = ""; renderMain(); }
     return;
@@ -1236,7 +1306,7 @@ document.addEventListener("keydown", e => {
     n.focus(); select(n.dataset.id, false).then(() => { const again = $(`.rec-item[data-id="${CSS.escape(n.dataset.id)}"]`); if (again) again.focus(); });
     return;
   }
-  if (item && e.key === "Delete") { e.preventDefault(); deleteFlow(item.dataset.id); return; }
+  if (item && e.key === "Delete") { e.preventDefault(); deleteFlow(S.multi.length > 1 ? [...S.multi] : [item.dataset.id], "recording"); return; }
   if (item && e.key === "Enter") { e.preventDefault(); const t = $(".reader-sheet"); if (t) { t.setAttribute("tabindex", "-1"); t.focus(); } }
 });
 

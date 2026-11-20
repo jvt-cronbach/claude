@@ -217,3 +217,29 @@ def test_delete_question_names_what_goes_and_sharepoint():
     assert "Zusammenfassung bleibt" in title and "ENDGÜLTIG" in msg and "SharePoint" in msg and button == "Endgültig löschen"
     _t, msg2, b2 = delete_question([info, info], "recording", False)
     assert "2 Aufnahmen" in msg2 and "Papierkorb" in msg2 and b2 == "In den Papierkorb"
+
+
+def test_cli_retention_status_pin_run(tmp_path: Path):
+    import argparse
+
+    from callrec import paths
+    from callrec.cli import build_parser, cmd_retention
+
+    now = datetime.now().astimezone()
+    root, (old, new) = library(tmp_path, now, [10, 1])
+    paths.config_file().parent.mkdir(parents=True, exist_ok=True)
+    paths.config_file().write_text(f'[general]\nrecordings_dir = "{root.as_posix()}"\n[consent]\nmode = "ask"\n',
+                                   encoding="utf-8")
+    assert build_parser().parse_args(["retention", "pin", "x"]).action == "pin"
+    out: list[str] = []
+    assert cmd_retention(argparse.Namespace(action="status", folder=None, yes=False), out.append) == 0
+    assert any("Beim nächsten Lauf" in line and old.folder.name in line for line in out)
+    assert any("Rückfrage" in line for line in out)  # first activation
+    assert cmd_retention(argparse.Namespace(action="run", folder=None, yes=False), out.append) == 1
+    assert old.transcript_path.exists()
+    assert cmd_retention(argparse.Namespace(action="pin", folder=new.folder.name, yes=False), out.append) == 0
+    assert retention.is_pinned(new.load_meta())
+    assert cmd_retention(argparse.Namespace(action="run", folder=None, yes=True), out.append) == 0
+    assert not old.transcript_path.exists() and old.summary_path.exists() and new.transcript_path.exists()
+    assert cmd_retention(argparse.Namespace(action="unpin", folder=new.folder.name, yes=False), out.append) == 0
+    assert not retention.is_pinned(new.load_meta())

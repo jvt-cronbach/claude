@@ -1,14 +1,17 @@
 {
   "schema": 1,
-  "version": "0.3.0",
+  "version": "0.3.1",
   "commit": "d57b3fad96091372023368becaa68c1ca1376682",
   "date": "2026-11-20",
   "notes": [
-    "Neue Oberfläche als Vorschau (Einstellungen › Allgemein › Oberfläche bzw. callrec tray --ui web): im Fluent-Stil passend neben Teams, hell/dunkel wie Windows, Übersicht mit „Als Nächstes · Wartet · In Arbeit“. Startet sie nicht, öffnet sich automatisch das klassische Fenster.",
-    "Vor der Aufnahme wahlweise eine Frage („Aufnehmen“ mit Hinweis auf die Zustimmung) oder die ausdrückliche Bestätigung der Einwilligung (Einstellungen › Aufnahme).",
-    "„Call erkannt“ fragt direkt „Aufnehmen?“ – ohne den Tastaturfokus aus Teams zu nehmen.",
-    "Nach der Aufnahme ist „an SharePoint übergeben“ vorausgewählt; übergeben wird weiterhin erst nach dem Klick auf „Vollständig verarbeiten“.",
-    "Das Update installiert zusätzlich pywebview (Edge WebView2) und dauert deshalb einige Minuten länger."
+    "Sprecher zuordnen: Sehr kurze Stimmen (unter 5 s Sprache – Husten, „mhm“, Störgeräusche) werden nicht mehr abgefragt und zählen nicht als offen. Ihr Text bleibt erhalten: bei der passenden Person oder als „Unklar“. „Kurze Fragmente anzeigen“ blendet sie bei Bedarf ein; „Sprecherzuordnung neu prüfen“ wendet das auf ältere Aufnahmen an.",
+    "„Anhören“ spielt jetzt eine längere, saubere Stelle (etwa 8–15 s, ohne Überlappung mit anderen Stimmen) mit Angabe der Länge; „Weiteres Beispiel“ spielt eine andere Stelle.",
+    "Löschen: gut sichtbar in jeder Aufnahme, per Rechtsklick und Entf, mehrere Aufnahmen auf einmal; wahlweise nur Audio, Audio und Transkript (Zusammenfassung bleibt) oder alles. „Behalten“ schützt eine Aufnahme.",
+    "Neu: Automatisches Löschen – nach 7 Tagen werden Audio und Transkript endgültig gelöscht, die Zusammenfassung bleibt (Einstellungen › Löschen). Vorher steht „wird in … Tagen gelöscht“ in der Übersicht. Sind beim Update schon ältere Aufnahmen da, wird zuerst gefragt. An SharePoint übergebene Zusammenfassungen bleiben immer.",
+    "Zusammenfassung: nur Geschäftsrelevantes – Smalltalk, Tratsch und Witze werden nicht berücksichtigt; ohne geschäftsrelevante Inhalte genügt eine Zeile. Unveränderte Vorlagen werden umgestellt, angepasste bleiben.",
+    "Eigenes Logo: CallRecorder erscheint in der Taskleiste mit eigenem Symbol und Namen und lässt sich anheften; während einer Aufnahme wird das Symbol rot.",
+    "Ein zweiter Start holt das Fenster der laufenden Instanz nach vorn. Beim Herunterfahren oder Abmelden wird eine laufende Aufnahme regulär beendet und gespeichert.",
+    "Hinweise nach einem Update (z. B. die Frage vor der Aufnahme statt des Häkchens seit 0.3) erscheinen jetzt genau einmal – auch nach „callrec tray --ui …“."
   ],
   "python": ">=3.12,<3.14"
 }

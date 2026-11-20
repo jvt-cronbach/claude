@@ -317,6 +317,7 @@ details.adv[open] > summary .ico { transform: rotate(90deg); }
 .menu-wrap { position: relative; display: inline-block; }
 .menu { position: absolute; z-index: 30; top: calc(100% + 4px); right: 0; min-width: 280px; padding: var(--s-1); border-radius: var(--r-lg); background: var(--surface); box-shadow: var(--shadow-flyout); border: 1px solid var(--border); animation: drop var(--t-normal) var(--ease-out); }
 .menu.up { top: auto; bottom: calc(100% + 4px); }
+.menu.ctx { position: fixed; top: 0; left: 0; right: auto; z-index: 60; }
 .menu.left { right: auto; left: 0; }
 @keyframes drop { from { opacity: 0; transform: translateY(-4px); } }
 .menu button { display: flex; width: 100%; align-items: center; gap: var(--s-3); padding: 8px 10px; white-space: nowrap; border: 0; background: none; text-align: left; border-radius: var(--r-sm); color: var(--text); }
@@ -478,6 +479,7 @@ button.row:hover { background: var(--surface-hover); }
 .grp { padding: var(--s-4) var(--s-3) var(--s-1); font-size: 12px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: .03em; }
 .rec-item { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px var(--s-3); width: 100%; padding: 10px var(--s-3); border: 0; border-radius: var(--r-md); background: none; text-align: left; color: var(--text); }
 .rec-item:hover { background: var(--surface-hover); }
+.rec-item.picked { outline: 2px solid var(--accent); outline-offset: -2px; }
 .rec-item[aria-selected="true"] { background: var(--surface); box-shadow: var(--shadow-1); }
 :root[data-theme="dark"] .rec-item[aria-selected="true"] { background: var(--surface-pressed); }
 .rec-item[aria-selected="true"]::before { content: ""; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px; border-radius: 2px; background: var(--accent); }

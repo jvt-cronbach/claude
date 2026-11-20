@@ -22,7 +22,16 @@ from callrec.library import (
     status_description,
 )
 from callrec.recording import Recording
-from callrec.ui.viewmodel import action_states, markdown_blocks, next_action, status_tone, version_choices
+from callrec.ui.viewmodel import (
+    DELETE_LABELS,
+    action_states,
+    disabled_reasons,
+    markdown_blocks,
+    next_action,
+    retention_due_text,
+    status_tone,
+    version_choices,
+)
 
 log = logging.getLogger(__name__)
 
@@ -43,9 +52,12 @@ def person(p: Any) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 # recordings
 # ---------------------------------------------------------------------------
-def recording_row(info: RecordingInfo, busy: bool = False, recording_now: bool = False) -> dict[str, Any]:
+def recording_row(info: RecordingInfo, busy: bool = False, recording_now: bool = False,
+                  retention: Any = None) -> dict[str, Any]:
     status, label, key = next_action(info, busy=busy, recording_now=recording_now)
     return {
+        "pinned": info.pinned, "removed_text": info.removed_text, "reduced": info.reduced,
+        "has_audio": info.has_audio, "due": retention_due_text(info, retention),
         "id": info.id, "title": info.title, "started_at": iso(info.started_at), "duration_s": info.duration_s,
         "duration": fmt_duration(info.duration_s), "language": fmt_language(info.language),
         "participants": list(info.participants),
@@ -59,12 +71,12 @@ def recording_row(info: RecordingInfo, busy: bool = False, recording_now: bool =
 
 
 def recordings_list(infos: list[RecordingInfo], flt: str, query: str, busy_ids: set[str],
-                    recording_id: str) -> dict[str, Any]:
+                    recording_id: str, retention: Any = None) -> dict[str, Any]:
     flt = flt if flt in FILTERS else "all"
     shown = filter_infos(infos, query or "", flt)
     counts = {k: len(filter_infos(infos, "", k)) for k in FILTER_ORDER}
     return {
-        "items": [recording_row(i, i.id in busy_ids, i.id == recording_id) for i in shown],
+        "items": [recording_row(i, i.id in busy_ids, i.id == recording_id, retention) for i in shown],
         "total": len(infos), "filter": flt, "query": query or "",
         "filters": [{"key": k, "label": FILTER_SHORT[k], "count": counts[k]} for k in FILTER_ORDER],
     }
@@ -79,7 +91,8 @@ def _versions(info: RecordingInfo, meta: dict[str, Any]) -> dict[str, list[dict[
     return out
 
 
-def recording_detail(info: RecordingInfo, busy: bool, recording_now: bool, calendar_connected: bool) -> dict[str, Any]:
+def recording_detail(info: RecordingInfo, busy: bool, recording_now: bool, calendar_connected: bool,
+                     retention: Any = None) -> dict[str, Any]:
     from callrec.ui.startflow import consent_summary
 
     rec = Recording(info.folder)
@@ -87,7 +100,7 @@ def recording_detail(info: RecordingInfo, busy: bool, recording_now: bool, calen
         meta = rec.load_meta()
     except (OSError, ValueError):
         meta = {}
-    row = recording_row(info, busy, recording_now)
+    row = recording_row(info, busy, recording_now, retention)
     h = info.handoff or {}
     bound = ((meta.get("processing") or {}).get("diarization") or {}).get("bound") or {}
     lifted = bool((meta.get("speaker_limit") or {}).get("lifted"))
@@ -100,6 +113,7 @@ def recording_detail(info: RecordingInfo, busy: bool, recording_now: bool, calen
                     "version": h.get("summary_version")},
         "consent": consent_summary(meta),
         "actions": action_states(info, recording_now, busy, calendar_connected),
+        "disabled_why": disabled_reasons(info), "delete_labels": DELETE_LABELS,
         "speaker_limit": {"merged": bool(bound.get("merged")), "lifted": lifted},
         "versions": _versions(info, meta),
         "summary_problem": info.summary_problem,
@@ -307,7 +321,23 @@ def checks(items: list[Any], download_text: str = "") -> dict[str, Any]:
             "open": sum(1 for it in items if it.state in ("warn", "error"))}
 
 
-def profiles(store: Any) -> list[dict[str, Any]]:
+def provenance_state(root: Path | None, folder: str) -> str:
+    """ " (Aufnahme gelöscht)" / " (nur noch Zusammenfassung)" for "Gelernt aus" - a profile keeps what it learned."""
+    if root is None or not folder:
+        return ""
+    rec = Recording(Path(root) / folder)
+    if not rec.meta_path.exists():
+        return " (Aufnahme gelöscht)"
+    try:
+        from callrec.retention import removed_scope
+
+        gone = removed_scope(rec.load_meta())
+    except (OSError, ValueError):
+        return ""
+    return {"audio_transcript": " (nur noch Zusammenfassung)", "audio": " (Audio gelöscht)"}.get(gone, "")
+
+
+def profiles(store: Any, root: Path | None = None) -> list[dict[str, Any]]:
     from callrec.review import SOURCE_TEXT
 
     out = []
@@ -315,7 +345,8 @@ def profiles(store: Any) -> list[dict[str, Any]]:
         out.append({"id": p.id, "name": p.name, "email": p.email, "samples": p.samples, "model": p.model_id,
                     "updated": p.updated_at, "origins": [
                         {"index": i, "recording": (f"{c.title} ({c.folder})" if c.folder and c.title else
-                                                   c.title or c.folder or ("–" if not c.recording else c.recording[:8])),
+                                                   c.title or c.folder or ("–" if not c.recording else c.recording[:8]))
+                         + provenance_state(root, c.folder),
                          "speaker": c.speaker if c.recording else "–", "source": SOURCE_TEXT.get(c.source, c.source),
                          "seconds": round(c.seconds or 0.0), "at": c.at}
                         for i, c in enumerate(p.contributions)]})

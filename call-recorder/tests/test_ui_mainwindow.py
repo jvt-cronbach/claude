@@ -290,7 +290,7 @@ def test_actions_retranscribe_cancel_error_hint_handoff_rename_delete(world: Wor
     w.win.select("2026-11-17_0900_Team")
     w.pump(lambda: w.win.is_enabled("delete"))
     w.win.invoke_action("delete")
-    assert "ENDGÜLTIG" in asked[-1] and "unwiderruflich" in asked[-1]
+    assert "ENDGÜLTIG" in asked[-1] and "nicht rückgängig" in asked[-1]
     w.pump(lambda: len(w.rows()) == 2)
     assert not (w.root_dir / "2026-11-17_0900_Team").exists() and w.win.selected is None
 
@@ -641,3 +641,34 @@ def test_participants_and_recheck_rerun_identification(world: World, monkeypatch
     assert w.actions.recheck_speakers(rec)
     w.pump(lambda: len(w.jobs) > n)
     assert any((rec.data_dir / "archive").glob("speakers.*.json"))
+
+
+def test_classic_delete_scopes_pin_and_multi_select(world: World, monkeypatch):
+    """0.3.1: "Audio und Transkript löschen", "Behalten" and "Auswahl löschen" in the classic window."""
+    from tkinter import messagebox
+
+    from callrec.recording import Recording
+    from callrec.retention import is_pinned
+
+    w = world
+    w.win.show()
+    asked: list[str] = []
+    monkeypatch.setattr(messagebox, "askyesno", lambda t, m, **k: asked.append(t + "|" + m) or True)
+    monkeypatch.setattr(messagebox, "showinfo", lambda *a, **k: None)
+    w.pump(lambda: len(w.rows()) == 3)
+    w.win.select("2026-11-19_1400_Projekt-Jour-fixe")
+    w.pump(lambda: w.win.is_enabled("delete_material"))
+    w.win.invoke_action("delete_material")
+    rec = Recording(w.root_dir / "2026-11-19_1400_Projekt-Jour-fixe")
+    assert "Zusammenfassung bleibt" in asked[-1] and "ENDGÜLTIG" in asked[-1]
+    assert not rec.transcript_path.exists() and rec.summary_path.exists()
+    w.win.select("2026-11-18_1000_Kunde-Mueller")
+    w.pump(lambda: w.win.is_enabled("pin"))
+    w.win.invoke_action("pin")
+    assert is_pinned(Recording(w.root_dir / "2026-11-18_1000_Kunde-Mueller").load_meta())
+    w.pump(lambda: w.win.by_id["2026-11-18_1000_Kunde-Mueller"].pinned)
+    w.win.tree.selection_set(("2026-11-18_1000_Kunde-Mueller", "2026-11-17_0900_Team"))
+    assert len(w.win.selected_infos()) == 2
+    w.win.delete_selected()
+    assert "2 Aufnahmen" in asked[-1] and "Behalten" in asked[-1]
+    w.pump(lambda: len(w.rows()) == 1)

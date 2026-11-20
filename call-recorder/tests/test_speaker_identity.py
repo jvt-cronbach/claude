@@ -549,18 +549,24 @@ def test_prompt_defaults_leave_out_private_talk_and_upgrade_unchanged_files(tmp_
     from callrec import userfiles as uf
     from callrec.summary import missing_sections
 
-    assert "Smalltalk und Privates" in uf.SUMMARY_SYSTEM_TEMPLATE and uf.PRIVATE_CALL_LINE in uf.SUMMARY_FINAL_TEMPLATE
+    assert "Smalltalk, Tratsch und Witze werden nicht berücksichtigt" in uf.SUMMARY_SYSTEM_TEMPLATE
+    assert "Witz" in uf.SUMMARY_SYSTEM_TEMPLATE and "nie eine Entscheidung" in uf.SUMMARY_SYSTEM_TEMPLATE
+    assert uf.NO_BUSINESS_LINE in uf.SUMMARY_FINAL_TEMPLATE and uf.NO_BUSINESS_LINE in uf.SUMMARY_SYSTEM_TEMPLATE
     d = tmp_path / "prompts"
     d.mkdir()
     prev_sys = uf._PREVIOUS_DEFAULTS["summary_system.txt"][0]
-    assert "Smalltalk" not in prev_sys
+    assert "Smalltalk und Privates" in prev_sys  # the default of 0.3.0
     (d / "summary_system.txt").write_text(prev_sys, encoding="utf-8")  # unchanged earlier default
     (d / "summary_final.txt").write_text("Mein eigenes Format\n{material}\n", encoding="utf-8")  # customised
     uf._ensure_prompt(d, "summary_system.txt", uf.SUMMARY_SYSTEM_TEMPLATE)
     uf._ensure_prompt(d, "summary_final.txt", uf.SUMMARY_FINAL_TEMPLATE)
     assert (d / "summary_system.txt").read_text(encoding="utf-8") == uf.SUMMARY_SYSTEM_TEMPLATE
     assert (d / "summary_final.txt").read_text(encoding="utf-8") == "Mein eigenes Format\n{material}\n"
-    assert missing_sections(uf.PRIVATE_CALL_LINE) == []
+    assert missing_sections(uf.PRIVATE_CALL_LINE) == [] and missing_sections(uf.NO_BUSINESS_LINE) == []
+    # the 0.3.0 default (with "Smalltalk und Privates") is upgraded too
+    (d / "summary_chunk.txt").write_text(uf._PREVIOUS_DEFAULTS["summary_chunk.txt"][0], encoding="utf-8")
+    uf._ensure_prompt(d, "summary_chunk.txt", uf.SUMMARY_CHUNK_TEMPLATE)
+    assert (d / "summary_chunk.txt").read_text(encoding="utf-8") == uf.SUMMARY_CHUNK_TEMPLATE
     assert uf.validate_prompt("final", uf.SUMMARY_FINAL_TEMPLATE) == []
     warn = uf.validate_prompt("final", "Fasse zusammen: {transkript}")
     assert any("{material}" in w for w in warn) and any("{transkript}" in w for w in warn)

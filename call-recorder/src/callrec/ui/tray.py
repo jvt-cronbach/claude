@@ -20,7 +20,22 @@ RECORDING = "#d32f2f"
 BUSY = "#f57c00"
 
 
+def app_icon(state: str = "idle", size: int = 64) -> Image.Image | None:
+    """The app artwork (callrec/ui/assets): idle = indigo, recording = red, busy = amber."""
+    from callrec.ui.appid import png_path
+
+    variant = {"recording": "callrec-recording", "busy": "callrec-busy"}.get(state, "callrec")
+    try:
+        return Image.open(png_path(size, variant)).convert("RGBA")
+    except OSError:
+        return None
+
+
 def make_icon(color: str, recording: bool = False, size: int = 64) -> Image.Image:
+    state = "recording" if recording or color == RECORDING else ("busy" if color == BUSY else "idle")
+    art = app_icon(state, size)
+    if art is not None:
+        return art
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     # microphone-like shape: filled circle with a ring when recording

@@ -489,3 +489,27 @@ def retention_badge(info: RecordingInfo, due_text: str = "") -> str:
     if info.removed_text:
         return "Nur Zusammenfassung" if info.reduced else "Audio gelöscht"
     return due_text
+
+
+def retention_due_text(info: RecordingInfo, rt: Any, now: Any = None) -> str:
+    """ "wird in 2 Tagen gelöscht" for the list and the details ("" = not soon / not at all)."""
+    from datetime import datetime, timedelta
+
+    from callrec.retention import PRE_NOTICE_DAYS
+
+    if rt is None or not rt.enabled or info.pinned or info.reduced or info.started_at is None:
+        return ""
+    if rt.scope == "audio" and not info.has_audio:
+        return ""
+    now = now or datetime.now().astimezone()
+    start = info.started_at if info.started_at.tzinfo else info.started_at.astimezone()
+    left = (start + timedelta(days=rt.max_age_days) - now).total_seconds() / 86400
+    what = {"audio": "Audio", "recording": "Aufnahme"}.get(rt.scope, "Audio und Transkript")
+    if left <= 0:
+        return f"{what}: wird beim nächsten Lauf gelöscht"
+    if left < 1:
+        return f"{what}: wird in den nächsten 24 h gelöscht"
+    if left <= PRE_NOTICE_DAYS:
+        n = int(left + 0.999)
+        return f"{what}: wird in {n} Tagen gelöscht"
+    return ""

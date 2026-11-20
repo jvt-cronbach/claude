@@ -387,7 +387,7 @@ class WebCore:
             store.delete_all()
         elif action != "list":
             return {"error": "Unbekannte Aktion"}
-        return {"profiles": profiles(store), "text": text}
+        return {"profiles": profiles(store, self.cfg.recordings_path()), "text": text}
 
     # ------------------------------------------------------------------ window state, restart
     def save_window_state(self, state: dict[str, Any]) -> None:
@@ -524,8 +524,11 @@ def run_web_app(cfg: Config, log_file: Path | None, start_minimized: bool = Fals
             windows.destroy_all()
 
     try:
+        from callrec.ui.appid import icon_path
+
+        # icon: pywebview 6.2.1 sets it on every WinForms form (else the icon of python(w).exe)
         webview.start(boot, gui="edgechromium" if sys.platform == "win32" else None, private_mode=False,
-                      storage_path=str(paths.data_dir() / "webview"), debug=False)
+                      storage_path=str(paths.data_dir() / "webview"), debug=False, icon=str(icon_path()))
     except Exception as exc:
         log.exception("pywebview konnte nicht starten")
         server.stop()
