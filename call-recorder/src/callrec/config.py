@@ -237,6 +237,14 @@ class AutoStopConfig:
 
 
 @dataclass
+class UpdateConfig:
+    # Only config.toml may change the source (never a preset - [update] is not a preset section).
+    repo_url: str = "https://github.com/jvt-cronbach/claude"
+    branch: str = "claude/cool-maxwell-zmzy87"
+    check_daily: bool = True  # look once a day and only NOTIFY; installing always needs your click
+
+
+@dataclass
 class HotkeyConfig:
     toggle: str = "ctrl+alt+shift+r"
 
@@ -263,6 +271,7 @@ class Config:
     autostop: AutoStopConfig = field(default_factory=AutoStopConfig)
     processing: ProcessingConfig = field(default_factory=ProcessingConfig)
     hotkey: HotkeyConfig = field(default_factory=HotkeyConfig)
+    update: UpdateConfig = field(default_factory=UpdateConfig)
     ui: UiConfig = field(default_factory=UiConfig)
 
     warnings: list[str] = field(default_factory=list, compare=False, repr=False)
@@ -287,6 +296,12 @@ class Config:
             raise ConfigError("speakers.match_margin muss zwischen 0 und 0,5 liegen, min_*_speech_s >= 0")
         if not sp.match_threshold <= sp.auto_update_threshold < 1.0:
             raise ConfigError("speakers.auto_update_threshold muss zwischen match_threshold und 1 liegen")
+        from callrec.updater import UpdateError, validate_source
+
+        try:
+            validate_source(self.update.repo_url, self.update.branch)
+        except UpdateError as exc:
+            raise ConfigError(f"[update]: {exc}") from None
         if not 0 <= sp.extra_remote_speakers <= 20:
             raise ConfigError("speakers.extra_remote_speakers muss zwischen 0 und 20 liegen")
         if not 0 <= self.diarization.num_threads <= 64:
@@ -370,6 +385,7 @@ _SECTION_TYPES: dict[str, type] = {
     "autostop": AutoStopConfig,
     "processing": ProcessingConfig,
     "hotkey": HotkeyConfig,
+    "update": UpdateConfig,
     "ui": UiConfig,
 }
 
@@ -820,6 +836,13 @@ handoff_without_asking = false
 
 [hotkey]
 toggle = "ctrl+alt+shift+r"
+
+[update]
+# Quelle der Updates (nur HTTPS auf github.com; installiert wird nur der in release.json freigegebene Stand)
+repo_url = "https://github.com/jvt-cronbach/claude"
+branch = "claude/cool-maxwell-zmzy87"
+# einmal täglich nachsehen und nur benachrichtigen (installiert wird nie ohne Ihren Klick)
+check_daily = true
 
 [ui]
 show_overlay = true

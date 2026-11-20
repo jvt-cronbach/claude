@@ -37,6 +37,7 @@ A_README = "readme"
 A_RECHECK = "recheck"
 A_AUTOSTART_ON = "autostart:on"
 A_AUTOSTART_OFF = "autostart:off"
+A_UPDATES = "updates"
 
 
 @dataclass
@@ -241,6 +242,30 @@ def check_autostart(status: Any) -> CheckItem:
     return CheckItem("autostart", title, UNKNOWN, detail or "Nur unter Windows verfügbar.", required=False)
 
 
+def check_updates_item(is_checkout: Callable[[], bool] | None = None) -> CheckItem:
+    """Installed version and whether in-app updates are possible (no network here)."""
+    from callrec.updater import version_text
+
+    title = "Version und Updates"
+    try:
+        checkout = is_checkout() if is_checkout is not None else _is_git_checkout()
+    except Exception:  # noqa: BLE001
+        checkout = False
+    if checkout:
+        return CheckItem("updates", title, OK, f"{version_text()} – Updates aus der App möglich.", required=False,
+                         actions=[("Nach Updates suchen …", A_UPDATES)])
+    return CheckItem("updates", title, OPTIONAL, f"{version_text()}. Diese Installation stammt aus einer ZIP-Datei; für "
+                     "Updates aus der App einmalig install-callrecorder.ps1 ausführen (README, Abschnitt „Updates“).",
+                     required=False, actions=[("Nach Updates suchen …", A_UPDATES)])
+
+
+def _is_git_checkout() -> bool:
+    from callrec.updater import app_root
+
+    root = app_root()
+    return any((p / ".git").exists() for p in (root, *root.parents))
+
+
 def summary_line(items: list[CheckItem]) -> tuple[bool, str]:
     """(ready for daily use, one sentence)."""
     blocking = [i for i in items if i.required and i.state == ERROR]
@@ -339,6 +364,7 @@ def run_all(cfg: Config, summary_test: tuple[str, bool] | None = None, *, resolv
     items.append(safe(lambda: check_autostop(cfg), "autostop", "Aufnahme-Ende"))
     if autostart is not None:
         items.append(safe(lambda: check_autostart(autostart.status()), "autostart", "Autostart"))
+    items.append(safe(check_updates_item, "updates", "Version und Updates"))
     return items
 
 

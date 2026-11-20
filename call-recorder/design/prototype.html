@@ -1,0 +1,1848 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CallRecorder – Prototyp</title>
+<!--
+  CallRecorder UI prototype (design/prototype.html)
+  Self-contained: no network, no web fonts, no build step. Intended to be carried over into the
+  pywebview frontend (Edge WebView2). All names, companies, topics and data are FICTIONAL.
+  Icons: hand-drawn 24px outline SVG in the style of Lucide/Fluent (no external assets).
+  Routes: #home #toast #consent #recording #countdown #postcall #pipeline #library #transcript
+          #actions #retranscribe #handoff #speakers #setup #settings #settings-summary #prompt
+          #update #profiles #empty #library-empty #no-calendar #error-vpn #mini
+  URL parameters: ?theme=light|dark (default: follows Windows), ?static=1 (no live animation),
+          ?clean=1 (hide the prototype state picker)
+-->
+<style>
+/* =====================================================================
+   1. TOKENS
+   ===================================================================== */
+:root {
+  color-scheme: light;
+  /* neutrals */
+  --bg: #F3F3F3;            /* window background (Mica-like) */
+  --surface: #FFFFFF;       /* cards, panes */
+  --surface-2: #F7F7F7;     /* subtle fills inside cards */
+  --surface-hover: #EFEFEF;
+  --surface-pressed: #E7E7E7;
+  --surface-selected: #E3F2F0;
+  --border: #E3E3E3;        /* decorative separators */
+  --border-strong: #D1D1D1;
+  --border-control: #858585;/* input/checkbox boundaries, 3.69:1 */
+  --text: #1B1B1B;
+  --text-2: #565656;
+  --text-3: #6B6B6B;
+  --text-on-accent: #FFFFFF;
+  /* brand / accent: calm petrol-teal */
+  --accent: #0F6E68;
+  --accent-hover: #0C5E59;
+  --accent-pressed: #0A4F4B;
+  --accent-text: #0B5753;
+  --accent-subtle: #E3F2F0;
+  /* recording – reserved for the recording state only */
+  --rec: #C42B1C;
+  --rec-hover: #AD2618;
+  --rec-text: #A1251A;
+  --rec-subtle: #FDECEA;
+  /* status */
+  --ok: #107C10;  --ok-text: #0E6B0E;  --ok-subtle: #E6F4E3;
+  --warn: #8A5100; --warn-text: #7A4800; --warn-subtle: #FFF4D6; --warn-mark: #C77A00;
+  --err: #B3261E; --err-text: #9E2119; --err-subtle: #FDECEA;
+  --info: #0062B1; --info-text: #00539A; --info-subtle: #E5F0FA;
+  /* speaker colours (text-safe ≥ 6:1 on surface) */
+  --sp-me: var(--accent-text);
+  --sp-1: #1F5FA8; --sp-2: #7A3FB8; --sp-3: #A3266E; --sp-4: #9A4A00; --sp-5: #2E7031; --sp-6: #4A5B6E;
+  --focus: #1B1B1B;
+  --focus-inner: #FFFFFF;
+  --scrim: rgba(0,0,0,.32);
+  /* elevation */
+  --shadow-1: 0 1px 2px rgba(0,0,0,.05);
+  --shadow-2: 0 2px 6px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+  --shadow-flyout: 0 8px 16px rgba(0,0,0,.14), 0 0 1px rgba(0,0,0,.18);
+  --shadow-dialog: 0 32px 64px rgba(0,0,0,.20), 0 2px 21px rgba(0,0,0,.14);
+  /* type */
+  --font: "Segoe UI Variable Text", "Segoe UI", "Inter", system-ui, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI", "Inter", system-ui, sans-serif;
+  --font-mono: "Cascadia Mono", Consolas, "JetBrains Mono", ui-monospace, monospace;
+  --fs-caption: 12px; --lh-caption: 16px;
+  --fs-body: 14px;    --lh-body: 20px;
+  --fs-read: 16px;    --lh-read: 26px;
+  --fs-subtitle: 18px; --lh-subtitle: 24px;
+  --fs-title: 22px;   --lh-title: 28px;
+  --fs-display: 28px; --lh-display: 36px;
+  --fs-timer: 40px;
+  /* spacing (4px grid) */
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px; --s-8: 32px; --s-10: 40px;
+  /* radii */
+  --r-sm: 4px; --r-md: 6px; --r-lg: 8px; --r-xl: 12px; --r-pill: 999px;
+  /* motion */
+  --t-fast: 83ms; --t-normal: 167ms; --t-slow: 250ms;
+  --ease-out: cubic-bezier(0, 0, 0, 1);
+  --ease-in: cubic-bezier(1, 0, 1, 1);
+  /* layout */
+  --nav-w: 232px;
+  --page-pad: 28px;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #1F1F1F; --surface: #2A2A2A; --surface-2: #303030; --surface-hover: #353535; --surface-pressed: #3B3B3B;
+  --surface-selected: #1E3B39;
+  --border: #3A3A3A; --border-strong: #4A4A4A; --border-control: #8C8C8C;
+  --text: #F2F2F2; --text-2: #C4C4C4; --text-3: #A3A3A3; --text-on-accent: #062523;
+  --accent: #5CCFC2; --accent-hover: #74D8CD; --accent-pressed: #4BB9AD; --accent-text: #7EDDD2; --accent-subtle: #1E3B39;
+  --rec: #C42B1C; --rec-hover: #D63A2A; --rec-text: #FF9C94; --rec-subtle: #46201D;
+  --ok: #7BD06E; --ok-text: #8EDB82; --ok-subtle: #1F3A1C;
+  --warn: #F5C451; --warn-text: #F7CD6A; --warn-subtle: #3D3216; --warn-mark: #F5C451;
+  --err: #FF9C94; --err-text: #FFB4AD; --err-subtle: #46201D;
+  --info: #7CC4FF; --info-text: #9AD2FF; --info-subtle: #1A3247;
+  --sp-me: var(--accent-text);
+  --sp-1: #8CC2FF; --sp-2: #C9A6F2; --sp-3: #F29AC9; --sp-4: #F5AE6B; --sp-5: #8CD38F; --sp-6: #AFC0D3;
+  --focus: #FFFFFF; --focus-inner: #1F1F1F;
+  --scrim: rgba(0,0,0,.55);
+  --shadow-1: 0 1px 2px rgba(0,0,0,.3);
+  --shadow-2: 0 2px 6px rgba(0,0,0,.35);
+  --shadow-flyout: 0 8px 16px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.06);
+  --shadow-dialog: 0 32px 64px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.07);
+}
+
+/* =====================================================================
+   2. BASE
+   ===================================================================== */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 400 var(--fs-body)/var(--lh-body) var(--font);
+  -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+h1, h2, h3, h4, p, ul, ol, figure { margin: 0; }
+ul, ol { padding: 0; list-style: none; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+a { color: var(--accent-text); }
+.ico { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.ico-sm { width: 16px; height: 16px; }
+.ico-lg { width: 24px; height: 24px; }
+.ico-fill { fill: currentColor; stroke: none; }
+.num { font-variant-numeric: tabular-nums; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.muted { color: var(--text-2); }
+.faint { color: var(--text-3); }
+.caption { font-size: var(--fs-caption); line-height: var(--lh-caption); }
+.strong { font-weight: 600; }
+.nowrap { white-space: nowrap; }
+.ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+:focus { outline: none; }
+[data-focus]:focus, [data-focus]:focus-visible { outline: none; box-shadow: none; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; box-shadow: 0 0 0 2px var(--focus-inner); border-radius: var(--r-sm); }
+kbd { font: 600 11px/1 var(--font); padding: 3px 5px; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: var(--r-sm); background: var(--surface); color: var(--text-2); white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; } }
+
+/* =====================================================================
+   3. APP SHELL
+   ===================================================================== */
+.app { display: grid; grid-template-columns: var(--nav-w) 1fr; height: 100vh; }
+.nav { display: flex; flex-direction: column; gap: var(--s-1); padding: var(--s-3) var(--s-2); border-right: 1px solid var(--border); background: var(--bg); min-height: 0; overflow-y: auto; }
+.brand { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-2) var(--s-3) var(--s-4); font-weight: 600; font-size: 15px; }
+.brand-mark { width: 28px; height: 28px; border-radius: var(--r-md); background: var(--accent); color: var(--text-on-accent); display: grid; place-items: center; }
+.brand-mark .ico { width: 18px; height: 18px; }
+.nav-item { position: relative; display: flex; align-items: center; gap: var(--s-3); height: 40px; padding: 0 var(--s-3); border: 0; border-radius: var(--r-md); background: transparent; color: var(--text); text-align: left; text-decoration: none; transition: background var(--t-fast) var(--ease-out); }
+.nav-item:hover { background: var(--surface-hover); }
+.nav-item[aria-current="page"] { background: var(--surface); box-shadow: var(--shadow-1); font-weight: 600; }
+.nav-item[aria-current="page"]::before { content: ""; position: absolute; left: 0; top: 11px; bottom: 11px; width: 3px; border-radius: 2px; background: var(--accent); }
+.nav-item .badge { margin-left: auto; }
+.nav-sep { height: 1px; background: var(--border); margin: var(--s-2) var(--s-3); }
+.nav-spacer { flex: 1; }
+.nav-rec { margin: var(--s-2) var(--s-1) var(--s-1); }
+.nav-status { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-2) var(--s-3); color: var(--text-2); font-size: var(--fs-caption); line-height: var(--lh-caption); }
+.badge { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: var(--r-pill); background: var(--accent); color: var(--text-on-accent); font-size: 12px; font-weight: 600; }
+.badge-warn { background: var(--warn-subtle); color: var(--warn-text); box-shadow: inset 0 0 0 1px var(--warn-mark); }
+
+.main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.scroll { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; }
+.page { padding: var(--s-6) var(--page-pad) var(--s-8); max-width: 1680px; margin: 0 auto; }
+.page-head { display: flex; align-items: flex-end; gap: var(--s-4); flex-wrap: wrap; margin-bottom: var(--s-5); }
+.page-head h1 { font: 600 var(--fs-display)/var(--lh-display) var(--font-display); }
+.page-head .sub { color: var(--text-2); margin-top: 2px; }
+.page-head .grow { flex: 1; min-width: 240px; }
+.crumbs { display: flex; align-items: center; gap: var(--s-1); color: var(--text-2); margin-bottom: var(--s-1); flex-wrap: wrap; }
+.crumbs button { border: 0; background: none; color: var(--accent-text); padding: 2px 4px; border-radius: var(--r-sm); }
+.crumbs button:hover { text-decoration: underline; }
+
+/* recording bar (shown on every screen except the home hero while recording) */
+.recbar { display: flex; align-items: center; gap: var(--s-3); min-height: 44px; padding: var(--s-1) var(--page-pad); background: var(--rec-subtle); color: var(--rec-text); border-bottom: 1px solid color-mix(in srgb, var(--rec) 35%, transparent); flex-wrap: wrap; }
+.recbar .title { color: var(--text); font-weight: 600; }
+.recbar .grow { flex: 1; min-width: 0; }
+.recbar.warn { background: var(--warn-subtle); color: var(--warn-text); border-bottom-color: var(--warn-mark); }
+.rec-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--rec); flex: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--rec) 25%, transparent); animation: pulse 1.8s ease-in-out infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--rec) 0%, transparent); opacity: .75; } }
+
+/* =====================================================================
+   4. COMPONENTS
+   ===================================================================== */
+/* buttons */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2); min-height: 32px; padding: 5px 12px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--surface); color: var(--text); font-weight: 400; line-height: 20px; white-space: nowrap; text-decoration: none; transition: background var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out); }
+.btn:hover { background: var(--surface-hover); }
+.btn:active { background: var(--surface-pressed); }
+.btn[disabled], .btn[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--text-on-accent); font-weight: 600; }
+.btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn-primary:active { background: var(--accent-pressed); }
+.btn-record { background: var(--rec); border-color: var(--rec); color: #fff; font-weight: 600; }
+.btn-record:hover { background: var(--rec-hover); border-color: var(--rec-hover); }
+.btn-record .ico-fill { color: #fff; }
+.btn-subtle { background: transparent; border-color: transparent; }
+.btn-subtle:hover { background: var(--surface-hover); }
+.btn-link { background: transparent; border-color: transparent; color: var(--accent-text); padding-left: 6px; padding-right: 6px; }
+.btn-link:hover { background: var(--accent-subtle); }
+.btn-danger { color: var(--err-text); }
+.btn-danger:hover { background: var(--err-subtle); }
+.btn-lg { min-height: 44px; padding: 9px 20px; font-size: 15px; border-radius: var(--r-md); }
+.btn-sm { min-height: 28px; padding: 3px 10px; font-size: 13px; }
+.btn-block { width: 100%; }
+.icon-btn { display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid transparent; border-radius: var(--r-sm); background: transparent; color: var(--text-2); }
+.icon-btn:hover { background: var(--surface-hover); color: var(--text); }
+.btn-row { display: flex; gap: var(--s-2); flex-wrap: wrap; align-items: center; }
+
+/* cards */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-1); min-width: 0; }
+.card-head { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-4) var(--s-5) var(--s-2); }
+.card-head h2, .card-title { font: 600 var(--fs-subtitle)/var(--lh-subtitle) var(--font-display); }
+.card-head .grow { flex: 1; }
+.card-body { padding: var(--s-2) var(--s-5) var(--s-5); }
+.card-foot { padding: var(--s-3) var(--s-5); border-top: 1px solid var(--border); display: flex; gap: var(--s-2); align-items: center; }
+.eyebrow { font-size: var(--fs-caption); line-height: var(--lh-caption); font-weight: 600; letter-spacing: .02em; color: var(--text-2); text-transform: uppercase; }
+
+/* status chips */
+.chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px 0 7px; border-radius: var(--r-pill); font-size: 12px; font-weight: 600; white-space: nowrap; background: var(--surface-2); color: var(--text-2); box-shadow: inset 0 0 0 1px var(--border); }
+.chip .ico { width: 14px; height: 14px; stroke-width: 2; }
+.chip-ok { background: var(--ok-subtle); color: var(--ok-text); box-shadow: none; }
+.chip-warn { background: var(--warn-subtle); color: var(--warn-text); box-shadow: none; }
+.chip-err { background: var(--err-subtle); color: var(--err-text); box-shadow: none; }
+.chip-info { background: var(--info-subtle); color: var(--info-text); box-shadow: none; }
+.chip-accent { background: var(--accent-subtle); color: var(--accent-text); box-shadow: none; }
+.chip-rec { background: var(--rec-subtle); color: var(--rec-text); box-shadow: none; }
+.chip-dashed { background: transparent; box-shadow: inset 0 0 0 1px var(--border-control); color: var(--text-2); border-radius: var(--r-pill); }
+
+/* avatars */
+.avatar { --c: var(--sp-6); width: 28px; height: 28px; border-radius: 50%; display: inline-grid; place-items: center; flex: none; font-size: 11px; font-weight: 700; letter-spacing: .02em; color: var(--c); background: color-mix(in srgb, var(--c) 14%, var(--surface)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 35%, transparent); }
+.avatar-lg { width: 36px; height: 36px; font-size: 13px; }
+.people { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+.person { display: inline-flex; align-items: center; gap: var(--s-2); padding: 3px 10px 3px 3px; border-radius: var(--r-pill); background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--border); max-width: 100%; }
+.person .org { color: var(--text-3); }
+
+/* forms */
+.field { display: grid; gap: 6px; }
+.field + .field { margin-top: var(--s-4); }
+.label { font-weight: 600; }
+.help { color: var(--text-2); font-size: 13px; line-height: 18px; }
+.input, .select, .textarea { width: 100%; min-height: 32px; padding: 5px 10px; border: 1px solid var(--border-control); border-radius: var(--r-sm); background: var(--surface); color: var(--text); }
+.input:hover, .select:hover { background: var(--surface-2); }
+.input:focus-visible, .select:focus-visible, .textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; box-shadow: none; border-color: transparent; }
+.select { appearance: none; padding-right: 32px; background-image: linear-gradient(45deg, transparent 50%, var(--text-2) 50%), linear-gradient(135deg, var(--text-2) 50%, transparent 50%); background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%; background-size: 5px 5px; background-repeat: no-repeat; }
+.textarea { min-height: 120px; resize: vertical; line-height: 21px; }
+.input-icon { position: relative; }
+.input-icon .ico { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-3); pointer-events: none; }
+.input-icon .input { padding-left: 36px; }
+.input-icon kbd { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); }
+.inline-num { width: 72px; text-align: right; display: inline-block; }
+.check { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
+.check input { appearance: none; width: 20px; height: 20px; margin: 0; flex: none; border: 1px solid var(--border-control); border-radius: var(--r-sm); background: var(--surface); display: grid; place-items: center; cursor: pointer; }
+.check input:checked { background: var(--accent); border-color: var(--accent); }
+.check input:checked::after { content: ""; width: 10px; height: 6px; border: 2px solid var(--text-on-accent); border-top: 0; border-right: 0; transform: translateY(-1px) rotate(-45deg); }
+.check input:disabled { opacity: .45; cursor: not-allowed; }
+.check input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.check .t { padding-top: 0; }
+.radio input { border-radius: 50%; }
+.radio input:checked { background: var(--surface); border: 6px solid var(--accent); }
+.radio input:checked::after { display: none; }
+.switch { display: flex; align-items: center; gap: var(--s-3); cursor: pointer; }
+.switch input { appearance: none; width: 40px; height: 20px; margin: 0; flex: none; border: 1px solid var(--border-control); border-radius: var(--r-pill); background: var(--surface); position: relative; cursor: pointer; transition: background var(--t-normal) var(--ease-out); }
+.switch input::after { content: ""; position: absolute; top: 3px; left: 4px; width: 12px; height: 12px; border-radius: 50%; background: var(--text-2); transition: transform var(--t-normal) var(--ease-out); }
+.switch input:checked { background: var(--accent); border-color: var(--accent); }
+.switch input:checked::after { background: var(--text-on-accent); transform: translateX(19px); }
+.switch input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* setting rows */
+.setting { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--s-2) var(--s-6); align-items: center; padding: var(--s-4) var(--s-5); border-top: 1px solid var(--border); }
+.setting:first-child { border-top: 0; }
+.setting .t { font-weight: 600; }
+.setting .d { color: var(--text-2); font-size: 13px; line-height: 18px; margin-top: 2px; }
+.setting .ctl { display: flex; align-items: center; gap: var(--s-2); justify-content: flex-end; flex-wrap: wrap; }
+.setting.stack { grid-template-columns: 1fr; }
+.setting.stack .ctl { justify-content: flex-start; }
+.group-title { font: 600 var(--fs-subtitle)/var(--lh-subtitle) var(--font-display); margin: var(--s-6) 0 var(--s-3); }
+.group-title:first-child { margin-top: 0; }
+details.adv { margin-top: var(--s-4); }
+details.adv > summary { display: flex; align-items: center; gap: var(--s-2); cursor: pointer; list-style: none; padding: var(--s-3) var(--s-4); border-radius: var(--r-md); color: var(--text-2); font-weight: 600; }
+details.adv > summary::-webkit-details-marker { display: none; }
+details.adv > summary:hover { background: var(--surface-hover); }
+details.adv > summary .ico { transition: transform var(--t-normal) var(--ease-out); }
+details.adv[open] > summary .ico { transform: rotate(90deg); }
+
+/* banners */
+.banner { display: grid; grid-template-columns: auto 1fr; gap: var(--s-1) var(--s-3); padding: var(--s-3) var(--s-4); border-radius: var(--r-lg); background: var(--info-subtle); color: var(--text); border: 1px solid color-mix(in srgb, var(--info) 30%, transparent); }
+.banner > .ico { color: var(--info); margin-top: 1px; }
+.banner .bt { font-weight: 600; }
+.banner .bd { color: var(--text); }
+.banner .btn-row { grid-column: 2; margin-top: var(--s-2); }
+.banner-warn { background: var(--warn-subtle); border-color: color-mix(in srgb, var(--warn-mark) 45%, transparent); }
+.banner-warn > .ico { color: var(--warn-mark); }
+.banner-err { background: var(--err-subtle); border-color: color-mix(in srgb, var(--err) 35%, transparent); }
+.banner-err > .ico { color: var(--err); }
+.banner-ok { background: var(--ok-subtle); border-color: color-mix(in srgb, var(--ok) 30%, transparent); }
+.banner-ok > .ico { color: var(--ok); }
+
+/* tabs */
+.tabs { display: flex; gap: var(--s-1); border-bottom: 1px solid var(--border); }
+.tab { position: relative; border: 0; background: none; padding: 10px 12px; color: var(--text-2); border-radius: var(--r-sm) var(--r-sm) 0 0; display: inline-flex; gap: var(--s-2); align-items: center; }
+.tab:hover { color: var(--text); background: var(--surface-hover); }
+.tab[aria-selected="true"] { color: var(--text); font-weight: 600; }
+.tab[aria-selected="true"]::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 3px; border-radius: 2px; background: var(--accent); }
+
+/* segmented filter */
+.seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.seg button { height: 28px; padding: 0 10px; border-radius: var(--r-pill); border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-2); font-size: 13px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.seg button:hover { background: var(--surface-hover); color: var(--text); }
+.seg button[aria-pressed="true"] { background: var(--accent-subtle); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+.seg .n { font-variant-numeric: tabular-nums; opacity: .85; }
+
+/* flyout menu */
+.menu-wrap { position: relative; display: inline-block; }
+.menu { position: absolute; z-index: 30; top: calc(100% + 4px); right: 0; min-width: 280px; padding: var(--s-1); border-radius: var(--r-lg); background: var(--surface); box-shadow: var(--shadow-flyout); border: 1px solid var(--border); animation: drop var(--t-normal) var(--ease-out); }
+.menu.up { top: auto; bottom: calc(100% + 4px); }
+.menu.left { right: auto; left: 0; }
+@keyframes drop { from { opacity: 0; transform: translateY(-4px); } }
+.menu button { display: flex; width: 100%; align-items: center; gap: var(--s-3); padding: 8px 10px; white-space: nowrap; border: 0; background: none; text-align: left; border-radius: var(--r-sm); color: var(--text); }
+.menu button:hover, .menu button:focus-visible { background: var(--surface-hover); }
+.menu button .hint { margin-left: auto; color: var(--text-3); font-size: 12px; padding-left: var(--s-4); }
+.menu button .ico { color: var(--text-2); }
+.menu .sep { height: 1px; background: var(--border); margin: var(--s-1) 0; }
+.menu .danger, .menu .danger .ico { color: var(--err-text); }
+.menu-label { padding: 8px 10px 4px; font-size: 12px; color: var(--text-3); font-weight: 600; }
+
+/* progress */
+.bar { height: 6px; border-radius: var(--r-pill); background: var(--surface-pressed); overflow: hidden; }
+.bar > i { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width var(--t-slow) var(--ease-out); }
+.bar.indet > i { width: 30%; animation: indet 1.6s ease-in-out infinite; }
+@keyframes indet { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+
+/* level meter */
+.meter { display: grid; grid-template-columns: 116px 1fr 52px; gap: var(--s-3); align-items: center; }
+.meter .lv { position: relative; height: 10px; border-radius: var(--r-pill); background: var(--surface-pressed); overflow: hidden; }
+.meter .lv i { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: var(--ok); transition: width 90ms linear; }
+.meter .who { display: flex; align-items: center; gap: var(--s-2); color: var(--text-2); }
+
+/* pipeline (horizontal decision view + vertical progress view) */
+.pipe { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s-3); counter-reset: step; }
+.pipe-step { position: relative; display: grid; gap: var(--s-2); align-content: start; padding: var(--s-4); border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); }
+.pipe-step:not(:last-child)::after { content: ""; position: absolute; top: 31px; right: -13px; width: 12px; height: 2px; background: var(--border-strong); }
+.pipe-step .n { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-subtle); color: var(--accent-text); font-weight: 700; }
+.pipe-step.off { background: var(--surface-2); }
+.pipe-step.off .n { background: var(--surface-pressed); color: var(--text-3); }
+.pipe-step.off .st, .pipe-step.off .sd { color: var(--text-3); }
+.pipe-step .st { font-weight: 600; }
+.pipe-step .sd { color: var(--text-2); font-size: 13px; line-height: 18px; }
+.pipe-step .top { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
+.vsteps { display: grid; gap: 0; }
+.vstep { display: grid; grid-template-columns: 32px 1fr auto; gap: var(--s-1) var(--s-3); align-items: start; padding-bottom: var(--s-5); position: relative; }
+.vstep:not(:last-child)::before { content: ""; position: absolute; left: 15px; top: 34px; bottom: 2px; width: 2px; background: var(--border-strong); }
+.vstep.done:not(:last-child)::before { background: var(--accent); }
+.vstep .dot { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); color: var(--text-3); box-shadow: inset 0 0 0 1.5px var(--border-strong); }
+.vstep.done .dot { background: var(--accent); color: var(--text-on-accent); box-shadow: none; }
+.vstep.active .dot { background: var(--surface); color: var(--accent-text); box-shadow: inset 0 0 0 2px var(--accent); }
+.vstep.wait .dot { background: var(--warn-subtle); color: var(--warn-text); box-shadow: inset 0 0 0 2px var(--warn-mark); }
+.vstep.err .dot { background: var(--err-subtle); color: var(--err-text); box-shadow: inset 0 0 0 2px var(--err); }
+.vstep .vt { font-weight: 600; padding-top: 5px; }
+.vstep .vd { grid-column: 2 / 4; color: var(--text-2); }
+.vstep .vx { grid-column: 2 / 4; margin-top: var(--s-2); }
+.vstep .vs { padding-top: 5px; }
+
+/* mini pipeline (status of a recording at a glance) */
+.mini-steps { display: flex; flex-wrap: wrap; gap: 6px var(--s-4); }
+.ms { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); white-space: nowrap; }
+.ms .ico { width: 16px; height: 16px; stroke-width: 2; }
+.ms.done .ico { color: var(--ok); }
+.ms.open .ico, .ms.changed .ico { color: var(--warn-mark); }
+.ms.err .ico { color: var(--err); }
+.ms.busy .ico { color: var(--accent); }
+.ms.none .ico { color: var(--text-3); }
+
+/* modal */
+.scrim { position: fixed; inset: 0; z-index: 50; background: var(--scrim); display: grid; place-items: center; padding: var(--s-6); animation: fade var(--t-normal) var(--ease-out); }
+@keyframes fade { from { opacity: 0; } }
+.modal { width: min(640px, 100%); max-height: calc(100vh - 48px); display: flex; flex-direction: column; background: var(--surface); border-radius: var(--r-xl); box-shadow: var(--shadow-dialog); border: 1px solid var(--border); animation: pop var(--t-slow) var(--ease-out); }
+.modal.wide { width: min(920px, 100%); }
+@keyframes pop { from { opacity: 0; transform: scale(.98) translateY(6px); } }
+.modal-head { padding: var(--s-6) var(--s-6) var(--s-2); display: flex; gap: var(--s-3); align-items: flex-start; }
+.modal-head h2 { font: 600 20px/28px var(--font-display); }
+.modal-head .grow { flex: 1; min-width: 0; }
+.modal-body { padding: var(--s-2) var(--s-6) var(--s-5); overflow-y: auto; min-height: 0; }
+.modal-foot { display: flex; gap: var(--s-2); justify-content: flex-end; align-items: center; flex-wrap: wrap; padding: var(--s-4) var(--s-6); border-top: 1px solid var(--border); background: var(--surface-2); border-radius: 0 0 var(--r-xl) var(--r-xl); }
+.modal-foot .left { margin-right: auto; }
+.modal-foot span.left { flex: 1 1 160px; min-width: 0; }
+
+/* separate small windows (toast, recording indicator) – drawn as windows */
+.miniwin { background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--r-lg); box-shadow: var(--shadow-dialog); }
+.toastwin { position: fixed; z-index: 60; right: 20px; bottom: 20px; width: 380px; padding: var(--s-4); display: grid; gap: var(--s-3); animation: slidein var(--t-slow) var(--ease-out); }
+@keyframes slidein { from { opacity: 0; transform: translateY(12px); } }
+.toastwin .th { display: flex; gap: var(--s-3); align-items: flex-start; }
+.toastwin .app-tag { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
+.toastwin .x { margin: -6px 0 0 auto; flex: none; }
+.pillwin { display: inline-flex; align-items: center; gap: var(--s-3); padding: 6px 6px 6px 14px; border-radius: var(--r-pill); }
+.pillwin .t { max-width: 220px; }
+
+/* =====================================================================
+   5. SCREENS
+   ===================================================================== */
+/* home */
+/* columns are filled by JS (homeColumns) so cards stack without row gaps */
+.home-grid { display: grid; gap: var(--s-5); grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); align-items: start; }
+.home-grid.cols-3 { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) minmax(0, .9fr); }
+.home-grid.cols-1 { grid-template-columns: minmax(0, 1fr); }
+.home-col { display: grid; gap: var(--s-5); align-content: start; min-width: 0; }
+.hero { padding: var(--s-6); display: grid; gap: var(--s-5); }
+.hero-top { display: flex; gap: var(--s-4); align-items: flex-start; flex-wrap: wrap; }
+.hero-top .grow { flex: 1; min-width: 240px; }
+.hero h2 { font: 600 24px/32px var(--font-display); margin-top: var(--s-1); }
+.when { display: flex; align-items: center; gap: var(--s-2); color: var(--text-2); margin-top: var(--s-1); flex-wrap: wrap; }
+.hero-actions { display: flex; gap: var(--s-3); align-items: center; flex-wrap: wrap; }
+.hero-note { display: flex; gap: var(--s-2); align-items: flex-start; color: var(--text-2); font-size: 13px; line-height: 18px; }
+.hero-note .ico { color: var(--text-3); margin-top: 0; width: 16px; height: 16px; }
+.hero.recording { border-color: color-mix(in srgb, var(--rec) 45%, var(--border)); box-shadow: inset 4px 0 0 var(--rec), var(--shadow-2); }
+.rec-head { display: flex; align-items: center; gap: var(--s-3); color: var(--rec-text); font-weight: 600; }
+.timer { font: 600 var(--fs-timer)/1 var(--font-display); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.rec-grid { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--s-6); align-items: center; }
+.meters { display: grid; gap: var(--s-3); }
+.autostop { display: flex; gap: var(--s-2); align-items: flex-start; padding: var(--s-3) var(--s-4); border-radius: var(--r-md); background: var(--surface-2); color: var(--text-2); font-size: 13px; line-height: 18px; }
+.countdown { display: grid; grid-template-columns: auto 1fr; gap: var(--s-4); align-items: center; padding: var(--s-4); border-radius: var(--r-lg); background: var(--warn-subtle); border: 1px solid color-mix(in srgb, var(--warn-mark) 50%, transparent); }
+.countdown h3 { font: 600 var(--fs-subtitle)/var(--lh-subtitle) var(--font-display); }
+.ring { position: relative; width: 64px; height: 64px; }
+.ring svg { width: 64px; height: 64px; transform: rotate(-90deg); }
+.ring circle { fill: none; stroke-width: 5; }
+.ring .bg { stroke: color-mix(in srgb, var(--warn-mark) 25%, transparent); }
+.ring .fg { stroke: var(--warn-mark); stroke-linecap: round; transition: stroke-dashoffset 1s linear; }
+.ring b { position: absolute; inset: 0; display: grid; place-items: center; font: 700 18px/1 var(--font-display); font-variant-numeric: tabular-nums; color: var(--warn-text); }
+
+.att-list { display: grid; }
+.att { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: var(--s-1) var(--s-3); padding: var(--s-4) var(--s-5); border-top: 1px solid var(--border); }
+.att:first-child { border-top: 0; }
+.att .ic { width: 32px; height: 32px; border-radius: var(--r-md); display: grid; place-items: center; }
+.att .ic.warn { background: var(--warn-subtle); color: var(--warn-text); }
+.att .ic.ok { background: var(--accent-subtle); color: var(--accent-text); }
+.att .ic.err { background: var(--err-subtle); color: var(--err-text); }
+.att .ic.info { background: var(--info-subtle); color: var(--info-text); }
+.att .at { font-weight: 600; }
+.att .ad { color: var(--text-2); }
+.att .btn-row { grid-column: 2; margin-top: var(--s-2); }
+.att .meta { color: var(--text-3); font-size: 12px; }
+
+.agenda { display: grid; }
+.ag { display: grid; grid-template-columns: 52px 12px minmax(0, 1fr); gap: var(--s-3); padding: var(--s-2) var(--s-5); align-items: start; }
+.ag .tm { color: var(--text-2); font-variant-numeric: tabular-nums; padding-top: 1px; }
+.ag .ln { position: relative; align-self: stretch; }
+.ag .ln::before { content: ""; position: absolute; left: 5px; top: 0; bottom: -8px; width: 2px; background: var(--border); }
+.ag:last-child .ln::before { bottom: 50%; }
+.ag .ln::after { content: ""; position: absolute; left: 1px; top: 5px; width: 10px; height: 10px; border-radius: 50%; background: var(--surface); box-shadow: inset 0 0 0 2px var(--border-strong); }
+.ag.past .ln::after { background: var(--border-strong); box-shadow: none; }
+.ag.now .ln::after { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-subtle); }
+.ag .gt { font-weight: 600; }
+.ag.past .gt { font-weight: 400; color: var(--text-2); }
+.ag .gd { display: flex; gap: var(--s-2); align-items: center; flex-wrap: wrap; margin-top: 2px; font-size: 13px; color: var(--text-3); }
+.nowline { display: grid; grid-template-columns: 52px 1fr; gap: var(--s-3); align-items: center; padding: 2px var(--s-5); color: var(--accent-text); font-size: 12px; font-weight: 600; }
+.nowline i { height: 2px; background: var(--accent); border-radius: 2px; }
+
+.rows { display: grid; }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--s-1) var(--s-4); align-items: center; padding: var(--s-3) var(--s-5); border-top: 1px solid var(--border); border-left: 0; border-right: 0; border-bottom: 0; background: none; text-align: left; width: 100%; }
+.row:first-child { border-top: 0; }
+button.row:hover { background: var(--surface-hover); }
+.row .rt { font-weight: 600; }
+.row .rd { color: var(--text-3); font-size: 13px; }
+
+.work { display: grid; gap: var(--s-3); }
+.work-item { display: grid; gap: var(--s-2); }
+.work-item .wt { display: flex; gap: var(--s-2); align-items: baseline; flex-wrap: wrap; }
+
+/* library */
+.lib { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); height: 100%; min-height: 0; }
+.lib-list { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--border); background: var(--bg); }
+.lib-tools { padding: var(--s-5) var(--s-4) var(--s-3); display: grid; gap: var(--s-3); }
+.lib-tools h1 { font: 600 var(--fs-title)/var(--lh-title) var(--font-display); }
+.lib-scroll { flex: 1; overflow-y: auto; padding: 0 var(--s-2) var(--s-4); min-height: 0; }
+.grp { padding: var(--s-4) var(--s-3) var(--s-1); font-size: 12px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: .03em; }
+.rec-item { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px var(--s-3); width: 100%; padding: 10px var(--s-3); border: 0; border-radius: var(--r-md); background: none; text-align: left; color: var(--text); }
+.rec-item:hover { background: var(--surface-hover); }
+.rec-item[aria-selected="true"] { background: var(--surface); box-shadow: var(--shadow-1); }
+.rec-item[aria-selected="true"]::before { content: ""; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px; border-radius: 2px; background: var(--accent); }
+.rec-item .t { font-weight: 600; }
+.rec-item .m { color: var(--text-3); font-size: 13px; grid-column: 1; }
+.rec-item { grid-template-columns: minmax(0, 1fr); }
+.rec-item .chip { justify-self: start; margin-top: 4px; }
+.lib-foot { padding: var(--s-2) var(--s-4); border-top: 1px solid var(--border); display: flex; gap: var(--s-2); align-items: center; color: var(--text-2); font-size: 13px; white-space: nowrap; }
+.lib-detail { min-width: 0; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; background: var(--surface); container-type: inline-size; }
+.det-grid { display: grid; gap: var(--s-4); }
+.det-aside { display: none; }
+@container (min-width: 1080px) {
+  .det-grid { grid-template-columns: minmax(0, 1fr) 300px; gap: var(--s-10); align-items: start; }
+  .det-aside { display: grid; gap: var(--s-4); position: sticky; top: 72px; }
+}
+.aside-card { border: 1px solid var(--border); border-radius: var(--r-lg); padding: var(--s-4); display: grid; gap: var(--s-3); background: var(--surface-2); }
+.aside-card h3 { font-size: 13px; font-weight: 600; color: var(--text-2); }
+.aside-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--s-2); align-items: center; font-size: 13px; }
+.det-head { padding: var(--s-5) var(--s-6) var(--s-3); display: grid; gap: var(--s-3); }
+.det-head h1 { font: 600 var(--fs-title)/var(--lh-title) var(--font-display); }
+.det-meta { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-4); color: var(--text-2); }
+.det-meta span { display: inline-flex; align-items: center; gap: 6px; }
+.det-meta .ico { width: 16px; height: 16px; color: var(--text-3); }
+.det-people { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.det-people .avatar { width: 24px; height: 24px; font-size: 10px; }
+.det-people .avatar + .avatar { margin-left: -5px; box-shadow: 0 0 0 2px var(--surface), inset 0 0 0 1px color-mix(in srgb, var(--c) 35%, transparent); }
+.det-people .ellipsis { margin-left: 8px; }
+.det-actions { position: sticky; top: 0; z-index: 10; display: flex; gap: var(--s-2); flex-wrap: wrap; align-items: center; padding: var(--s-3) var(--s-6); background: var(--surface); border-bottom: 1px solid var(--border); }
+.det-inner { padding: var(--s-4) var(--s-6) var(--s-8); display: grid; gap: var(--s-4); }
+.handoff { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--s-1) var(--s-3); align-items: center; padding: var(--s-3) var(--s-4); border-radius: var(--r-lg); background: var(--surface-2); border: 1px solid var(--border); }
+.handoff .ico-wrap { width: 32px; height: 32px; border-radius: var(--r-md); display: grid; place-items: center; background: var(--accent-subtle); color: var(--accent-text); }
+.handoff.changed .ico-wrap { background: var(--warn-subtle); color: var(--warn-text); }
+.handoff .hd { color: var(--text-2); font-size: 13px; line-height: 18px; overflow-wrap: anywhere; }
+.reader-tools { display: flex; gap: var(--s-3); align-items: center; flex-wrap: wrap; justify-content: space-between; }
+.reader-tools .tabs { border-bottom: 0; }
+.reader-bar { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
+.reader-bar .select { width: auto; max-width: 340px; }
+.reader-sheet { border-top: 1px solid var(--border); padding-top: var(--s-5); }
+
+/* reading typography */
+.reader { max-width: 74ch; font-size: var(--fs-read); line-height: var(--lh-read); color: var(--text); }
+.reader h2 { font: 600 19px/26px var(--font-display); margin: var(--s-6) 0 var(--s-2); }
+.reader h2:first-child { margin-top: 0; }
+.reader h3 { font: 600 16px/24px var(--font); margin: var(--s-4) 0 var(--s-1); color: var(--text); }
+.reader p { margin: 0 0 var(--s-3); }
+.reader ul { margin: 0 0 var(--s-3); padding-left: 22px; list-style: disc; }
+.reader li { margin: 4px 0; padding-left: 2px; }
+.reader li::marker { color: var(--text-3); }
+.reader .lead { font-size: 17px; line-height: 28px; }
+.reader table { width: 100%; border-collapse: collapse; font-size: 15px; line-height: 22px; margin: var(--s-2) 0 var(--s-4); }
+.reader th { text-align: left; font-weight: 600; color: var(--text-2); font-size: 13px; padding: 8px 12px; border-bottom: 1px solid var(--border-strong); }
+.reader td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.reader td.open { color: var(--text-3); font-style: italic; }
+.reader .src { font-size: 13px; color: var(--text-3); margin-bottom: var(--s-4); }
+.transcript { max-width: 80ch; display: grid; gap: var(--s-4); }
+.utt { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: var(--s-3); }
+.utt .ts { color: var(--text-3); font-size: 13px; font-variant-numeric: tabular-nums; padding-top: 3px; }
+.utt .who { font-weight: 600; font-size: 14px; color: var(--c); display: flex; align-items: center; gap: 6px; }
+.utt .who::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+.utt p { font-size: var(--fs-read); line-height: var(--lh-read); margin-top: 2px; }
+.utt.me .who::after { content: "Sie"; font-size: 11px; font-weight: 600; color: var(--text-3); border: 1px solid var(--border-strong); border-radius: var(--r-pill); padding: 0 6px; line-height: 16px; }
+.tx-head { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-4); padding: var(--s-3) var(--s-4); border-radius: var(--r-md); background: var(--surface-2); color: var(--text-2); font-size: 13px; }
+.legend { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+
+/* speakers */
+.sp-grid { display: grid; gap: var(--s-4); }
+.voice { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: var(--s-5); padding: var(--s-5); }
+.voice-id { display: flex; align-items: center; gap: var(--s-3); }
+.voice-id h3 { font: 600 var(--fs-subtitle)/var(--lh-subtitle) var(--font-display); }
+.swatch { width: 14px; height: 14px; border-radius: 4px; background: var(--c); flex: none; }
+.play { display: flex; align-items: center; gap: var(--s-3); margin: var(--s-3) 0; }
+.play .pbtn { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--border-strong); background: var(--surface); display: grid; place-items: center; color: var(--text); }
+.play .pbtn:hover { background: var(--surface-hover); }
+.wave { display: flex; align-items: center; gap: 2px; height: 28px; flex: 1; max-width: 220px; }
+.wave i { width: 3px; border-radius: 2px; background: color-mix(in srgb, var(--c) 55%, var(--surface-pressed)); }
+.talk { display: grid; gap: 4px; }
+.talk .bar > i { background: var(--c); }
+.quotes { display: grid; gap: var(--s-2); margin-top: var(--s-3); }
+.quotes .qt { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: var(--s-2); padding-left: var(--s-3); border-left: 3px solid color-mix(in srgb, var(--c) 45%, transparent); }
+.quotes q { quotes: "„" "“"; color: var(--text); line-height: 21px; }
+.quotes .ts { color: var(--text-3); font-size: 12px; line-height: 21px; font-variant-numeric: tabular-nums; }
+.choices { display: grid; gap: var(--s-2); align-content: start; }
+.choice { display: grid; grid-template-columns: 20px 28px minmax(0, 1fr); gap: var(--s-3); align-items: center; padding: 6px 12px; border: 1px solid var(--border); border-radius: var(--r-md); cursor: pointer; background: var(--surface); }
+.choice:hover { background: var(--surface-hover); }
+.choice:has(input:checked) { border-color: var(--accent); background: var(--accent-subtle); }
+.choice:has(input:disabled) { cursor: default; opacity: .7; }
+.choice input { appearance: none; width: 20px; height: 20px; margin: 0; border-radius: 50%; border: 1px solid var(--border-control); background: var(--surface); }
+.choice input:checked { border: 6px solid var(--accent); }
+.choice input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.choice .cn { font-weight: 600; }
+.choice .cd { color: var(--text-3); font-size: 12px; line-height: 16px; }
+.choice.suggest { border-style: dashed; border-color: var(--border-control); }
+.choice.me .avatar { --c: var(--sp-me); }
+.choice-other { display: grid; grid-template-columns: 20px 1fr; gap: var(--s-3); align-items: center; padding: 6px 12px; }
+.fixed-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--s-4); align-items: center; padding: var(--s-4) var(--s-5); background: var(--surface-2); }
+.sticky-foot { position: sticky; bottom: 0; z-index: 5; display: flex; gap: var(--s-3); align-items: center; flex-wrap: wrap; padding: var(--s-3) var(--page-pad); background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: blur(8px); border-top: 1px solid var(--border); }
+.sticky-foot .grow { flex: 1; min-width: 200px; }
+
+/* setup */
+.checklist { display: grid; }
+.ck { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: var(--s-1) var(--s-4); padding: var(--s-4) var(--s-5); border-top: 1px solid var(--border); align-items: start; }
+.ck:first-child { border-top: 0; }
+.ck .st { grid-row: 1 / span 2; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; }
+.ck .st.ok { background: var(--ok-subtle); color: var(--ok); }
+.ck .st.warn { background: var(--warn-subtle); color: var(--warn-text); }
+.ck .st.err { background: var(--err-subtle); color: var(--err-text); }
+.ck .st.opt { background: var(--surface-2); color: var(--text-3); box-shadow: inset 0 0 0 1px var(--border-strong); }
+.ck .ct { font-weight: 600; display: flex; gap: var(--s-2); align-items: center; flex-wrap: wrap; min-height: 24px; }
+.ck .cd { color: var(--text-2); grid-column: 2; }
+.ck .cx { grid-column: 2; margin-top: var(--s-2); }
+.ck .btn-row { grid-row: 1 / 3; grid-column: 3; justify-content: flex-end; align-self: center; }
+.ck-sub { margin-top: var(--s-2); padding: var(--s-3) var(--s-4); border-radius: var(--r-md); background: var(--surface-2); display: grid; gap: 4px; }
+.summary-strip { display: grid; grid-template-columns: auto 1fr auto; gap: var(--s-4); align-items: center; padding: var(--s-4) var(--s-5); }
+.progress-ring { --p: 70; width: 52px; height: 52px; border-radius: 50%; background: conic-gradient(var(--accent) calc(var(--p) * 1%), var(--surface-pressed) 0); display: grid; place-items: center; }
+.progress-ring b { width: 40px; height: 40px; border-radius: 50%; background: var(--surface); display: grid; place-items: center; font-size: 13px; font-variant-numeric: tabular-nums; }
+
+/* settings */
+.set-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: var(--s-6); align-items: start; }
+.subnav { position: sticky; top: 0; display: grid; gap: 2px; }
+.subnav button { display: flex; align-items: center; gap: var(--s-3); height: 36px; padding: 0 var(--s-3); border: 0; border-radius: var(--r-md); background: none; text-align: left; color: var(--text); }
+.subnav button:hover { background: var(--surface-hover); }
+.subnav button[aria-current="true"] { background: var(--surface); box-shadow: var(--shadow-1); font-weight: 600; }
+.subnav .lbl { padding: var(--s-4) var(--s-3) var(--s-1); font-size: 12px; color: var(--text-3); font-weight: 600; }
+.set-col { display: grid; gap: var(--s-4); max-width: 880px; }
+.radio-cards { display: grid; gap: var(--s-2); }
+.rcard { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 2px var(--s-3); padding: var(--s-3) var(--s-4); border: 1px solid var(--border); border-radius: var(--r-lg); cursor: pointer; align-items: start; }
+.rcard:hover { background: var(--surface-hover); }
+.rcard:has(input:checked) { border-color: var(--accent); background: var(--accent-subtle); }
+.rcard input { appearance: none; width: 20px; height: 20px; margin: 2px 0 0; border-radius: 50%; border: 1px solid var(--border-control); background: var(--surface); }
+.rcard input:checked { border: 6px solid var(--accent); }
+.rcard input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.rcard .rt { font-weight: 600; }
+.rcard .rd { grid-column: 2 / 4; color: var(--text-2); font-size: 13px; line-height: 18px; }
+.keyfield { display: inline-flex; gap: 4px; align-items: center; padding: 4px 8px; border: 1px solid var(--border-control); border-radius: var(--r-sm); background: var(--surface); }
+
+/* prompt editor */
+.prompt-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: var(--s-5); align-items: start; }
+.code { font: 13.5px/21px var(--font-mono); min-height: 360px; white-space: pre-wrap; tab-size: 2; }
+.ph { display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border-radius: var(--r-sm); border: 1px dashed var(--border-control); background: var(--surface-2); font: 12px/1 var(--font-mono); color: var(--text); }
+.ph:hover { background: var(--surface-hover); }
+.outline-check { display: grid; gap: 6px; }
+.outline-check li { display: flex; gap: var(--s-2); align-items: center; }
+.outline-check .ico { color: var(--ok); width: 16px; height: 16px; stroke-width: 2.2; }
+.test-out { border: 1px solid var(--border); border-radius: var(--r-lg); padding: var(--s-4) var(--s-5); background: var(--surface); max-height: 360px; overflow-y: auto; }
+.test-out .reader { font-size: 14px; line-height: 22px; }
+.test-out .reader h2 { font-size: 16px; margin-top: var(--s-4); }
+
+/* update */
+.ver-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-4); }
+.ver { padding: var(--s-4) var(--s-5); display: grid; gap: 2px; }
+.ver .v { font: 600 24px/32px var(--font-display); font-variant-numeric: tabular-nums; }
+.notes { display: grid; gap: var(--s-3); }
+.note-item { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--s-3); align-items: start; }
+.note-item .chip { min-width: 84px; justify-content: center; }
+
+/* empty states */
+.empty { display: grid; justify-items: center; text-align: center; gap: var(--s-3); padding: var(--s-10) var(--s-6); color: var(--text-2); }
+.empty .art { width: 72px; height: 72px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-subtle); color: var(--accent-text); }
+.empty .art .ico { width: 32px; height: 32px; stroke-width: 1.5; }
+.empty h2, .empty h3 { color: var(--text); font: 600 var(--fs-subtitle)/var(--lh-subtitle) var(--font-display); }
+.empty p { max-width: 46ch; }
+
+/* desktop mock for companion windows */
+.desk { position: relative; min-height: 640px; border-radius: var(--r-xl); overflow: hidden; background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 22%, var(--bg)), color-mix(in srgb, var(--info) 18%, var(--bg)) 60%, var(--bg)); border: 1px solid var(--border); }
+.desk .lbl { position: absolute; font-size: 12px; font-weight: 600; color: var(--text); background: color-mix(in srgb, var(--surface) 85%, transparent); padding: 2px 8px; border-radius: var(--r-pill); }
+.teams-mock { position: absolute; left: 32px; top: 32px; width: 46%; height: 300px; border-radius: var(--r-lg); background: color-mix(in srgb, var(--surface) 70%, transparent); border: 1px solid var(--border); display: flex; gap: 8px; align-items: center; justify-content: center; color: var(--text-2); }
+.taskbar { position: absolute; left: 0; right: 0; bottom: 0; height: 48px; background: color-mix(in srgb, var(--surface) 85%, transparent); border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: flex-end; gap: var(--s-3); padding: 0 var(--s-4); font-size: 12px; color: var(--text-2); }
+.tray-ico { width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; background: var(--rec); color: #fff; }
+
+/* prototype state picker (not part of the product) */
+.proto { position: fixed; right: 12px; bottom: 12px; z-index: 80; }
+.proto > button { border: 1px dashed var(--border-control); background: var(--surface); color: var(--text-2); border-radius: var(--r-pill); padding: 6px 12px; font-size: 12px; box-shadow: var(--shadow-2); }
+.proto .menu { width: 300px; max-height: 70vh; overflow-y: auto; }
+body.clean .proto { display: none; }
+
+/* =====================================================================
+   6. RESPONSIVE (1366×768 at 125 % = 1093×614, at 150 % = 911×512 CSS px)
+   ===================================================================== */
+@media (max-width: 1279px) {
+  :root { --page-pad: 24px; }
+  .home-grid:not(.cols-1):not(.cols-3) { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); }
+  .set-layout { grid-template-columns: 216px minmax(0, 1fr); gap: var(--s-5); }
+  .subnav button { white-space: nowrap; }
+}
+@media (max-width: 1099px) {
+  :root { --nav-w: 64px; --page-pad: 20px; }
+  .nav .lbl-t, .nav .badge, .brand span, .nav-status span { display: none; }
+  .nav-item { justify-content: center; padding: 0; }
+  .nav-item .ico { margin: 0; }
+  .brand { justify-content: center; padding: var(--s-2) 0 var(--s-4); }
+  .nav-rec .btn { padding: 0; }
+  .nav-rec .btn .lbl-t { display: none; }
+  .nav-status { justify-content: center; }
+  .nav-item .dotbadge { position: absolute; top: 8px; right: 12px; width: 8px; height: 8px; border-radius: 50%; background: var(--warn-mark); }
+  .lib { grid-template-columns: minmax(260px, 320px) minmax(0, 1fr); }
+  .voice { grid-template-columns: minmax(0, 1fr); }
+  .prompt-grid { grid-template-columns: minmax(0, 1fr); }
+  .pipe { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pipe-step:nth-child(2)::after { display: none; }
+  .det-head, .det-inner, .det-actions { padding-left: var(--s-5); padding-right: var(--s-5); }
+}
+@media (min-width: 1100px) { .nav-item .dotbadge { display: none; } }
+@media (max-width: 1099px) { .foot-note { display: none; } .sticky-foot .grow { min-width: 0; } }
+@media (max-width: 999px) {
+  .lib { grid-template-columns: minmax(0, 1fr); }
+  .lib.has-detail .lib-list { display: none; }
+  .lib:not(.has-detail) .lib-detail { display: none; }
+}
+@media (max-width: 899px) {
+  .set-layout { grid-template-columns: minmax(0, 1fr); }
+  .subnav { position: static; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .subnav .lbl { display: none; }
+  .rec-grid { grid-template-columns: minmax(0, 1fr); gap: var(--s-4); }
+  .ck { grid-template-columns: 36px minmax(0, 1fr); }
+  .ck .btn-row { grid-row: auto; grid-column: 2; justify-content: flex-start; }
+  .ver-grid { grid-template-columns: minmax(0, 1fr); }
+  .fixed-row { grid-template-columns: auto minmax(0, 1fr); }
+  .fixed-row > :last-child { grid-column: 2; }
+  .handoff { grid-template-columns: auto minmax(0, 1fr); }
+  .handoff > :last-child { grid-column: 2; justify-self: start; }
+}
+@media (min-width: 1000px) { .back-to-list { display: none !important; } }
+@media (max-height: 560px) {
+  .modal-head { padding-top: var(--s-4); }
+  .modal { max-height: calc(100vh - 24px); }
+  .scrim { padding: var(--s-3); }
+}
+</style>
+</head>
+<body>
+<!-- ===== ICON SPRITE ===== -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h10M7 17h6"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></symbol>
+  <symbol id="i-checklist" viewBox="0 0 24 24"><path d="M10 6h10M10 12h10M10 18h10"/><path d="m3.5 6 1.5 1.5L7.5 5M3.5 12l1.5 1.5 2.5-2.5M3.5 18l1.5 1.5 2.5-2.5"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+  <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
+  <symbol id="i-people" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor" stroke-width="1.2"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-rec" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12.5 3 3 5-6"/></symbol>
+  <symbol id="i-warning" viewBox="0 0 24 24"><path d="M10.3 4.2 2.6 18a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0z"/><path d="M12 9.5v4.5M12 17.2v.01"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5v.01"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.8v.01"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="i-left" viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.4" fill="currentColor"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/><circle cx="19" cy="12" r="1.4" fill="currentColor"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5"/><path d="M4 14v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></symbol>
+  <symbol id="i-auto" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></symbol>
+  <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17v.01"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4.5h6V7M6 7l1 13h10l1-13"/><path d="M10 11v5M14 11v5"/></symbol>
+  <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></symbol>
+  <symbol id="i-lang" viewBox="0 0 24 24"><path d="M4 5h9M8.5 3v2M6 5c0 4 3 7 6 8M11 5c0 3-3 7-7 9"/><path d="m13 21 4-10 4 10M14.5 17.5h5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-wave" viewBox="0 0 24 24"><path d="M3 12h1M7 8v8M11 4.5v15M15 8.5v7M19 6.5v11"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M11 3.5l1.7 4.6 4.6 1.7-4.6 1.7L11 16.1l-1.7-4.6-4.6-1.7 4.6-1.7z"/><path d="M18.5 14.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/></symbol>
+  <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 18a4.5 4.5 0 0 1-.5-9 6 6 0 0 1 11.5 1.5A3.75 3.75 0 0 1 17.5 18z"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 4.5 6v6c0 4.5 3.2 8 7.5 9 4.3-1 7.5-4.5 7.5-9V6z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5"/><path d="M4 19h16"/></symbol>
+  <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+  <symbol id="i-headset" viewBox="0 0 24 24"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="13" width="4" height="7" rx="1.5"/><rect x="17" y="13" width="4" height="7" rx="1.5"/></symbol>
+  <symbol id="i-chip" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2.5V6M15 2.5V6M9 18v3.5M15 18v3.5M2.5 9H6M2.5 15H6M18 9h3.5M18 15h3.5"/></symbol>
+  <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v8"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/></symbol>
+  <symbol id="i-update" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 16V8M8.5 11.5 12 8l3.5 3.5"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol>
+  <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7.5 14h9"/></symbol>
+  <symbol id="i-expand" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6h9M19 6h1M4 12h3M13 12h7M4 18h11M21 18h-1"/><circle cx="16" cy="6" r="2.5"/><circle cx="10" cy="12" r="2.5"/><circle cx="18" cy="18" r="2.5"/></symbol>
+  <symbol id="i-fingerprint" viewBox="0 0 24 24"><path d="M12 11v3.5a7 7 0 0 1-1.5 4.3M8.5 7.6A4.5 4.5 0 0 1 16.5 11v2.5M7.5 11v2.5a10 10 0 0 1-1 4.4M16.3 17a12 12 0 0 1-1 3M4.5 9.5A8 8 0 0 1 19.7 8M20 12v1.5"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-teams" viewBox="0 0 24 24"><rect x="3" y="6" width="12" height="12" rx="2"/><path d="M6.5 10h5M9 10v5"/><circle cx="18.5" cy="8.5" r="2"/><path d="M15 13h5.5v3a2.5 2.5 0 0 1-2.5 2.5h-3"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></symbol>
+</svg>
+
+<div class="app" id="app">
+  <nav class="nav" id="nav" aria-label="Hauptnavigation"></nav>
+  <div class="main">
+    <div id="recbar"></div>
+    <main class="scroll" id="main" tabindex="-1"></main>
+  </div>
+</div>
+<div id="overlay"></div>
+<div class="proto" id="proto"></div>
+<div aria-live="polite" class="sr-only" id="live"></div>
+
+<script>
+"use strict";
+/* =====================================================================
+   DATA (all fictional)
+   ===================================================================== */
+const ME = { name: "Martina Ehlers", short: "Martina", ini: "ME", mail: "m.ehlers@nordhafen-bau.example" };
+const P = {
+  jp: { name: "Jonas Pfeiffer", org: "Kessler Bau", ini: "JP", c: 1 },
+  lh: { name: "Leonie Hartwig", org: "Kessler Bau", ini: "LH", c: 2 },
+  sa: { name: "Selin Aydın", org: "Planungsbüro Aydın", ini: "SA", c: 3 },
+  pw: { name: "Paul Wiesner", org: "Bauleitung", ini: "PW", c: 5 },
+  hl: { name: "Henrik Lindqvist", org: "Lindqvist Logistik", ini: "HL", c: 1 },
+  cn: { name: "Carla Neumann", org: "Lindqvist Logistik", ini: "CN", c: 3 },
+  tr: { name: "Tobias Rehm", org: "Vertrieb", ini: "TR", c: 4 },
+  fo: { name: "Frank Obermeier", org: "", ini: "FO", c: 6 },
+  nk: { name: "Nadine Krüger", org: "Controlling", ini: "NK", c: 2 },
+};
+const NEXT = { title: "Jour fixe Neubau Hafenkante", time: "14:00–14:45", start: "14:00", inMin: 12, online: true,
+  organizer: "Sie", people: ["jp", "lh", "sa", "pw"] };
+
+// status keys: open | ready | sent | changed | err | busy | new
+const RECS = [
+  { id: "r1", group: "Heute", title: "Kundengespräch Lindqvist Logistik", date: "Fr 20.11.", time: "11:00", dur: "52 Min", lang: "Deutsch", people: ["hl", "cn", "tr"], status: "open", open: 2 },
+  { id: "r2", group: "Heute", title: "Vertriebsrunde Nord", date: "Fr 20.11.", time: "09:00", dur: "31 Min", lang: "Deutsch", people: ["tr", "nk"], status: "busy", pct: 63 },
+  { id: "r3", group: "Gestern", title: "Abstimmung Kessler Bau – Nachträge", date: "Do 19.11.", time: "16:00", dur: "44 Min", lang: "Deutsch", people: ["jp", "lh"], status: "err" },
+  { id: "r4", group: "Gestern", title: "Budgetvorbereitung mit Controlling", date: "Do 19.11.", time: "10:30", dur: "38 Min", lang: "Deutsch", people: ["nk"], status: "ready" },
+  { id: "r5", group: "Diese Woche", title: "Bewerbungsgespräch Projektleitung", date: "Mi 18.11.", time: "14:00", dur: "55 Min", lang: "Deutsch", people: ["pw"], status: "sent", sent: "18.11. 15:20" },
+  { id: "r6", group: "Diese Woche", title: "Lieferantengespräch Brandschutz Seidel", date: "Di 17.11.", time: "09:30", dur: "27 Min", lang: "Deutsch", people: ["fo"], status: "sent", sent: "17.11. 10:05" },
+  { id: "r7", group: "Diese Woche", title: "Bankgespräch Finanzierung Halle 3", date: "Mo 16.11.", time: "11:00", dur: "41 Min", lang: "Deutsch", people: ["nk"], status: "sent", sent: "16.11. 12:10" },
+  { id: "r10", group: "Früher", title: "Jour fixe Neubau Hafenkante", date: "Fr 13.11.", time: "14:00", dur: "46 Min", lang: "Deutsch", people: ["jp", "lh", "sa", "pw"], status: "changed", sent: "13.11. 15:02" },
+  { id: "r8", group: "Früher", title: "Quarterly review Aurora Facility Services", date: "Do 12.11.", time: "15:00", dur: "1 Std 3 Min", lang: "Englisch", people: ["fo"], status: "sent", sent: "12.11. 16:30" },
+  { id: "r9", group: "Früher", title: "Telefonat Rechtsanwältin Brück", date: "Mi 11.11.", time: "08:45", dur: "12 Min", lang: "–", people: [], status: "new" },
+];
+const STATUS = {
+  open:    { chip: "chip-warn", icon: "people", text: r => `${r.open} Stimmen offen`, next: "Sprecher zuordnen", act: "speakers" },
+  ready:   { chip: "chip-accent", icon: "send", text: () => "Bereit zur Übergabe", next: "Übergeben …", act: "handoff" },
+  sent:    { chip: "chip-ok", icon: "check", text: () => "Übergeben", next: "", act: "" },
+  changed: { chip: "chip-warn", icon: "refresh", text: () => "Seit Übergabe geändert", next: "Erneut übergeben …", act: "handoff" },
+  err:     { chip: "chip-err", icon: "alert", text: () => "Zusammenfassung fehlt", next: "Erneut versuchen", act: "error-vpn" },
+  busy:    { chip: "chip-info", icon: "clock", text: r => `Wird verarbeitet · ${r.pct}\u00a0%`, next: "", act: "pipeline" },
+  new:     { chip: "", icon: "clock", text: () => "Nicht verarbeitet", next: "Jetzt verarbeiten", act: "pipeline" },
+};
+const FILTERS = [
+  ["all", "Alle", () => true],
+  ["todo", "Wartet auf mich", r => ["open", "ready", "changed", "err", "new"].includes(r.status)],
+  ["notsent", "Nicht übergeben", r => ["ready", "open", "new", "err"].includes(r.status)],
+  ["changed", "Seit Übergabe geändert", r => r.status === "changed"],
+  ["err", "Mit Fehlern", r => r.status === "err"],
+];
+
+/* =====================================================================
+   STATE + ROUTER
+   ===================================================================== */
+const params = new URLSearchParams(location.search);
+const STATIC = params.has("static");
+if (params.has("clean")) document.body.classList.add("clean");
+const S = {
+  theme: params.get("theme") || "auto",
+  rec: "idle",               // idle | recording | countdown
+  selected: "r10", tab: "summary", filter: "all", query: "", menu: null, modal: null,
+  setSection: "general", consent: false, calendar: true, empty: false, toast: false, elapsed: 23 * 60 + 41,
+  promptTested: false, mobileDetail: false, version: "3",
+};
+const ROUTES = {
+  home:        { screen: "home" },
+  toast:       { screen: "home", toast: true },
+  consent:     { screen: "home", modal: "consent" },
+  recording:   { screen: "home", rec: "recording" },
+  countdown:   { screen: "home", rec: "countdown" },
+  "rec-library": { screen: "library", rec: "recording" },
+  postcall:    { screen: "home", modal: "postcall" },
+  pipeline:    { screen: "library", selected: "r2" },
+  library:     { screen: "library", selected: "r10", tab: "summary" },
+  transcript:  { screen: "library", selected: "r10", tab: "transcript" },
+  actions:     { screen: "library", selected: "r10", menu: "more" },
+  retranscribe:{ screen: "library", selected: "r10", modal: "retranscribe" },
+  handoff:     { screen: "library", selected: "r4", modal: "handoff" },
+  speakers:    { screen: "speakers" },
+  setup:       { screen: "setup" },
+  settings:    { screen: "settings", sec: "general" },
+  "settings-recording": { screen: "settings", sec: "recording" },
+  "settings-summary": { screen: "settings", sec: "summary" },
+  "settings-sharepoint": { screen: "settings", sec: "sharepoint" },
+  profiles:    { screen: "settings", sec: "profiles" },
+  "settings-advanced": { screen: "settings", sec: "advanced" },
+  prompt:      { screen: "prompt" },
+  update:      { screen: "settings", sec: "update" },
+  empty:       { screen: "home", empty: true },
+  "library-empty": { screen: "library", empty: true },
+  "no-calendar": { screen: "home", calendar: false },
+  "error-vpn": { screen: "library", selected: "r3", tab: "summary" },
+  mini:        { screen: "mini" },
+};
+const SCREEN_TITLES = { home: "Übersicht", library: "Aufnahmen", speakers: "Sprecher zuordnen", setup: "Einrichtung", settings: "Einstellungen", prompt: "Anweisungen", mini: "Begleitfenster" };
+let current = "home";
+
+function applyRoute(name) {
+  const r = ROUTES[name] || ROUTES.home;
+  current = ROUTES[name] ? name : "home";
+  S.screen = r.screen;
+  S.rec = r.rec || (["recording", "countdown"].includes(S.rec) && !r.reset && S.keepRec ? S.rec : "idle");
+  S.modal = r.modal || null; S.menu = r.menu || null; S.toast = !!r.toast;
+  S.empty = !!r.empty; S.calendar = r.calendar !== false;
+  if (r.selected) S.selected = r.selected;
+  if (r.tab) S.tab = r.tab;
+  if (r.sec) S.setSection = r.sec;
+  S.mobileDetail = !!r.selected;
+  S.consent = false; S.promptTested = false;
+}
+function go(name) { if (location.hash === "#" + name) { applyRoute(name); render(); } else location.hash = name; }
+window.addEventListener("hashchange", () => { applyRoute(location.hash.slice(1)); render(true); });
+
+/* =====================================================================
+   HELPERS
+   ===================================================================== */
+const I = (n, cls = "") => `<svg class="ico ${cls}" aria-hidden="true"><use href="#i-${n}"/></svg>`;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const av = (k, lg = "") => { const p = k === "me" ? { ini: ME.ini, c: "me" } : P[k]; return `<span class="avatar ${lg}" style="--c: var(--sp-${p.c})" aria-hidden="true">${p.ini}</span>`; };
+const person = k => { const p = P[k]; return `<span class="person">${av(k)}<span class="ellipsis">${esc(p.name)}${p.org ? ` <span class="org">· ${esc(p.org)}</span>` : ""}</span></span>`; };
+const chip = (cls, icon, text) => `<span class="chip ${cls}">${icon ? I(icon) : ""}${text}</span>`;
+const statusChip = r => { const s = STATUS[r.status]; return chip(s.chip, s.icon, s.text(r)); };
+const clock = s => { const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(x).padStart(2, "0")}`; };
+const say = t => { const l = document.getElementById("live"); l.textContent = ""; setTimeout(() => l.textContent = t, 30); };
+const rec = id => RECS.find(r => r.id === id);
+const btn = (label, { cls = "", icon = "", act = "", to = "", attrs = "" } = {}) =>
+  `<button class="btn ${cls}" ${act ? `data-act="${act}"` : ""} ${to ? `data-to="${to}"` : ""} ${attrs}>${icon ? I(icon, icon === "rec" || icon === "stop" ? "ico-sm" : "") : ""}<span class="lbl-t">${label}</span></button>`;
+
+/* =====================================================================
+   NAV + RECORDING BAR
+   ===================================================================== */
+function renderNav() {
+  const items = [
+    ["home", "home", "Übersicht", S.empty ? "" : `<span class="badge">4</span>`],
+    ["library", "list", "Aufnahmen", ""],
+    ["setup", "checklist", "Einrichtung", `<span class="badge badge-warn" title="2 Hinweise">2</span>`],
+    ["settings", "gear", "Einstellungen", ""],
+  ];
+  const active = { home: "home", library: "library", speakers: "library", setup: "setup", settings: "settings", prompt: "settings", mini: "" }[S.screen];
+  const recBtn = S.rec === "idle"
+    ? `<button class="btn btn-record btn-block" data-act="start" title="Aufnahme starten (Strg+Alt+Umschalt+R)">${I("rec", "ico-sm")}<span class="lbl-t">Aufnahme starten …</span></button>`
+    : `<button class="btn btn-record btn-block" data-act="stop" title="Aufnahme beenden">${I("stop", "ico-sm")}<span class="lbl-t">Beenden · <span class="num" data-clock>${clock(S.elapsed).slice(0)}</span></span></button>`;
+  const themeIcon = { auto: "auto", light: "sun", dark: "moon" }[S.theme];
+  const themeText = { auto: "System", light: "Hell", dark: "Dunkel" }[S.theme];
+  document.getElementById("nav").innerHTML = `
+    <div class="brand"><span class="brand-mark">${I("mic")}</span><span>CallRecorder</span></div>
+    ${items.map(([k, ic, t, b]) => `<a href="#${k}" class="nav-item" ${active === k ? 'aria-current="page"' : ""} title="${t}">${I(ic)}<span class="lbl-t">${t}</span>${b}${k === "setup" ? '<i class="dotbadge" aria-hidden="true"></i>' : ""}</a>`).join("")}
+    <div class="nav-spacer"></div>
+    ${S.screen === "home" ? "" : `<div class="nav-rec">${recBtn}</div>`}
+    <div class="nav-sep"></div>
+    <button class="nav-item" data-act="theme" title="Darstellung: ${{ auto: "wie Windows", light: "hell", dark: "dunkel" }[S.theme]} – klicken zum Wechseln">${I(themeIcon)}<span class="lbl-t">Darstellung: ${themeText}</span></button>
+    <a class="nav-item" href="#mini" title="Begleitfenster (Toast, Aufnahme-Anzeige)">${I("expand")}<span class="lbl-t">Begleitfenster</span></a>
+    <button class="nav-item" data-act="help" title="Hilfe">${I("help")}<span class="lbl-t">Hilfe</span></button>
+    <div class="nav-status" title="Bereit: Headset gefunden, Kalender verbunden">${I("check-circle", "ico-sm")}<span>Bereit · Version 2.7.0</span></div>`;
+}
+function renderRecbar() {
+  const el = document.getElementById("recbar");
+  if (S.rec === "idle" || S.screen === "home") { el.innerHTML = ""; return; }
+  const cd = S.rec === "countdown";
+  el.innerHTML = `<div class="recbar ${cd ? "warn" : ""}" role="status">
+    ${cd ? I("clock") : '<span class="rec-dot" aria-hidden="true"></span>'}
+    <span class="strong">${cd ? "Call scheint beendet – Aufnahme endet in <span class='num' data-cd>24</span>\u00a0s" : "Aufnahme läuft"}</span>
+    <span class="num strong" data-clock>${clock(S.elapsed)}</span>
+    <span class="grow ellipsis title">${esc(NEXT.title)}</span>
+    ${cd ? btn("Weiter aufnehmen", { cls: "btn-sm", act: "keep" }) + btn("Jetzt beenden", { cls: "btn-sm btn-record", act: "stop" })
+         : btn("Zur Aufnahme", { cls: "btn-sm btn-subtle", to: "recording" }) + btn("Beenden", { cls: "btn-sm btn-record", icon: "stop", act: "stop" })}
+  </div>`;
+}
+
+/* =====================================================================
+   SCREEN: HOME
+   ===================================================================== */
+function heroIdle() {
+  if (!S.calendar) return `
+  <section class="card hero a-now" aria-labelledby="h-now">
+    <div class="hero-top"><div class="grow">
+      <div class="eyebrow">Aufnehmen</div>
+      <h2 id="h-now">Bereit für den nächsten Call</h2>
+      <p class="muted" style="margin-top:4px;max-width:60ch">Ohne Outlook-Kalender tippen Sie Titel und Teilnehmende beim Start selbst ein. Mit Kalender heißt jede Aufnahme wie der Termin, und die Sprechererkennung kennt die Teilnehmenden.</p>
+    </div></div>
+    <div class="hero-actions">
+      ${btn("Aufnahme ohne Termin starten …", { cls: "btn-record btn-lg", icon: "rec", act: "start" })}
+      ${btn("Mit Outlook verbinden …", { cls: "btn-lg", icon: "calendar", to: "setup" })}
+    </div>
+    <p class="hero-note">${I("keyboard")}<span>Jederzeit auch mit <kbd>Strg</kbd>+<kbd>Alt</kbd>+<kbd>Umschalt</kbd>+<kbd>R</kbd> – vor dem Start bestätigen Sie immer die Einwilligung aller Teilnehmenden.</span></p>
+  </section>`;
+  return `
+  <section class="card hero a-now" aria-labelledby="h-now">
+    <div class="hero-top">
+      <div class="grow">
+        <div class="eyebrow">Als Nächstes · in ${NEXT.inMin} Minuten</div>
+        <h2 id="h-now">${esc(NEXT.title)}</h2>
+        <div class="when">${I("clock", "ico-sm")}<span class="num">Heute, ${NEXT.time}</span><span aria-hidden="true">·</span>${I("teams", "ico-sm")}<span>Teams-Besprechung</span></div>
+      </div>
+      <div class="menu-wrap">
+        <button class="btn btn-subtle" data-act="menu" data-menu="events" aria-haspopup="menu" aria-expanded="${S.menu === "events"}">Anderer Termin ${I("down", "ico-sm")}</button>
+        ${S.menu === "events" ? `<div class="menu" role="menu">
+          <div class="menu-label">Laufende und nächste Termine</div>
+          <button role="menuitem" data-act="pick">${I("teams")}<span><b>14:00–14:45</b> Jour fixe Neubau Hafenkante</span></button>
+          <button role="menuitem" data-act="pick">${I("phone")}<span><b>15:30–16:00</b> Rückruf Steuerberatung Krämer</span></button>
+          <div class="sep"></div>
+          <button role="menuitem" data-act="start">${I("pencil")}<span>Ohne Termin – Titel selbst eingeben</span></button>
+        </div>` : ""}
+      </div>
+    </div>
+    <div>
+      <div class="caption muted" style="margin-bottom:8px">Teilnehmende · ${NEXT.people.length + 1} Personen</div>
+      <div class="people"><span class="person">${av("me")}<span>Sie <span class="org">· Martina Ehlers</span></span></span>${NEXT.people.map(person).join("")}</div>
+    </div>
+    <div class="hero-actions">
+      ${btn("Aufnahme starten …", { cls: "btn-record btn-lg", icon: "rec", act: "start" })}
+      <span class="muted">oder <kbd>Strg</kbd>+<kbd>Alt</kbd>+<kbd>Umschalt</kbd>+<kbd>R</kbd></span>
+    </div>
+    <p class="hero-note">${I("shield")}<span>Vor dem Start bestätigen Sie die Einwilligung aller Teilnehmenden. Endet der Call, beendet CallRecorder die Aufnahme nach einem sichtbaren 30-Sekunden-Countdown.</span></p>
+  </section>`;
+}
+function heroRecording() {
+  const cd = S.rec === "countdown";
+  const lv = [0.62, 0.38];
+  return `
+  <section class="card hero recording a-now" aria-labelledby="h-now">
+    <div class="hero-top">
+      <div class="grow">
+        <div class="rec-head"><span class="rec-dot" aria-hidden="true"></span>Aufnahme läuft</div>
+        <h2 id="h-now">${esc(NEXT.title)}</h2>
+        <div class="when"><span class="num">Seit 14:00</span><span aria-hidden="true">·</span><span>5 Teilnehmende</span><span aria-hidden="true">·</span><span>Teams</span></div>
+      </div>
+      <div class="timer" data-clock aria-label="Laufzeit">${clock(S.elapsed)}</div>
+    </div>
+    ${cd ? `
+    <div class="countdown" role="alert">
+      <div class="ring" aria-hidden="true"><svg viewBox="0 0 64 64"><circle class="bg" cx="32" cy="32" r="28"/><circle class="fg" cx="32" cy="32" r="28" stroke-dasharray="175.9" stroke-dashoffset="${175.9 * (1 - 24 / 30)}" data-ring/></svg><b data-cd>24</b></div>
+      <div style="display:grid;gap:8px;min-width:0">
+        <h3>Call scheint beendet – Aufnahme endet in <span class="num" data-cd>24</span>&nbsp;s</h3>
+        <p class="muted">Teams hat das Mikrofon freigegeben, und die Gegenseite ist seit 20 Sekunden still.</p>
+        <div class="btn-row">${btn("Jetzt beenden", { cls: "btn-record", icon: "stop", act: "stop" })}${btn("Weiter aufnehmen", { act: "keep" })}<span class="caption muted">„Weiter aufnehmen“ fragt 15 Minuten nicht mehr.</span></div>
+      </div>
+    </div>` : ""}
+    <div class="rec-grid">
+      <div class="meters" style="grid-column:1/-1">
+        <div class="meter"><span class="who">${I("mic", "ico-sm")}Ich</span><span class="lv" role="meter" aria-label="Pegel Mikrofon" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(lv[0] * 100)}"><i data-lv="0" style="width:${lv[0] * 100}%"></i></span><span class="caption faint num" data-db="0">−12 dB</span></div>
+        <div class="meter"><span class="who">${I("headset", "ico-sm")}Gegenseite</span><span class="lv" role="meter" aria-label="Pegel Gegenseite" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(lv[1] * 100)}"><i data-lv="1" style="width:${lv[1] * 100}%"></i></span><span class="caption faint num" data-db="1">−21 dB</span></div>
+      </div>
+    </div>
+    ${cd ? "" : `<div class="hero-actions">${btn("Aufnahme beenden", { cls: "btn-record btn-lg", icon: "stop", act: "stop" })}${btn("Teilnehmende bearbeiten …", { icon: "people", act: "consent" })}</div>`}
+    <div class="autostop">${I("info", "ico-sm")}<span><b>Automatisches Ende:</b> Teams erkannt (ms-teams.exe auf „Headset Mikrofon“). Stille auf beiden Seiten seit 0:12 · höchstens 4 Std. Bleibt „Ich“ beim Sprechen leer, nimmt das Mikrofon nichts auf.</span></div>
+  </section>`;
+}
+function attention() {
+  if (S.empty) return `
+  <section class="card a-att" aria-labelledby="h-att">
+    <div class="card-head"><h2 id="h-att">Wartet auf Sie</h2></div>
+    <div class="empty" style="padding:24px 20px 32px"><div class="art">${I("check-circle")}</div><h3>Nichts offen</h3><p>Hier erscheinen Aufnahmen, bei denen Sie etwas entscheiden müssen – zum Beispiel Stimmen benennen oder eine Zusammenfassung übergeben.</p></div>
+  </section>`;
+  const items = [
+    { ic: "warn", icon: "people", t: "Kundengespräch Lindqvist Logistik", d: "2 Stimmen haben noch keinen Namen. Danach wird die Zusammenfassung mit den Namen erstellt.", meta: "Heute, 11:00 · 52 Min", b: btn("Sprecher zuordnen", { cls: "btn-primary btn-sm", to: "speakers" }) },
+    { ic: "ok", icon: "send", t: "Budgetvorbereitung mit Controlling", d: "Zusammenfassung ist fertig und noch nicht an SharePoint übergeben.", meta: "Gestern, 10:30 · 38 Min", b: btn("Übergeben …", { cls: "btn-primary btn-sm", to: "handoff" }) + btn("Lesen", { cls: "btn-sm btn-subtle", act: "open", attrs: 'data-id="r4"' }) },
+    { ic: "err", icon: "globe", t: "Abstimmung Kessler Bau – Nachträge", d: "Zusammenfassung fehlgeschlagen: keine Verbindung zu Claude. Häufigste Ursache ist ein aktives VPN. Das Transkript ist fertig.", meta: "Gestern, 16:00 · 44 Min", b: btn("Erneut versuchen", { cls: "btn-primary btn-sm", icon: "refresh", to: "error-vpn" }) + btn("Was kann ich tun?", { cls: "btn-sm btn-subtle", to: "error-vpn" }) },
+    { ic: "warn", icon: "refresh", t: "Jour fixe Neubau Hafenkante (13.11.)", d: "Die Zusammenfassung wurde nach der Übergabe neu erstellt. SharePoint hat noch die ältere Fassung.", meta: "Fr 13.11. · übergeben 15:02", b: btn("Erneut übergeben …", { cls: "btn-sm", to: "library" }) },
+  ];
+  return `
+  <section class="card a-att" aria-labelledby="h-att">
+    <div class="card-head"><h2 id="h-att">Wartet auf Sie</h2><span class="badge">${items.length}</span><span class="grow"></span>${btn("Alle anzeigen", { cls: "btn-link btn-sm", to: "library" })}</div>
+    <ul class="att-list">${items.map(i => `
+      <li class="att"><span class="ic ${i.ic}">${I(i.icon)}</span>
+        <div style="min-width:0"><div class="at">${esc(i.t)}</div><div class="meta">${i.meta}</div></div>
+        <p class="ad" style="grid-column:2">${i.d}</p>
+        <div class="btn-row">${i.b}</div></li>`).join("")}
+    </ul>
+  </section>`;
+}
+function work() {
+  if (S.empty) return "";
+  return `
+  <section class="card a-work" aria-labelledby="h-work">
+    <div class="card-head"><h2 id="h-work">In Arbeit</h2><span class="grow"></span><span class="caption muted">1 weitere wartet</span></div>
+    <div class="card-body work">
+      <div class="work-item">
+        <div class="wt"><button class="btn-link btn" style="padding:0;min-height:0;font-weight:600" data-to="pipeline">Vertriebsrunde Nord</button><span class="muted">· Transkript wird erstellt</span><span class="grow" style="flex:1"></span><span class="num strong">63&nbsp;%</span></div>
+        <div class="bar" role="progressbar" aria-label="Fortschritt Transkript" aria-valuenow="63" aria-valuemin="0" aria-valuemax="100"><i style="width:63%"></i></div>
+        <div class="mini-steps" aria-label="Stand">
+          <span class="ms done">${I("check-circle")}Audio gesichert</span>
+          <span class="ms busy">${I("clock")}Transkript · noch ca. 4 Min</span>
+          <span class="ms none">${I("people")}Sprecher</span>
+          <span class="ms none">${I("sparkle")}Zusammenfassung</span>
+          <span class="ms none">${I("send")}Übergabe</span>
+        </div>
+      </div>
+    </div>
+    <div class="card-foot">${btn("Details", { cls: "btn-sm", to: "pipeline" })}${btn("Abbrechen", { cls: "btn-sm btn-subtle", act: "cancel" })}<span class="grow" style="flex:1"></span><span class="caption faint">Läuft lokal auf diesem Rechner</span></div>
+  </section>`;
+}
+function today() {
+  const ag = [
+    { t: "09:00", title: "Vertriebsrunde Nord", d: S.empty ? `${I("teams", "ico-sm")} Teams · nicht aufgenommen` : chip("chip-info", "clock", "aufgenommen · wird verarbeitet"), cls: "past" },
+    { t: "11:00", title: "Kundengespräch Lindqvist Logistik", d: S.empty ? `${I("teams", "ico-sm")} Teams · nicht aufgenommen` : chip("chip-warn", "people", "aufgenommen · 2 Stimmen offen"), cls: "past" },
+    { now: true },
+    { t: "14:00", title: "Jour fixe Neubau Hafenkante", d: `${I("teams", "ico-sm")} Teams · 5 Personen`, cls: "now" },
+    { t: "15:30", title: "Rückruf Steuerberatung Krämer", d: `${I("phone", "ico-sm")} Telefon · 2 Personen` },
+    { t: "16:30", title: "Budgetrunde Q1 2027", d: `${I("teams", "ico-sm")} Teams · 4 Personen` },
+  ];
+  if (!S.calendar) return `
+  <section class="card a-today" aria-labelledby="h-today">
+    <div class="card-head"><h2 id="h-today">Heute</h2></div>
+    <div class="empty" style="padding:20px 20px 28px"><div class="art">${I("calendar")}</div><h3>Termine erscheinen hier</h3><p>Melden Sie sich bei Microsoft an, damit CallRecorder Ihre Termine kennt. Es wird nur gelesen, nur Ihr eigener Kalender.</p>${btn("Bei Microsoft anmelden …", { cls: "btn-primary", to: "setup" })}</div>
+  </section>`;
+  return `
+  <section class="card a-today" aria-labelledby="h-today">
+    <div class="card-head"><h2 id="h-today">Heute</h2><span class="grow"></span><span class="caption muted">Fr 20. November</span></div>
+    <ol class="agenda" style="padding-bottom:12px">${ag.map(a => a.now ? `<li class="nowline" aria-label="Jetzt 13:48"><span class="num">13:48</span><i></i></li>` : `
+      <li class="ag ${a.cls || ""}"><span class="tm">${a.t}</span><span class="ln" aria-hidden="true"></span><div style="min-width:0"><div class="gt">${esc(a.title)}</div><div class="gd">${a.d}</div></div></li>`).join("")}
+    </ol>
+  </section>`;
+}
+function recent() {
+  if (S.empty) return `
+  <section class="card a-recent" aria-labelledby="h-recent">
+    <div class="card-head"><h2 id="h-recent">Zuletzt aufgenommen</h2></div>
+    <div class="empty"><div class="art">${I("mic")}</div><h3>Noch keine Aufnahmen</h3><p>Starten Sie Ihre erste Aufnahme oben – oder jederzeit mit dem Tastenkürzel. Danach finden Sie hier Transkript und Zusammenfassung.</p>${btn("Einrichtung prüfen", { icon: "checklist", to: "setup" })}</div>
+  </section>`;
+  const rows = RECS.slice(0, 5);
+  return `
+  <section class="card a-recent" aria-labelledby="h-recent">
+    <div class="card-head"><h2 id="h-recent">Zuletzt aufgenommen</h2><span class="grow"></span>${btn("Alle Aufnahmen", { cls: "btn-link btn-sm", to: "library" })}</div>
+    <div class="rows">${rows.map(r => `
+      <button class="row" data-act="open" data-id="${r.id}"><span style="min-width:0"><span class="rt ellipsis" style="display:block">${esc(r.title)}</span><span class="rd">${r.date} ${r.time} · ${r.dur}</span></span>${statusChip(r)}</button>`).join("")}
+    </div>
+  </section>`;
+}
+const MQ_WIDE = matchMedia("(min-width: 1560px)"), MQ_NARROW = matchMedia("(max-width: 1099px)");
+[MQ_WIDE, MQ_NARROW].forEach(m => m.addEventListener("change", () => { if (S.screen === "home") render(); }));
+function homeColumns(c) {
+  const col = keys => `<div class="home-col">${keys.map(k => c[k]).join("")}</div>`;
+  if (MQ_NARROW.matches) return `<div class="home-grid cols-1">${col(["now", "att", "work", "today", "recent"])}</div>`;
+  if (MQ_WIDE.matches) return `<div class="home-grid cols-3">${col(["now", "work"])}${col(["att"])}${col(["today", "recent"])}</div>`;
+  return `<div class="home-grid">${col(["now", "work", "recent"])}${col(["att", "today"])}</div>`;
+}
+function screenHome() {
+  const greet = S.empty ? "Willkommen bei CallRecorder" : "Guten Tag, Martina";
+  return `<div class="page">
+    <header class="page-head">
+      <div class="grow"><h1 tabindex="-1" data-focus>${greet}</h1><p class="sub">Freitag, 20. November 2026</p></div>
+      ${S.rec === "idle" ? (S.calendar ? `<span class="chip chip-ok">${I("check")}Bereit · Headset und Kalender verbunden</span>` : `<span class="chip chip-warn">${I("calendar")}Bereit · Kalender nicht verbunden</span>`) : `<span class="chip chip-rec"><span class="rec-dot" style="width:8px;height:8px" aria-hidden="true"></span>Aufnahme läuft</span>`}
+    </header>
+    ${homeColumns({ now: S.rec === "idle" ? heroIdle() : heroRecording(), att: attention(), work: work(), recent: recent(), today: today() })}
+  </div>`;
+}
+
+/* =====================================================================
+   SCREEN: LIBRARY + DETAIL
+   ===================================================================== */
+function listPane() {
+  const f = FILTERS.find(x => x[0] === S.filter) || FILTERS[0];
+  const q = S.query.trim().toLowerCase();
+  const shown = RECS.filter(f[2]).filter(r => !q || (r.title + " " + r.people.map(k => P[k].name).join(" ")).toLowerCase().includes(q));
+  let html = "", g = "";
+  for (const r of shown) {
+    if (r.group !== g) { g = r.group; html += `<li class="grp" role="presentation">${g}</li>`; }
+    html += `<li role="presentation"><button class="rec-item" role="option" aria-selected="${r.id === S.selected}" data-act="select" data-id="${r.id}">
+      <span class="t ellipsis">${esc(r.title)}</span><span class="m">${r.date} ${r.time} · ${r.dur}</span>${statusChip(r)}</button></li>`;
+  }
+  const count = id => RECS.filter(FILTERS.find(x => x[0] === id)[2]).length;
+  return `<section class="lib-list" aria-label="Aufnahmeliste">
+    <div class="lib-tools">
+      <h1 tabindex="-1" data-focus>Aufnahmen</h1>
+      <label class="input-icon"><span class="sr-only">Suchen</span>${I("search", "ico-sm")}<input class="input" id="q" type="search" placeholder="Titel oder Person suchen" value="${esc(S.query)}" autocomplete="off"><kbd>Strg+F</kbd></label>
+      <div class="seg" role="group" aria-label="Filter">${FILTERS.slice(0, 4).filter(x => x[0] !== "changed").concat([FILTERS[4]]).map(([id, t]) => `<button aria-pressed="${S.filter === id}" data-act="filter" data-f="${id}">${t} <span class="n">${count(id)}</span></button>`).join("")}</div>
+    </div>
+    <div class="lib-scroll">${shown.length ? `<ul role="listbox" aria-label="Aufnahmen" id="reclist">${html}</ul>` : `<div class="empty" style="padding:32px 16px"><h3>Keine Treffer</h3><p>Für „${esc(S.query)}“ gibt es keine Aufnahme. Gesucht wird in Titeln und Namen der Teilnehmenden.</p>${btn("Suche löschen", { act: "clearq" })}</div>`}</div>
+    <div class="lib-foot">${RECS.length} Aufnahmen · 3,1 GB<span style="flex:1"></span>${btn("Ordner öffnen", { cls: "btn-sm btn-subtle", icon: "folder", act: "toast-msg", attrs: 'data-msg="Explorer öffnet den Aufnahmeordner"' })}</div>
+  </section>`;
+}
+function libraryEmpty() {
+  return `<div class="page"><header class="page-head"><div class="grow"><h1 tabindex="-1" data-focus>Aufnahmen</h1></div></header>
+    <div class="card"><div class="empty" style="padding:64px 24px">
+      <div class="art">${I("mic")}</div><h2>Noch keine Aufnahmen</h2>
+      <p>Jede Aufnahme erscheint hier mit Transkript, Sprechernamen und Zusammenfassung. Audio und Transkript bleiben auf diesem Rechner.</p>
+      <div class="btn-row" style="justify-content:center">${btn("Aufnahme starten …", { cls: "btn-record", icon: "rec", act: "start" })}${btn("Einrichtung prüfen", { icon: "checklist", to: "setup" })}</div>
+      <p class="caption faint">Tipp: Wenn Teams einen Call beginnt, fragt CallRecorder unten rechts nach. Ohne Ihre Bestätigung wird nie aufgenommen.</p>
+    </div></div></div>`;
+}
+const SUMMARY_R10 = `
+  <p class="src">Version 3 · erstellt am 19.11.2026, 16:40 mit Claude (claude-opus-5-5) · 4 Teilnehmende und Sie</p>
+  <h2>Kurzfassung</h2>
+  <p class="lead">Der Rohbau von Haus B liegt zwei Wochen hinter Plan, weil der Stahl erst am 2.&nbsp;Dezember geliefert wird. Kessler Bau zieht dafür die Fassadenarbeiten an Haus A vor; der Fertigstellungstermin 30.&nbsp;April 2027 bleibt bestehen. Offen ist, wer die Mehrkosten für Winterbaumaßnahmen trägt.</p>
+  <h2>Entscheidungen</h2>
+  <ul>
+    <li>Die Fassade von Haus A wird vorgezogen; Beginn am 7. Dezember.</li>
+    <li>Winterbaumaßnahmen werden beauftragt. Die Kostenaufteilung klärt die Geschäftsführung bis 27. November.</li>
+    <li>Die Bemusterung der Bodenbeläge findet im Musterbüro statt, nicht auf der Baustelle.</li>
+  </ul>
+  <h2>Aufgaben</h2>
+  <table><thead><tr><th>Aufgabe</th><th>Verantwortlich</th><th>Frist</th></tr></thead><tbody>
+    <tr><td>Angebot für Winterbaumaßnahmen nachreichen</td><td>Jonas Pfeiffer</td><td class="num">24.11.</td></tr>
+    <tr><td>Bauzeitenplan Haus A und B aktualisieren</td><td>Leonie Hartwig</td><td class="num">25.11.</td></tr>
+    <tr><td>Kostenaufteilung mit Kessler Bau klären</td><td>Martina Ehlers</td><td class="num">27.11.</td></tr>
+    <tr><td>Termin für die Bemusterung abstimmen</td><td>Selin Aydın</td><td class="open">offen</td></tr>
+  </tbody></table>
+  <h2>Projektstand und Updates</h2>
+  <h3>Haus A</h3><p>Rohbau abgeschlossen, Dach seit 10. November dicht. Innenausbau startet nach der Fassade.</p>
+  <h3>Haus B</h3><p>Stahllieferung verspätet sich auf den 2. Dezember. Kranstandzeit muss gegebenenfalls bis Februar verlängert werden.</p>
+  <h3>Außenanlagen</h3><p>Entwurf liegt der Stadt zur Abstimmung vor; Rückmeldung wird Mitte Dezember erwartet.</p>
+  <h2>Offene Fragen</h2>
+  <ul><li>Wer trägt die Mehrkosten der Winterbaumaßnahmen und in welchem Verhältnis?</li><li>Reicht die gebuchte Kranstandzeit bis Ende Februar?</li></ul>
+  <h2>Nächste Termine</h2>
+  <ul><li>27.11., 14:00 – Jour fixe (Teams)</li><li>03.12. – Bemusterung Bodenbeläge im Musterbüro</li></ul>`;
+const TRANSCRIPT_R10 = [
+  ["00:00:04", "me", "Martina Ehlers", "Hallo zusammen. Kurz vorweg: Ich zeichne das Gespräch für das Protokoll auf – sind alle einverstanden?"],
+  ["00:00:11", "jp", "Jonas Pfeiffer", "Ja, passt für uns."],
+  ["00:00:13", "lh", "Leonie Hartwig", "Einverstanden."],
+  ["00:00:15", "sa", "Selin Aydın", "Ja, gerne."],
+  ["00:00:21", "me", "Martina Ehlers", "Danke. Dann starten wir mit Haus B. Jonas, wie ist der Stand beim Stahl?"],
+  ["00:00:28", "jp", "Jonas Pfeiffer", "Leider nicht gut. Der Lieferant hat uns gestern bestätigt, dass die Träger erst am 2. Dezember kommen. Das sind gut zwei Wochen Verzug gegenüber dem Plan."],
+  ["00:00:47", "pw", "Paul Wiesner", "Das deckt sich mit dem, was ich auf der Baustelle höre. Die Kolonne für Haus B hätte ab nächster Woche nichts zu tun."],
+  ["00:01:02", "lh", "Leonie Hartwig", "Unser Vorschlag wäre, die Fassade an Haus A vorzuziehen. Dann ist die Mannschaft ausgelastet, und am Gesamttermin ändert sich nichts."],
+  ["00:01:19", "me", "Martina Ehlers", "Klingt vernünftig. Was bedeutet das für den Winterbau? Im Dezember brauchen wir dann Heizung und Einhausung an Haus B."],
+  ["00:01:34", "jp", "Jonas Pfeiffer", "Genau, da kommen Mehrkosten auf uns zu. Ich reiche bis Dienstag ein Angebot nach."],
+];
+function detailPane() {
+  const r = rec(S.selected);
+  const err = r.status === "err", busy = r.status === "busy";
+  const handoff = r.status === "changed" ? `
+    <div class="handoff changed"><span class="ico-wrap">${I("refresh")}</span>
+      <div><div class="strong">Seit der Übergabe geändert</div><div class="hd">Übergeben am 13.11. um 15:02 (Version 2) nach SharePoint › Geschäftsführung › Protokolle › 2026-11-13_1400_Jour-fixe-Neubau-Hafenkante.md. Version 3 ist neuer.</div></div>
+      ${btn("Übergabe ansehen", { cls: "btn-subtle", icon: "external" })}</div>`
+    : r.status === "sent" ? `<div class="handoff"><span class="ico-wrap">${I("check")}</span><div><div class="strong">An SharePoint übergeben</div><div class="hd">Am ${r.sent} nach SharePoint › Geschäftsführung › Protokolle. Seitdem unverändert.</div></div>${btn("Ordner öffnen", { cls: "btn-subtle", icon: "external" })}</div>`
+    : r.status === "ready" ? `<div class="handoff"><span class="ico-wrap">${I("send")}</span><div><div class="strong">Noch nicht übergeben</div><div class="hd">Übergeben wird nur die Zusammenfassung – nie Audio oder Transkript. Sie sehen vorher eine Vorschau.</div></div><span></span></div>` : "";
+  const steps = busy ? "" : `<div class="mini-steps" aria-label="Stand der Aufnahme">
+      <span class="ms done">${I("check-circle")}Transkript</span>
+      <span class="ms ${r.status === "open" ? "open" : "done"}">${I(r.status === "open" ? "people" : "check-circle")}${r.status === "open" ? "2 Stimmen offen" : "Sprecher benannt"}</span>
+      <span class="ms ${err ? "err" : "done"}">${I(err ? "alert" : "check-circle")}${err ? "Zusammenfassung fehlgeschlagen" : "Zusammenfassung"}</span>
+      <span class="ms ${r.status === "sent" ? "done" : r.status === "changed" ? "changed" : "none"}">${I(r.status === "sent" ? "check-circle" : r.status === "changed" ? "refresh" : "send")}${r.status === "sent" ? "Übergeben" : r.status === "changed" ? "Übergabe veraltet" : "Nicht übergeben"}</span></div>`;
+  const primary = r.status === "open" ? btn("Sprecher zuordnen", { cls: "btn-primary", icon: "people", to: "speakers" })
+    : err ? ""
+    : r.status === "new" ? btn("Jetzt verarbeiten", { cls: "btn-primary", act: "postcall" })
+    : r.status === "sent" ? btn("Erneut übergeben …", { icon: "send", to: "handoff" })
+    : btn("Übergeben …", { cls: "btn-primary", icon: "send", to: "handoff" });
+  const actions = busy ? btn("Verarbeitung abbrechen", { act: "cancel" }) : `${primary}
+      ${r.status !== "open" ? btn("Sprecher zuordnen", { icon: "people", to: "speakers" }) : ""}
+      <div class="menu-wrap">
+        <button class="btn btn-subtle" data-act="menu" data-menu="more" aria-haspopup="menu" aria-expanded="${S.menu === "more"}" aria-label="Weitere Aktionen" title="Weitere Aktionen">${I("more")}</button>
+        ${S.menu === "more" ? `<div class="menu" role="menu" style="min-width:300px">
+          <button role="menuitem" data-act="modal" data-m="retranscribe">${I("lang")}Neu transkribieren …</button>
+          <button role="menuitem" data-act="modal" data-m="event">${I("calendar")}Termin zuordnen …</button>
+          <button role="menuitem" data-act="modal" data-m="participants">${I("people")}Teilnehmende bearbeiten …</button>
+          <button role="menuitem" data-act="modal" data-m="rename">${I("pencil")}Umbenennen …</button>
+          <div class="sep"></div>
+          <button role="menuitem" data-act="toast-msg" data-msg="Transkript wird neu dargestellt">${I("doc")}Transkript neu darstellen</button>
+          <button role="menuitem" data-act="toast-msg" data-msg="Vorschau der Sprecherprüfung">${I("fingerprint")}Sprecherzuordnung neu prüfen …</button>
+          <button role="menuitem" data-act="toast-msg" data-msg="Weitere Sprecher zugelassen – Erkennung läuft erneut">${I("people")}Weitere Sprecher zulassen</button>
+          <button role="menuitem" data-act="postcall">${I("refresh")}Komplett neu verarbeiten …</button>
+          <button role="menuitem" data-act="toast-msg" data-msg="Explorer öffnet den Ordner">${I("folder")}Ordner öffnen</button>
+          <div class="sep"></div>
+          <button role="menuitem" class="danger" data-act="modal" data-m="delete">${I("trash")}Löschen …<span class="hint">Entf</span></button>
+        </div>` : ""}
+      </div>`;
+  let body;
+  if (busy) body = pipelineView(r);
+  else if (err && S.tab === "summary") body = `
+    <div class="banner banner-err" role="alert">${I("globe")}
+      <div class="bt">Zusammenfassung nicht erstellt: keine Verbindung zu Claude</div>
+      <div class="bd" style="grid-column:2">Drei Versuche sind nach jeweils 20 Sekunden ohne Antwort abgebrochen. <b>Das Transkript ist fertig</b> – nur die Zusammenfassung fehlt.<br>Häufigste Ursache ist ein <b>aktives VPN</b>: Pausieren Sie es kurz und versuchen Sie es erneut. Dauerhaft hilft eine Ausnahme für CallRecorder in der VPN-App („Split-Tunneling“).</div>
+      <div class="btn-row">${btn("Zusammenfassung neu erstellen", { cls: "btn-primary btn-sm", icon: "refresh", act: "toast-msg", attrs: 'data-msg="Zusammenfassung wird neu erstellt"' })}${btn("Verbindung testen", { cls: "btn-sm", act: "toast-msg", attrs: 'data-msg="Test läuft – höchstens 20 Sekunden"' })}${btn("So richten Sie die VPN-Ausnahme ein", { cls: "btn-sm btn-link", icon: "external", act: "help" })}</div>
+    </div>
+    ${readerTools(false)}
+    <div class="empty" style="padding:32px 16px"><div class="art" style="background:var(--surface-2);color:var(--text-3)">${I("sparkle")}</div><h3>Noch keine Zusammenfassung</h3><p>Sobald die Verbindung klappt, erscheint sie hier – mit Kurzfassung, Entscheidungen, Aufgaben und nächsten Terminen.</p>${btn("Transkript lesen", { act: "tab", attrs: 'data-tab="transcript"' })}</div>`;
+  else body = `<div class="det-grid"><div style="min-width:0;display:grid;gap:var(--s-4)">${readerTools(true)}<div class="reader-sheet">${S.tab === "summary" ? `<article class="reader" aria-label="Zusammenfassung">${S.selected === "r10" ? SUMMARY_R10 : SUMMARY_R10.replace(/Version 3[^<]*/, "Version 1 · erstellt mit Claude")}</article>` : transcriptView()}</div></div>${detAside(r)}</div>`;
+  return `<section class="lib-detail" aria-label="Details">
+    <div class="det-head">
+      <button class="btn btn-subtle btn-sm back-to-list" data-act="back" style="justify-self:start">${I("left", "ico-sm")}Alle Aufnahmen</button>
+      <h1>${esc(r.title)}</h1>
+      <div class="det-meta"><span>${I("calendar")}${r.date} 2026, ${r.time} Uhr</span><span>${I("clock")}${r.dur}</span><span>${I("lang")}${r.lang}</span>${busy ? "" : `<button class="btn btn-link btn-sm" style="min-height:24px" data-act="toast-msg" data-msg="Audio öffnet im Standard-Player">${I("play", "ico-sm")}Anhören</button>`}</div>
+      <div class="det-people">${av("me")}${r.people.map(k => av(k)).join("")}<span class="ellipsis muted">Sie, ${r.people.map(k => P[k].name).join(", ") || "keine weiteren eingetragen"}</span></div>
+      ${steps}
+    </div>
+    <div class="det-actions" role="toolbar" aria-label="Aktionen">${actions}</div>
+    <div class="det-inner">${handoff}${body}</div>
+  </section>`;
+}
+function detAside(r) {
+  const talk = { jp: ["14:10", 31], lh: ["9:02", 20], sa: ["4:15", 9], pw: ["6:40", 14] };
+  return `<aside class="det-aside" aria-label="Auf einen Blick">
+    <div class="aside-card"><h3>Sprechzeit</h3>
+      <div class="aside-row">${av("me")}<span>Sie</span><span class="num muted">11:53</span></div>
+      ${r.people.map(k => `<div class="aside-row">${av(k)}<span class="ellipsis">${P[k].name}</span><span class="num muted">${(talk[k] || ["5:00"])[0]}</span></div>`).join("")}
+    </div>
+    <div class="aside-card"><h3>Aus der Zusammenfassung</h3>
+      <div class="aside-row">${I("check-circle", "ico-sm")}<span>3 Entscheidungen</span><span></span></div>
+      <div class="aside-row">${I("checklist", "ico-sm")}<span>4 Aufgaben, davon 1 für Sie</span><span></span></div>
+      <div class="aside-row">${I("help", "ico-sm")}<span>2 offene Fragen</span><span></span></div>
+    </div>
+    <div class="aside-card"><h3>Dateien</h3>
+      <div class="aside-row">${I("wave", "ico-sm")}<span>Audio, 2 Spuren (FLAC)</span><span class="num muted">96 MB</span></div>
+      <div class="aside-row">${I("doc", "ico-sm")}<span>Transkript, 2 Versionen</span><span></span></div>
+      ${btn("Ordner öffnen", { cls: "btn-sm", icon: "folder" })}
+    </div>
+  </aside>`;
+}
+function readerTools(withVersion) {
+  return `<div class="reader-tools">
+    <div class="tabs" role="tablist" aria-label="Ansicht">
+      <button class="tab" role="tab" aria-selected="${S.tab === "summary"}" data-act="tab" data-tab="summary">${I("sparkle", "ico-sm")}Zusammenfassung</button>
+      <button class="tab" role="tab" aria-selected="${S.tab === "transcript"}" data-act="tab" data-tab="transcript">${I("doc", "ico-sm")}Transkript</button>
+    </div>
+    ${withVersion ? `<div class="reader-bar"><label class="sr-only" for="ver">Version</label><select class="select" id="ver" data-act="version">
+      ${S.tab === "summary" ? `<option value="3">Version 3 (neueste) · 19.11. 16:40 · Claude</option><option value="2">Version 2 · 13.11. 14:58 · übergeben</option><option value="1">Version 1 · 13.11. 14:51</option>`
+        : `<option>Version 2 (neueste) · Sprache Deutsch</option><option>Version 1 · Sprache automatisch</option>`}</select>
+      ${S.tab === "summary" ? `<button class="btn btn-subtle" data-act="toast-msg" data-msg="Zusammenfassung wird neu erstellt" title="Zusammenfassung neu erstellen (neue Version)">${I("sparkle")}Neu erstellen</button>` : ""}
+      <button class="icon-btn" title="Groß anzeigen" aria-label="Groß anzeigen">${I("expand")}</button></div>` : ""}
+  </div>`;
+}
+function transcriptView() {
+  const sp = { me: "me", jp: 1, lh: 2, sa: 3, pw: 5 };
+  return `<div class="transcript">
+    <div class="tx-head"><span>Sprache: Deutsch (automatisch erkannt)</span><span>Sprecher:</span>
+      ${[["me", "Martina Ehlers (Sie)"], ["jp", "Jonas Pfeiffer"], ["lh", "Leonie Hartwig"], ["sa", "Selin Aydın"], ["pw", "Paul Wiesner"]].map(([k, n]) => `<span class="legend" style="--c:var(--sp-${sp[k]})"><i></i>${n}</span>`).join("")}</div>
+    ${TRANSCRIPT_R10.map(([ts, k, n, t]) => `<div class="utt ${k === "me" ? "me" : ""}" style="--c:var(--sp-${sp[k]})"><span class="ts">${ts.slice(3)}</span><div><div class="who">${n}</div><p>${esc(t)}</p></div></div>`).join("")}
+  </div>`;
+}
+function pipelineView(r) {
+  return `
+  <div class="card" style="box-shadow:none">
+    <div class="card-head"><h2>Stand der Verarbeitung</h2><span class="grow"></span><span class="caption muted">Gestartet 13:21 · läuft im Hintergrund</span></div>
+    <div class="card-body"><ol class="vsteps">
+      <li class="vstep done"><span class="dot">${I("check")}</span><span class="vt">Audio gesichert</span><span class="vs caption muted">13:21</span><span class="vd">Zwei Spuren als FLAC, 31 Minuten.</span></li>
+      <li class="vstep active"><span class="dot">${I("doc")}</span><span class="vt">Transkript</span><span class="vs strong num">63&nbsp;%</span>
+        <span class="vd">Gegenseite, Abschnitt 14 von 22 · noch etwa 4 Minuten · lokal auf diesem Rechner</span>
+        <div class="vx"><div class="bar" role="progressbar" aria-label="Transkript" aria-valuenow="63" aria-valuemin="0" aria-valuemax="100"><i style="width:63%"></i></div></div></li>
+      <li class="vstep"><span class="dot">${I("people")}</span><span class="vt">Sprecher erkennen</span><span class="vs caption muted">als Nächstes</span><span class="vd">Bekannte Stimmen der Teilnehmenden werden benannt. Bleiben Stimmen offen, fragen wir Sie.</span></li>
+      <li class="vstep"><span class="dot">${I("sparkle")}</span><span class="vt">Zusammenfassung</span><span class="vs caption muted">danach</span><span class="vd">Mit Claude (Anthropic) – dafür verlässt der Transkripttext diesen Rechner.</span></li>
+      <li class="vstep"><span class="dot">${I("send")}</span><span class="vt">Übergabe an SharePoint</span><span class="vs caption muted">zum Schluss</span><span class="vd">Nur die Zusammenfassung, in „Geschäftsführung › Protokolle“. Für diese Aufnahme beim Beenden freigegeben.</span></li>
+    </ol></div>
+    <div class="card-foot"><span class="caption muted" style="flex:1">Abbrechen stoppt das Transkript sofort. Die Aufnahme selbst bleibt erhalten.</span>${STATIC ? "" : btn("Ablauf simulieren", { cls: "btn-subtle btn-sm", act: "simulate", attrs: 'title="Nur im Prototyp"' })}</div>
+  </div>`;
+}
+function screenLibrary() {
+  if (S.empty) return libraryEmpty();
+  return `<div class="lib ${S.mobileDetail ? "has-detail" : ""}">${listPane()}${detailPane()}</div>`;
+}
+
+/* =====================================================================
+   SCREEN: SPEAKERS
+   ===================================================================== */
+function waveBars(seed) { let s = seed, h = ""; for (let i = 0; i < 40; i++) { s = (s * 9301 + 49297) % 233280; h += `<i style="height:${6 + Math.round((s / 233280) * 22)}px"></i>`; } return h; }
+function screenSpeakers() {
+  const people = [["hl", "Henrik Lindqvist", "Lindqvist Logistik"], ["cn", "Carla Neumann", "Lindqvist Logistik"], ["tr", "Tobias Rehm", "Nordhafen Bau, Vertrieb"]];
+  const voices = [
+    { n: 1, c: 1, time: "21:14", pct: 41, utt: 58, auto: "tr", score: "0,81", sel: "tr",
+      q: [["03:12", "Wir haben die Touren für Januar schon mit den neuen Standorten geplant."], ["17:40", "Das Angebot für die Halle liegt bei Ihnen seit letzter Woche, oder?"]] },
+    { n: 2, c: 2, time: "14:02", pct: 27, utt: 33, sel: "", suggest: "fo",
+      q: [["05:51", "Für uns ist entscheidend, dass die Rampen vor dem Umzug fertig sind."], ["22:09", "Können Sie uns bis Freitag eine verbindliche Zusage geben?"], ["38:30", "Dann machen wir das so, ich schicke die Unterlagen heute noch."]] },
+    { n: 3, c: 3, time: "04:47", pct: 9, utt: 12, sel: "",
+      q: [["11:20", "Ich ergänze nur kurz die Zahlen aus dem Lager in Bremen."], ["29:02", "Genau, das ist mit dem Betriebsrat abgestimmt."]] },
+    { n: 4, c: 6, time: "00:41", pct: 1, utt: 4, sel: "self", selfecho: true,
+      q: [["08:15", "… also wie gesagt, bis Ende des Monats."]] },
+  ];
+  const opt = (v, k, name, org, extra = "", dis = false) => `
+    <label class="choice ${extra}"><input type="radio" name="v${v.n}" value="${k}" ${v.sel === k ? "checked" : ""} ${dis ? "disabled" : ""}>${k === "self" ? `<span class="avatar" style="--c:var(--sp-me)">${ME.ini}</span>` : av(k)}<span style="min-width:0"><span class="cn">${name}</span><span class="cd" style="display:block">${org}</span></span></label>`;
+  return `<div class="page" style="max-width:1280px">
+    <nav class="crumbs" aria-label="Pfad"><button data-to="library">Aufnahmen</button>${I("right", "ico-sm")}<button data-act="open" data-id="r1">Kundengespräch Lindqvist Logistik</button>${I("right", "ico-sm")}<span>Sprecher zuordnen</span></nav>
+    <header class="page-head"><div class="grow"><h1 tabindex="-1" data-focus>Wer spricht hier?</h1>
+      <p class="sub" style="max-width:80ch">Ordnen Sie jede Stimme der Gegenseite einer Person zu. Zur Auswahl stehen die Teilnehmenden dieses Termins. Hören Sie im Zweifel kurz hinein.</p></div>
+      <span class="chip chip-warn">${I("people")}2 von 4 Stimmen offen</span></header>
+    <p class="help" style="margin:-8px 0 16px">Die Gegenseite wird auf höchstens so viele Stimmen aufgeteilt, wie Teilnehmende eingeladen sind. Waren mehr Personen dabei? <button class="btn btn-link btn-sm" data-act="toast-msg" data-msg="Weitere Sprecher zugelassen – Erkennung läuft erneut">Weitere Sprecher zulassen</button></p>
+    <div class="sp-grid">
+      <section class="card" aria-label="Ihre Stimme"><div class="fixed-row">
+        <span class="avatar avatar-lg" style="--c:var(--sp-me)">${ME.ini}</span>
+        <div style="min-width:0"><div class="strong">Sie – Martina Ehlers <span class="chip" style="margin-left:6px">${I("lock")}Mikrofonspur, immer Sie</span></div><div class="muted">48 Beiträge · 12:31 Sprechzeit · Name ändern unter Einstellungen › Allgemein</div></div>
+        <button class="btn" data-act="play">${I("play", "ico-sm")}Anhören</button></div></section>
+      ${voices.map(v => `
+      <section class="card voice" aria-labelledby="vh${v.n}" style="--c:var(--sp-${v.c})">
+        <div style="min-width:0">
+          <div class="voice-id"><span class="swatch"></span><h3 id="vh${v.n}">Stimme ${v.n}</h3>
+            ${v.auto ? chip("chip-accent", "check", `Automatisch erkannt · ${P[v.auto].name}`) : v.selfecho ? chip("chip-info", "info", "Klingt wie Ihre eigene Stimme") : chip("chip-warn", "", "Noch ohne Namen")}</div>
+          <div class="play"><button class="pbtn" data-act="play" aria-label="Beispiel von Stimme ${v.n} anhören">${I("play", "ico-sm")}</button><span class="wave" aria-hidden="true">${waveBars(v.n * 7)}</span><span class="caption muted num">0:08</span></div>
+          <div class="talk"><div style="display:flex;justify-content:space-between" class="caption"><span class="muted">Sprechzeit</span><span class="num strong">${v.time} · ${v.pct}&nbsp;% · ${v.utt} Beiträge</span></div><div class="bar"><i style="width:${Math.max(v.pct, 2)}%"></i></div></div>
+          <div class="quotes">${v.q.map(([t, s]) => `<div class="qt"><span class="ts">${t}</span><q>${esc(s)}</q></div>`).join("")}</div>
+          ${v.selfecho ? `<p class="help" style="margin-top:10px">Ihre Stimme ist über das Headset auch auf der Gegenseite gelandet (Mithören). Diese Stellen werden Ihnen zugeordnet; doppelte Stellen entfallen.</p>` : ""}
+        </div>
+        <fieldset class="choices" style="border:0;margin:0;padding:0;min-width:0"><legend class="label" style="margin-bottom:8px">Diese Stimme gehört zu …</legend>
+          ${people.map(([k, n, o]) => opt(v, k, n, o + (k === "tr" && v.n !== 1 ? " · bereits Stimme 1" : ""))).join("")}
+          ${v.suggest ? `<label class="choice suggest"><input type="radio" name="v${v.n}" value="${v.suggest}">${av(v.suggest)}<span style="min-width:0"><span class="cn">${P[v.suggest].name}</span><span class="cd" style="display:block">Vorschlag: klingt ähnlich · <b>kein Teilnehmer dieses Termins</b> – wird bei Auswahl ergänzt</span></span></label>` : ""}
+          ${opt(v, "self", "Das bin ich", "meine Stimme auf der Spur der Gegenseite", "me")}
+          <div class="choice-other"><input type="radio" name="v${v.n}" value="other" aria-label="Andere Person" style="appearance:auto;width:18px;height:18px;margin:0 1px;accent-color:var(--accent)"><input class="input" placeholder="Andere Person eintippen …" aria-label="Name einer anderen Person für Stimme ${v.n}"></div>
+          <label class="check" style="margin-top:4px"><input type="checkbox" ${v.auto ? "" : "checked"}><span class="t">Stimme merken <span class="help" style="display:block">${v.auto ? "Bestätigt die automatische Erkennung und verbessert das Profil." : "Legt ein Stimmprofil an – bleibt verschlüsselt auf diesem Rechner."}</span></span></label>
+        </fieldset>
+      </section>`).join("")}
+    </div>
+  </div>
+  <div class="sticky-foot">
+    <div class="grow"><b>2 von 4 Stimmen zugeordnet</b> <span class="muted foot-note">· Stimmprofile sind biometrische Daten und verlassen den Rechner nie.</span></div>
+    <label class="check"><input type="checkbox" checked><span class="t">Zusammenfassung danach neu erstellen</span></label>
+    ${btn("Überspringen", { to: "library" })}${btn("Übernehmen", { cls: "btn-primary", act: "apply-speakers" })}
+  </div>`;
+}
+
+/* =====================================================================
+   SCREEN: SETUP
+   ===================================================================== */
+function screenSetup() {
+  const items = [
+    { st: "ok", icon: "headset", t: "Audiogeräte", d: "Mikrofon: Headset Mikrofon (USB Audio) · Gegenseite: Headset Kopfhörer (USB Audio)", b: btn("Geräte einstellen …", { cls: "btn-sm", to: "settings-recording" }) },
+    { st: "ok", icon: "chip", t: "Spracherkennung", d: "Modell large-v3-turbo ist geladen und geprüft (1,6 GB). Läuft auf dem Prozessor, ohne NVIDIA-Grafikkarte.", b: "" },
+    { st: "warn", icon: "sparkle", t: "Zusammenfassung mit Claude", d: "Schlüssel gespeichert. Der letzte Verbindungstest um 08:12 ist nach 20 Sekunden ohne Antwort abgebrochen.",
+      x: `<div class="ck-sub"><div class="strong">${I("globe", "ico-sm")} Ist ein VPN aktiv?</div><div class="muted">Ein aktives VPN kann die Verbindung zu Claude blockieren. Pausieren Sie es kurz oder nehmen Sie CallRecorder in der VPN-App aus („Split-Tunneling“: python.exe und pythonw.exe im Programmordner).</div></div>`,
+      b: btn("Verbindung testen", { cls: "btn-sm btn-primary", act: "toast-msg", attrs: 'data-msg="Test läuft – höchstens 20 Sekunden"' }) + btn("Einstellungen …", { cls: "btn-sm", to: "settings-summary" }) },
+    { st: S.calendar ? "ok" : "opt", icon: "calendar", t: "Microsoft-Anmeldung", tag: "optional", d: S.calendar ? "Angemeldet als Martina Ehlers (m.ehlers@nordhafen-bau.example). Es wird nur Ihr eigener Kalender gelesen."
+      : "Nicht angemeldet. Ohne Anmeldung tippen Sie Titel und Teilnehmende selbst ein.",
+      x: S.calendar ? `<div class="ck-sub"><span class="caption muted">Als Nächstes im Kalender</span><span><b>Heute 14:00–14:45</b> · Jour fixe Neubau Hafenkante · 5 Teilnehmende</span></div>` : "",
+      b: S.calendar ? btn("Termine prüfen", { cls: "btn-sm", icon: "refresh" }) + btn("Abmelden", { cls: "btn-sm btn-subtle" }) : btn("Bei Microsoft anmelden …", { cls: "btn-sm btn-primary" }) },
+    { st: "ok", icon: "send", t: "SharePoint-Übergabe", tag: "optional", d: "Ordner „Geschäftsführung › Protokolle“ ist erreichbar und wird von OneDrive synchronisiert.", b: btn("Einstellungen …", { cls: "btn-sm", to: "settings-sharepoint" }) },
+    { st: "ok", icon: "clock", t: "Automatisches Aufnahme-Ende", d: "An: Teams legt auf oder 3 Minuten Stille, dann 30 Sekunden Countdown. Höchstens 4 Stunden.", b: btn("Einstellungen …", { cls: "btn-sm", to: "settings-recording" }) },
+    { st: "warn", icon: "power", t: "Mit Windows starten", tag: "optional", d: "Der Autostart-Eintrag zeigt noch auf den alten Programmordner.", b: btn("Jetzt korrigieren", { cls: "btn-sm btn-primary" }) + btn("Entfernen", { cls: "btn-sm btn-subtle" }) },
+    { st: "ok", icon: "update", t: "Updates", d: "Version 2.7.0 ist installiert. Version 2.8.0 ist verfügbar.", b: btn("Zum Update", { cls: "btn-sm", to: "update" }) },
+  ];
+  const icon = { ok: "check", warn: "warning", err: "alert", opt: "info" };
+  return `<div class="page" style="max-width:1200px">
+    <header class="page-head"><div class="grow"><h1 tabindex="-1" data-focus>Einrichtung</h1><p class="sub">Was eingerichtet ist und was fehlt – mit je einem Schritt zur Lösung.</p></div>${btn("Erneut prüfen", { icon: "refresh" })}</header>
+    <section class="card summary-strip" style="margin-bottom:16px" aria-label="Zusammenfassung der Prüfung">
+      <span class="progress-ring" style="--p:75"><b>6/8</b></span>
+      <div><div class="strong" style="font-size:16px">Aufnehmen funktioniert. 2 Punkte brauchen Ihre Aufmerksamkeit.</div><div class="muted">Pflichtpunkte sind vollständig. Optional heißt: alles andere funktioniert auch ohne.</div></div><span></span>
+    </section>
+    <section class="card"><ul class="checklist">${items.map(i => `
+      <li class="ck"><span class="st ${i.st}" aria-label="${{ ok: "In Ordnung", warn: "Hinweis", err: "Fehler", opt: "Nicht eingerichtet" }[i.st]}">${I(icon[i.st])}</span>
+        <div class="ct">${I(i.icon, "ico-sm")}${i.t}${i.tag ? ` <span class="chip">${i.tag}</span>` : ""}</div>
+        <div class="btn-row">${i.b}</div>
+        <p class="cd">${i.d}</p>${i.x ? `<div class="cx">${i.x}</div>` : ""}</li>`).join("")}
+    </ul></section></div>`;
+}
+
+/* =====================================================================
+   SCREEN: SETTINGS
+   ===================================================================== */
+const SECTIONS = [
+  ["general", "gear", "Allgemein"], ["recording", "mic", "Aufnahme und Ende"], ["calendar", "calendar", "Kalender und Konto"],
+  ["summary", "sparkle", "Zusammenfassung"], ["sharepoint", "send", "SharePoint-Übergabe"], ["profiles", "fingerprint", "Stimmprofile"],
+  ["update", "update", "Updates"], ["advanced", "sliders", "Für Fortgeschrittene"],
+];
+const sw = (on, label) => `<label class="switch"><input type="checkbox" role="switch" ${on ? "checked" : ""} aria-label="${label}"></label>`;
+const setting = (t, d, ctl, cls = "") => `<div class="setting ${cls}"><div><div class="t">${t}</div>${d ? `<div class="d">${d}</div>` : ""}</div><div class="ctl">${ctl}</div></div>`;
+function secGeneral() {
+  return `<h2 class="group-title">Allgemein</h2>
+  <section class="card">
+    ${setting("Ihr Name im Transkript", "So erscheinen Ihre eigenen Beiträge. Leer lassen = Name aus dem Microsoft-Konto.", `<input class="input" style="width:240px" value="Martina Ehlers" aria-label="Ihr Name">`)}
+    ${setting("Mit Windows starten", "CallRecorder wartet dann im Infobereich – Tastenkürzel, Erinnerung und automatisches Ende sind immer bereit.", sw(true, "Mit Windows starten"))}
+    ${setting("Beim Start nur im Infobereich", "Das Fenster öffnet sich erst, wenn Sie auf das Symbol klicken.", sw(true, "Nur im Infobereich"))}
+    ${setting("Tastenkürzel zum Starten und Beenden", "Klicken und die neue Tastenkombination drücken.", `<button class="keyfield" aria-label="Tastenkürzel ändern"><kbd>Strg</kbd>+<kbd>Alt</kbd>+<kbd>Umschalt</kbd>+<kbd>R</kbd></button>`)}
+    ${setting("Aufnahme-Anzeige oben rechts", "Kleines rotes Fenster mit Laufzeit und Stopp-Knopf, solange aufgenommen wird.", sw(true, "Aufnahme-Anzeige"))}
+  </section>
+  <h2 class="group-title">Nach einer Aufnahme</h2>
+  <section class="card">
+    <div class="setting stack"><div><div class="t">Was soll passieren, wenn eine Aufnahme endet?</div></div><div class="ctl" style="display:grid;gap:8px;width:100%">
+      <label class="rcard"><input type="radio" name="after" checked><span class="rt">Fragen <span class="chip chip-accent" style="margin-left:6px">empfohlen</span></span><span></span><span class="rd">Einmal fragen, ob vollständig verarbeitet werden soll – mit den Schritten unten als Vorauswahl.</span></label>
+      <label class="rcard"><input type="radio" name="after"><span class="rt">Sofort vollständig verarbeiten</span><span></span><span class="rd">Ohne Rückfrage. Die Übergabe an SharePoint läuft dabei nur, wenn Sie sie unten ausdrücklich erlauben.</span></label>
+    </div></div>
+    ${setting("Vorauswahl", "", `<div style="display:grid;gap:8px;justify-items:start">
+      <label class="check"><input type="checkbox" checked disabled><span class="t">Transkript</span></label>
+      <label class="check"><input type="checkbox" checked><span class="t">Sprecher erkennen und nachfragen</span></label>
+      <label class="check"><input type="checkbox" checked><span class="t">Zusammenfassung</span></label>
+      <label class="check"><input type="checkbox"><span class="t">An SharePoint übergeben</span></label></div>`)}
+  </section>
+  <h2 class="group-title">Ablage</h2>
+  <section class="card">
+    ${setting("Aufnahmeordner", "C:\\Users\\mehlers\\Anrufaufnahmen · 3,1 GB belegt. Bitte nicht in einen OneDrive-Ordner legen.", btn("Ändern …", { icon: "folder" }))}
+  </section>`;
+}
+function secRecording() {
+  return `<h2 class="group-title">Geräte</h2>
+  <section class="card">
+    ${setting("Mikrofon", "„Automatisch“ nimmt das Gerät, das Teams gerade nutzt.", `<select class="select" style="width:280px" aria-label="Mikrofon"><option>Automatisch (wie Teams)</option><option>Headset Mikrofon (USB Audio)</option><option>Mikrofonarray (Realtek Audio)</option></select>`)}
+    ${setting("Gegenseite (Wiedergabegerät)", "Hier hören Sie die anderen – meist Ihr Headset.", `<select class="select" style="width:280px" aria-label="Wiedergabegerät"><option>Automatisch (wie Teams)</option><option>Headset Kopfhörer (USB Audio)</option><option>Lautsprecher (Realtek Audio)</option></select>`)}
+    ${setting("Dateiformat", "FLAC: verlustfrei, ca. 150 MB pro Stunde. Opus: etwa ein Zehntel davon.", `<select class="select" style="width:180px" aria-label="Format"><option>FLAC</option><option>Opus</option></select>`)}
+  </section>
+  <h2 class="group-title">Automatisches Ende</h2>
+  <section class="card">
+    ${setting("Gesprächsende erkennen", "Eine Aufnahme startet nie von selbst. Ist das Gespräch vorbei, beendet CallRecorder die Aufnahme nach einem sichtbaren Countdown.", sw(true, "Gesprächsende erkennen"))}
+    ${setting("Countdown vor dem Beenden", "Zeit, um noch „Weiter aufnehmen“ zu klicken.", `<input class="input inline-num num" value="30" aria-label="Countdown in Sekunden"> <span class="muted">Sekunden</span>`)}
+    ${setting("Ende bei Stille", "Wenn beide Seiten so lange still sind.", `<input class="input inline-num num" value="3" aria-label="Minuten Stille"> <span class="muted">Minuten</span>`)}
+    ${setting("Höchstdauer", "Sicherheitsnetz, auch wenn die Erkennung aus ist. 10 Minuten vorher fragen wir nach.", `<input class="input inline-num num" value="4" aria-label="Höchstdauer in Stunden"> <span class="muted">Stunden</span>`)}
+  </section>
+  <details class="adv"><summary>${I("right", "ico-sm")}Feineinstellung der Erkennung</summary>
+  <section class="card" style="margin-top:8px">
+    ${setting("Stille-Schwelle", "Leiser als dieser Pegel gilt als still. Rauscht Ihr Mikrofon, etwas höher setzen (z. B. −40).", `<input class="input inline-num num" value="−45" aria-label="Schwelle dBFS"> <span class="muted">dBFS</span>`)}
+    ${setting("Anruf-App weg nach", "Teams hat das Mikrofon freigegeben und die Gegenseite ist still.", `<input class="input inline-num num" value="20" aria-label="Sekunden"> <span class="muted">Sekunden</span>`)}
+    ${setting("Ruhe nach „Weiter aufnehmen“", "", `<input class="input inline-num num" value="15" aria-label="Minuten"> <span class="muted">Minuten</span>`)}
+    ${setting("Programmnamen der Anruf-App", "Mehrere durch Komma getrennt.", `<input class="input" style="width:280px" value="ms-teams.exe, teams.exe" aria-label="Prozessnamen">`)}
+  </section></details>`;
+}
+function secSummary() {
+  return `<h2 class="group-title">Wer schreibt die Zusammenfassung?</h2>
+  <section class="card" style="padding:16px 20px"><div class="radio-cards" role="radiogroup" aria-label="Anbieter">
+    <label class="rcard"><input type="radio" name="prov"><span class="rt">Lokal mit Ollama</span>${chip("chip-ok", "lock", "bleibt auf diesem Rechner")}<span class="rd">Kostenlos und privat. Ohne NVIDIA-Grafikkarte dauert eine Zusammenfassung oft mehrere Minuten.</span></label>
+    <label class="rcard"><input type="radio" name="prov"><span class="rt">Lokaler KI-Server (OpenAI-kompatibel)</span>${chip("chip-ok", "lock", "bleibt auf diesem Rechner")}<span class="rd">Zum Beispiel LM Studio oder llama.cpp auf diesem Rechner.</span></label>
+    <label class="rcard"><input type="radio" name="prov" checked><span class="rt">Claude von Anthropic</span>${chip("chip-warn", "cloud", "Transkript verlässt den Rechner")}<span class="rd">Schnell und sehr gute Qualität. Für jede Zusammenfassung wird der Transkripttext an Anthropic übertragen – Audio und Stimmprofile nie. Die Einwilligungsabfrage nennt das ausdrücklich.</span></label>
+  </div></section>
+  <section class="card">
+    ${setting("API-Schlüssel", "Gespeichert und mit Windows verschlüsselt – nur Ihr Konto auf diesem Rechner kann ihn lesen.", chip("chip-ok", "check", "gespeichert") + btn("Ändern …", { cls: "btn-sm" }) + btn("Löschen", { cls: "btn-sm btn-subtle btn-danger" }))}
+    ${setting("Modell", "Opus: beste Qualität. Sonnet und Haiku sind günstiger.", `<select class="select" style="width:240px" aria-label="Modell"><option>Claude Opus 5.5 (empfohlen)</option><option>Claude Sonnet 5.5</option><option>Claude Haiku 5.5</option></select>`)}
+    ${setting("Verbindung", "Sendet nur „Antworte nur mit: OK“ – kostet einen Bruchteil eines Cents.", btn("Verbindung testen", { icon: "refresh" }))}
+    <div class="setting stack" style="padding-top:0;border-top:0"><div class="banner banner-warn">${I("globe")}<div class="bt">Letzter Test: keine Antwort nach 20 Sekunden</div><div class="bd" style="grid-column:2">Ist ein VPN aktiv? Dann kurz pausieren oder CallRecorder per Split-Tunneling ausnehmen und erneut testen.</div></div></div>
+  </section>
+  <h2 class="group-title">Inhalt</h2>
+  <section class="card">
+    ${setting("Sprache der Zusammenfassung", "Gilt auch für englische Gespräche.", `<select class="select" style="width:180px" aria-label="Sprache"><option>Deutsch</option><option>Englisch</option></select>`)}
+    ${setting("Anweisungen für die Zusammenfassung", "Gliederung: Kurzfassung, Entscheidungen, Aufgaben, Projektstand, Offene Fragen, Nächste Termine. " + chip("chip-warn", "", "angepasst"), btn("Anweisungen bearbeiten …", { icon: "pencil", to: "prompt" }))}
+  </section>`;
+}
+function secSharepoint() {
+  return `<h2 class="group-title">SharePoint-Übergabe</h2>
+  <div class="banner" style="margin-bottom:16px">${I("info")}<div class="bt">Übergeben wird nur die Zusammenfassung</div><div class="bd" style="grid-column:2">Nie Transkript, Audio oder Stimmprofile – und nur auf Ihren Klick oder wenn Sie es beim Beenden einer Aufnahme ankreuzen. So kann Ihr Claude-Assistent die Protokolle lesen.</div></div>
+  <section class="card" style="padding:16px 20px"><div class="radio-cards">
+    <label class="rcard"><input type="radio" name="ho" checked><span class="rt">In einen OneDrive-synchronisierten Ordner kopieren</span>${chip("chip-accent", "", "empfohlen")}<span class="rd">Keine zusätzliche Berechtigung nötig. OneDrive lädt die Datei hoch.</span></label>
+    <label class="rcard"><input type="radio" name="ho"><span class="rt">Direkt hochladen (Microsoft Graph)</span><span></span><span class="rd">Für Fälle ohne OneDrive-Synchronisierung. Braucht eine Freigabe durch die IT.</span></label>
+  </div></section>
+  <section class="card">
+    ${setting("Ordner", "C:\\Users\\mehlers\\Nordhafen Bau\\Geschäftsführung - Protokolle · erreichbar, wird synchronisiert", btn("Ändern …", { icon: "folder" }))}
+    ${setting("E-Mail-Adressen der Teilnehmenden mitgeben", "Sonst nur Namen.", sw(false, "E-Mail-Adressen mitgeben"))}
+    ${setting("Ohne Rückfrage übergeben", "Nur wenn „Sofort vollständig verarbeiten“ gewählt ist. Sie werden beim Einschalten noch einmal gefragt.", sw(false, "Ohne Rückfrage übergeben"))}
+  </section>`;
+}
+function secProfiles() {
+  const rows = [["jp", "Jonas Pfeiffer", 7, "13.11."], ["lh", "Leonie Hartwig", 6, "13.11."], ["tr", "Tobias Rehm", 11, "20.11."], ["nk", "Nadine Krüger", 4, "19.11."], ["sa", "Selin Aydın", 3, "13.11."]];
+  return `<h2 class="group-title">Stimmprofile</h2>
+  <div class="banner" style="margin-bottom:16px">${I("shield")}<div class="bt">Biometrische Daten – nur auf diesem Rechner</div><div class="bd" style="grid-column:2">Ein Profil entsteht nur, wenn Sie eine Stimme bestätigen („Stimme merken“). Es ist mit Windows verschlüsselt und lässt sich jederzeit löschen.</div></div>
+  <section class="card"><div class="rows">${rows.map(([k, n, c, d]) => `<div class="row" style="grid-template-columns:auto minmax(0,1fr) auto"><span>${av(k)}</span><span style="min-width:0"><span class="rt" style="display:block">${n}</span><span class="rd">gelernt aus ${c} Aufnahmen · zuletzt ${d}</span></span><span class="btn-row">${btn("Herkunft", { cls: "btn-sm" })}${btn("Löschen", { cls: "btn-sm btn-subtle btn-danger", icon: "trash" })}</span></div>`).join("")}</div>
+  <div class="card-foot">${btn("Alle Stimmprofile löschen …", { cls: "btn-sm btn-danger", icon: "trash" })}<span class="caption muted" style="flex:1">Aufnahmen bleiben erhalten.</span></div></section>`;
+}
+function secUpdate() {
+  return `<h2 class="group-title">Updates</h2>
+  <div class="ver-grid">
+    <section class="card ver"><span class="caption muted">Installiert</span><span class="v">2.7.0</span><span class="muted">seit 2. November 2026</span></section>
+    <section class="card ver" style="border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)"><span class="caption" style="color:var(--accent-text);font-weight:600">Verfügbar</span><span class="v">2.8.0</span><span class="muted">veröffentlicht am 18. November 2026</span></section>
+  </div>
+  <section class="card" style="margin-top:16px">
+    <div class="card-head"><h2>Was ist neu in 2.8.0?</h2></div>
+    <div class="card-body notes">
+      <div class="note-item">${chip("chip-accent", "", "Neu")}<p>Die Übersicht zeigt den nächsten Termin und alles, was auf Ihre Entscheidung wartet.</p></div>
+      <div class="note-item">${chip("chip-accent", "", "Neu")}<p>Zusammenfassungen lassen sich mit einer vorhandenen Aufnahme testen, bevor Sie geänderte Anweisungen speichern.</p></div>
+      <div class="note-item">${chip("chip-info", "", "Besser")}<p>Die Verbindung zu Claude bricht bei einem blockierenden VPN schneller ab und nennt die Ursache.</p></div>
+      <div class="note-item">${chip("", "", "Behoben")}<p>Bluetooth-Headsets, die während der Aufnahme das Profil wechseln, beenden die Aufnahme nicht mehr zu früh.</p></div>
+    </div>
+    <div class="card-foot" style="flex-wrap:wrap">${btn("Jetzt aktualisieren", { cls: "btn-primary", icon: "download", act: "toast-msg", attrs: 'data-msg="Update wird geladen – CallRecorder startet danach neu"' })}<span class="caption muted" style="flex:1;min-width:220px">Dauert etwa eine Minute. CallRecorder startet danach neu. Läuft gerade eine Aufnahme oder Verarbeitung, wartet das Update, bis sie fertig ist.</span></div>
+  </section>
+  <section class="card" style="margin-top:16px">
+    ${setting("Automatisch nach Updates suchen", "Einmal täglich. Installiert wird nur auf Ihren Klick. Zuletzt gesucht: heute, 08:10.", sw(true, "Automatisch suchen"))}
+    ${setting("Vorherige Version wiederherstellen", "Falls nach einem Update etwas nicht stimmt: zurück zu 2.6.3. Ihre Aufnahmen und Einstellungen bleiben.", btn("Version 2.6.3 wiederherstellen …", { icon: "undo" }))}
+  </section>`;
+}
+function secCalendar() {
+  return `<h2 class="group-title">Kalender und Microsoft-Konto</h2>
+  <section class="card">
+    ${setting("Microsoft-Konto", S.calendar ? "Angemeldet als Martina Ehlers · m.ehlers@nordhafen-bau.example" : "Nicht angemeldet", S.calendar ? btn("Abmelden") : btn("Bei Microsoft anmelden …", { cls: "btn-primary" }))}
+    ${setting("Wofür?", "Aufnahmen heißen wie der Termin, und nur Teilnehmende des Termins werden automatisch als Sprecher erkannt. Gelesen wird nur Ihr eigener Kalender.", "")}
+  </section>
+  <details class="adv"><summary>${I("right", "ico-sm")}Technische Angaben (von der IT)</summary><section class="card" style="margin-top:8px">
+    ${setting("Anwendungs-ID (Client)", "", `<input class="input num" style="width:340px" value="7f3c1a52-0d4e-4b7a-9e21-5c8d6a0b3f19" aria-label="Client-ID">`)}
+    ${setting("Verzeichnis-ID (Mandant)", "", `<input class="input num" style="width:340px" value="b2e9c4d1-8a7f-4c36-a015-e4f2d9b70c88" aria-label="Mandant">`)}
+  </section></details>`;
+}
+function secAdvanced() {
+  return `<h2 class="group-title">Für Fortgeschrittene</h2>
+  <p class="muted" style="margin:-4px 0 16px;max-width:70ch">Diese Einstellungen braucht man selten. Geänderte Werte gelten für neue Aufnahmen; ältere verbessern Sie über „Neu transkribieren“ – die alte Fassung bleibt als Version erhalten.</p>
+  <section class="card">
+    ${setting("Sprache der Gespräche", "„Automatisch“ misst je Aufnahme an mehreren Stellen und wählt zwischen Deutsch und Englisch.", `<select class="select" style="width:220px" aria-label="Sprache"><option>Automatisch (Deutsch, Englisch)</option><option>Immer Deutsch</option><option>Immer Englisch</option></select>`)}
+    ${setting("Erkennungsmodell", "„Automatisch“: large-v3 mit NVIDIA-Grafikkarte, sonst large-v3-turbo.", `<select class="select" style="width:220px" aria-label="Modell"><option>Automatisch</option><option>large-v3</option><option>large-v3-turbo</option><option>medium</option></select>`)}
+    ${setting("Glossar", "Namen, Firmen und Fachwörter, die richtig geschrieben werden sollen.", btn("Bearbeiten …", { icon: "pencil" }))}
+    ${setting("Korrekturliste", "Wiederkehrende Fehler automatisch ersetzen.", btn("Bearbeiten …", { icon: "pencil" }))}
+    ${setting("Zeitstempel im Transkript", "", `<select class="select" style="width:180px" aria-label="Zeitstempel"><option>hh:mm:ss</option><option>mm:ss</option><option>keine</option></select>`)}
+    ${setting("Presets", "Gespeicherte Abstimmungen der Transkription, z. B. „Genau“.", `<select class="select" style="width:180px" aria-label="Aktives Preset"><option>Kein Preset</option><option>Genau</option></select>` + btn("Als Preset speichern …"))}
+  </section>
+  <details class="adv"><summary>${I("right", "ico-sm")}Sprechertrennung und Wiedererkennung</summary><section class="card" style="margin-top:8px">
+    ${setting("Feste Anzahl Sprecher der Gegenseite", "0 = automatisch", `<input class="input inline-num num" value="0" aria-label="Sprecheranzahl">`)}
+    ${setting("Schwelle der Wiedererkennung", "Höher = vorsichtiger", `<input class="input inline-num num" value="0,55" aria-label="Schwelle">`)}
+    ${setting("Nur Teilnehmende automatisch erkennen", "Empfohlen. Aus = alle gespeicherten Profile (früheres Verhalten).", sw(true, "Nur Teilnehmende"))}
+  </section></details>
+  <section class="card" style="margin-top:16px">${setting("Protokolldatei", "Für die Fehlersuche.", btn("Öffnen", { icon: "external" }))}${setting("Konfigurationsdatei", "config.toml im Editor öffnen.", btn("Öffnen", { icon: "external" }))}</section>`;
+}
+function screenSettings() {
+  const f = { general: secGeneral, recording: secRecording, calendar: secCalendar, summary: secSummary, sharepoint: secSharepoint, profiles: secProfiles, update: secUpdate, advanced: secAdvanced }[S.setSection];
+  return `<div class="page" style="max-width:1240px">
+    <header class="page-head"><div class="grow"><h1 tabindex="-1" data-focus>Einstellungen</h1><p class="sub">Änderungen werden sofort gespeichert.</p></div></header>
+    <div class="set-layout">
+      <nav class="subnav" aria-label="Bereiche">${SECTIONS.map(([k, ic, t], i) => `${i === 6 ? '<div class="lbl">Wartung</div>' : ""}<button aria-current="${S.setSection === k}" data-act="section" data-s="${k}">${I(ic)}<span>${t}</span>${k === "update" ? '<span class="badge" style="margin-left:auto">1</span>' : ""}</button>`).join("")}</nav>
+      <div class="set-col">${f()}</div>
+    </div></div>`;
+}
+
+/* =====================================================================
+   SCREEN: PROMPT EDITOR
+   ===================================================================== */
+const PROMPT_TEXT = `Du erstellst ein Ergebnisprotokoll für die Geschäftsführung.
+
+Gespräch: {title} am {date}
+Teilnehmende: {participants}
+
+Schreibe auf Deutsch, sachlich und knapp. Erfinde keine
+Verantwortlichen und keine Fristen – fehlt etwas, schreibe „offen“.
+Übernimm Fristen so, wie sie genannt wurden.
+
+Gliederung (Überschriften genau so):
+## Kurzfassung
+## Entscheidungen
+## Aufgaben
+| Aufgabe | Verantwortlich | Frist |
+## Projektstand und Updates
+(je Projekt ein Unterabschnitt mit ###)
+## Offene Fragen
+## Nächste Termine
+
+Zusätzlich: Nenne bei Aufgaben zu Bauprojekten immer das Haus
+(A, B oder Außenanlagen).
+
+Transkript:
+{material}`;
+function screenPrompt() {
+  return `<div class="page" style="max-width:1400px">
+    <nav class="crumbs" aria-label="Pfad"><button data-to="settings">Einstellungen</button>${I("right", "ico-sm")}<button data-to="settings-summary">Zusammenfassung</button>${I("right", "ico-sm")}<span>Anweisungen</span></nav>
+    <header class="page-head"><div class="grow"><h1 tabindex="-1" data-focus>Anweisungen für die Zusammenfassung</h1><p class="sub">Dieser Text geht zusammen mit dem Transkript an das Sprachmodell. Gilt für alle Anbieter.</p></div>${chip("chip-warn", "pencil", "Angepasst – weicht vom Standard ab")}</header>
+    <div class="prompt-grid">
+      <section class="card">
+        <div class="tabs" role="tablist" style="padding:0 12px"><button class="tab" role="tab" aria-selected="true">Hauptanweisung</button><button class="tab" role="tab" aria-selected="false">Systemtext</button><button class="tab" role="tab" aria-selected="false">Lange Gespräche (Teilstücke)</button></div>
+        <div class="card-body" style="padding-top:16px;display:grid;gap:12px">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span class="caption muted">Platzhalter einfügen:</span>${["{title}", "{date}", "{participants}", "{material}"].map(p => `<button class="ph">${p}</button>`).join("")}</div>
+          <label class="sr-only" for="prompt">Anweisungstext</label>
+          <textarea class="textarea code" id="prompt" spellcheck="false">${esc(PROMPT_TEXT)}</textarea>
+          <div class="btn-row">${btn("Speichern", { cls: "btn-primary" })}${btn("Unterschiede anzeigen", { cls: "btn-subtle" })}<span style="flex:1"></span>${btn("Standard wiederherstellen …", { cls: "btn-subtle", act: "modal", attrs: 'data-m="restore"' })}</div>
+        </div>
+      </section>
+      <div style="display:grid;gap:16px;min-width:0">
+        <section class="card"><div class="card-head"><h2>Prüfung</h2></div><div class="card-body">
+          <ul class="outline-check">${["Kurzfassung", "Entscheidungen", "Aufgaben (Tabelle)", "Projektstand und Updates", "Offene Fragen", "Nächste Termine"].map(h => `<li>${I("check")}${h}</li>`).join("")}<li>${I("check")}Platzhalter {material} vorhanden</li></ul>
+          <p class="help" style="margin-top:12px">Alle sechs Abschnitte sind enthalten – Ihr Assistent in SharePoint findet Aufgaben und Projektstände wie gewohnt.</p></div></section>
+        <section class="card"><div class="card-head"><h2>Mit dieser Aufnahme testen</h2></div><div class="card-body" style="display:grid;gap:12px">
+          <div style="display:flex;gap:8px;flex-wrap:wrap"><label class="sr-only" for="testrec">Aufnahme</label><select class="select" id="testrec" style="flex:1;min-width:200px"><option>Jour fixe Neubau Hafenkante · 13.11.</option><option>Kundengespräch Lindqvist Logistik · 20.11.</option></select>${btn(S.promptTested ? "Erneut testen" : "Testen", { cls: "btn-primary", icon: "play", act: "prompt-test" })}</div>
+          <p class="help">Erstellt eine neue Version der Zusammenfassung dieser Aufnahme. Die bisherige bleibt zum Vergleich erhalten. ${chip("chip-warn", "cloud", "geht an Claude")}</p>
+          ${S.promptTested ? `<div class="test-out" aria-live="polite"><p class="caption muted" style="margin-bottom:8px">Neue Version 4 · 38 Sekunden · claude-opus-5-5 · Version 3 bleibt erhalten</p><div class="reader">${SUMMARY_R10.replace(/<p class="src">[^]*?<\/p>/, "").replace("Kessler Bau zieht", "Kessler Bau (Haus A) zieht")}</div></div>` : `<div class="empty" style="padding:20px"><p>Das Ergebnis erscheint hier – zum Vergleich mit der gespeicherten Zusammenfassung.</p></div>`}
+        </div></section>
+      </div>
+    </div></div>`;
+}
+
+/* =====================================================================
+   SCREEN: COMPANION WINDOWS (separate small windows in the real app)
+   ===================================================================== */
+function toastWindow(fixed = true) {
+  return `<div class="miniwin toastwin" role="dialog" aria-labelledby="tw-t" style="${fixed ? "" : "position:absolute"}">
+    <div class="th"><div class="app-tag">${I("mic", "ico-sm")}CallRecorder</div><button class="icon-btn x" aria-label="Schließen" data-act="dismiss-toast">${I("x", "ico-sm")}</button></div>
+    <div><div class="strong" id="tw-t" style="font-size:15px;line-height:22px">Call erkannt: ${esc(NEXT.title)} – aufnehmen?</div><p class="muted" style="margin-top:4px">Teams nutzt das Mikrofon. Es wird nichts aufgenommen, bevor Sie die Einwilligung bestätigt haben.</p></div>
+    <div class="btn-row">${btn("Aufnahme vorbereiten …", { cls: "btn-primary", act: "consent" })}${btn("Nein, danke", { act: "dismiss-toast" })}</div>
+    <span class="caption faint">Nach „Nein“ fragt CallRecorder 10 Minuten nicht mehr.</span>
+  </div>`;
+}
+function screenMini() {
+  return `<div class="page">
+    <header class="page-head"><div class="grow"><h1 tabindex="-1" data-focus>Begleitfenster</h1><p class="sub" style="max-width:90ch">Diese kleinen Fenster erscheinen auch, wenn das Hauptfenster geschlossen ist (CallRecorder läuft im Infobereich). Sie stehlen nie den Fokus und bleiben über Teams sichtbar.</p></div></header>
+    <div class="desk" role="img" aria-label="Schematischer Windows-Desktop mit den Begleitfenstern">
+      <div class="teams-mock">${I("teams", "ico-lg")}&nbsp;Teams-Besprechung</div>
+      <span class="lbl" style="right:24px;top:12px">1 · Aufnahme-Anzeige (immer im Vordergrund, verschiebbar)</span>
+      <div class="miniwin pillwin" style="position:absolute;right:24px;top:40px"><span class="rec-dot" aria-hidden="true"></span><span class="num strong">00:23:41</span><span class="t ellipsis muted">${esc(NEXT.title)}</span><button class="btn btn-record btn-sm" aria-label="Aufnahme beenden">${I("stop", "ico-sm")}Beenden</button></div>
+      <span class="lbl" style="right:24px;top:100px">2 · Dieselbe Anzeige beim Countdown</span>
+      <div class="miniwin" style="position:absolute;right:24px;top:128px;width:360px;padding:14px;display:grid;gap:10px;border-color:var(--warn-mark)">
+        <div style="display:flex;gap:10px;align-items:center"><span style="color:var(--warn-mark)">${I("clock")}</span><b>Call scheint beendet – Aufnahme endet in 24&nbsp;s</b></div>
+        <div class="bar"><i style="width:80%;background:var(--warn-mark)"></i></div>
+        <div class="btn-row">${btn("Jetzt beenden", { cls: "btn-record btn-sm", icon: "stop" })}${btn("Weiter aufnehmen", { cls: "btn-sm" })}</div>
+      </div>
+      <span class="lbl" style="right:24px;bottom:322px">3 · „Call erkannt“ (unten rechts, verschwindet nach 90 s)</span>
+      <div style="position:absolute;right:4px;bottom:60px;width:400px;height:230px">${toastWindow(false).replace("toastwin", "toastwin").replace('style="position:absolute"', 'style="position:absolute;right:20px;bottom:0"')}</div>
+      <div class="taskbar"><span>Infobereich:</span><span class="tray-ico" title="CallRecorder – Aufnahme läuft">${I("rec", "ico-sm")}</span><span class="num">13:48</span></div>
+    </div>
+    <div class="card" style="margin-top:16px"><div class="card-body" style="padding-top:16px;display:grid;gap:6px">
+      <div class="strong">Infobereich-Menü (bleibt nativ, kurz gehalten)</div>
+      <p class="muted">CallRecorder öffnen · Aufnahme starten … / Aufnahme beenden · Letzte Aufnahme übergeben … · Laufende Verarbeitung abbrechen (nur wenn etwas läuft) · Einstellungen … · Beenden. Symbol: grau = bereit, rot mit Punkt = Aufnahme läuft, orange = Verarbeitung (Fortschritt im Tooltip).</p>
+    </div></div>
+  </div>`;
+}
+
+/* =====================================================================
+   MODALS
+   ===================================================================== */
+function modal(id, head, body, foot, cls = "") {
+  return `<div class="scrim" data-act="scrim"><div class="modal ${cls}" role="dialog" aria-modal="true" aria-labelledby="${id}-t">
+    <div class="modal-head"><div class="grow">${head.replace("<h2>", `<h2 id="${id}-t">`)}</div><button class="icon-btn" data-act="close" aria-label="Schließen">${I("x")}</button></div>
+    <div class="modal-body">${body}</div><div class="modal-foot">${foot}</div></div></div>`;
+}
+const MODALS = {
+  consent: () => modal("consent", `<h2>Aufnahme vorbereiten</h2><p class="muted" style="margin-top:2px">Termin aus Outlook: ${esc(NEXT.title)} · heute ${NEXT.time}</p>`, `
+    <div class="field"><label class="label" for="c-title">Titel</label><input class="input" id="c-title" value="${esc(NEXT.title)}"></div>
+    <div class="field"><span class="label" id="c-pl">Teilnehmende</span>
+      <div class="people" aria-labelledby="c-pl"><span class="person">${av("me")}<span>Sie</span></span>${NEXT.people.map(k => `<span class="person">${av(k)}<span>${P[k].name}</span><button class="icon-btn" style="width:22px;height:22px" aria-label="${P[k].name} entfernen">${I("x", "ico-sm")}</button></span>`).join("")}</div>
+      <div style="display:flex;gap:8px;margin-top:4px"><input class="input" placeholder="Name oder E-Mail hinzufügen" aria-label="Person hinzufügen" style="flex:1">${btn(".ics-Einladung importieren …", { cls: "btn-subtle", icon: "calendar" })}</div>
+      <p class="help">Nur diese Personen werden später automatisch als Sprecher erkannt.</p></div>
+    <fieldset style="margin:20px 0 0;padding:16px;border:1px solid var(--border-strong);border-radius:var(--r-lg);display:grid;gap:10px">
+      <legend class="label" style="padding:0 6px">Einwilligung aller Teilnehmenden (§ 201 StGB)</legend>
+      <p class="muted">Bitte nehmen Sie nur auf, wenn alle Teilnehmenden informiert sind und ausdrücklich zugestimmt haben – am besten zu Beginn des Gesprächs, damit die Zustimmung in der Aufnahme enthalten ist.</p>
+      <div class="banner banner-warn" style="padding:10px 12px">${I("cloud", "ico-sm")}<div class="bd">Die Zusammenfassung erstellt Claude (Anthropic). Das Transkript verlässt dafür diesen Rechner.</div></div>
+      <label class="check"><input type="checkbox" id="c-ok" data-act="consent-check" ${S.consent ? "checked" : ""}><span class="t"><b>Ja, alle Teilnehmenden haben der Aufnahme und der Übertragung an Anthropic zugestimmt.</b></span></label>
+    </fieldset>`,
+    `<span class="caption muted left">Wird mit Zeit und Ihrem Namen in der Aufnahme vermerkt.</span>${btn("Abbrechen", { act: "close" })}<button class="btn btn-record" data-act="do-start" ${S.consent ? "" : "disabled"} id="c-start">${I("rec", "ico-sm")}Aufnahme starten</button>`),
+  postcall: () => modal("pc", `<div class="eyebrow" style="color:var(--ok-text)">${I("check-circle", "ico-sm")} Aufnahme gespeichert · 46 Min</div><h2>Aufnahme beendet – jetzt vollständig verarbeiten?</h2><p class="muted" style="margin-top:2px">${esc(NEXT.title)} · heute 14:00</p>`, `
+    <p style="margin-bottom:12px">Das passiert nacheinander im Hintergrund. Sie können währenddessen weiterarbeiten.</p>
+    <ol class="pipe" aria-label="Schritte">
+      ${[["Transkript", "Lokal auf diesem Rechner. Etwa 6 Minuten.", true, true],
+         ["Sprecher", "Erkennt bekannte Stimmen. Bei offenen Stimmen fragen wir Sie.", true, false],
+         ["Zusammenfassung", "Mit Claude – der Transkripttext geht dafür an Anthropic.", true, false],
+         ["An SharePoint übergeben", "Nur die Zusammenfassung, für Ihren Claude-Assistenten. Ohne weitere Vorschau.", false, false]]
+        .map(([t, d, on, fixed], i) => `<li class="pipe-step ${on ? "" : "off"}" data-step="${i}"><div class="top"><span class="n">${i + 1}</span><label class="switch"><input type="checkbox" role="switch" ${on ? "checked" : ""} ${fixed ? "disabled" : ""} aria-label="${t}" data-act="pipe-toggle"></label></div><span class="st">${t}</span><span class="sd">${d}</span></li>`).join("")}
+    </ol>
+    <p class="help" style="margin-top:12px">Die Vorauswahl ändern Sie unter Einstellungen › Allgemein. Ohne Übergabe können Sie später jederzeit mit Vorschau übergeben.</p>`,
+    `<button class="btn btn-subtle btn-danger left" data-act="modal" data-m="discard">${I("trash", "ico-sm")}Verwerfen …</button>${btn("Später", { act: "close-later" })}${btn("Vollständig verarbeiten", { cls: "btn-primary", act: "process" })}`, "wide"),
+  discard: () => modal("dc", `<h2>Aufnahme verwerfen?</h2>`, `<p>„${esc(NEXT.title)}“ wird mit Audio und allen Daten in den Papierkorb verschoben. Von dort lässt sie sich wiederherstellen.</p>`,
+    `${btn("Abbrechen", { act: "modal", attrs: 'data-m="postcall"' })}<button class="btn btn-record" data-act="close">${I("trash", "ico-sm")}In den Papierkorb</button>`),
+  retranscribe: () => modal("rt", `<h2>Neu transkribieren</h2><p class="muted" style="margin-top:2px">${esc(rec(S.selected).title)}</p>`, `
+    <p style="margin-bottom:16px">Es entsteht eine neue Version. Die bisherige bleibt erhalten, und Ihre Sprecherzuordnungen gelten weiter.</p>
+    <fieldset style="border:0;padding:0;margin:0;display:grid;gap:8px"><legend class="label" style="margin-bottom:8px">Sprache des Gesprächs</legend>
+      <label class="rcard"><input type="radio" name="lang" checked><span class="rt">Automatisch erkennen</span><span></span><span class="rd">Misst an mehreren Stellen beider Spuren (Deutsch oder Englisch).</span></label>
+      <label class="rcard"><input type="radio" name="lang"><span class="rt">Deutsch</span><span></span><span class="rd">Wenn die automatische Erkennung danebenlag.</span></label>
+      <label class="rcard"><input type="radio" name="lang"><span class="rt">Englisch</span><span></span><span class="rd">Die Zusammenfassung bleibt trotzdem auf Deutsch.</span></label>
+    </fieldset>
+    <div class="field" style="margin-top:16px"><label class="label" for="rt-p">Einstellungen</label><select class="select" id="rt-p"><option>Aktuelle Einstellungen</option><option>Preset „Genau“</option></select></div>`,
+    `${btn("Abbrechen", { act: "close" })}${btn("Neu transkribieren", { cls: "btn-primary", act: "close-msg", attrs: 'data-msg="Neu-Transkription gestartet"' })}`),
+  handoff: () => modal("ho", `<h2>Zusammenfassung an SharePoint übergeben</h2><p class="muted" style="margin-top:2px">${esc(rec(S.selected).title)}</p>`, `
+    <div class="handoff" style="margin-bottom:16px"><span class="ico-wrap">${I("folder")}</span><div><div class="strong">Ziel</div><div class="hd">SharePoint › Geschäftsführung › Protokolle › 2026-11-19_1030_Budgetvorbereitung-mit-Controlling.md</div></div><span></span></div>
+    <p class="label" style="margin-bottom:8px">Vorschau – genau dieser Text wird übergeben</p>
+    <div class="test-out" style="max-height:260px"><div class="reader"><p class="src">Budgetvorbereitung mit Controlling · 19.11.2026 10:30 · Teilnehmende: Martina Ehlers, Nadine Krüger · Einwilligung bestätigt</p><h2>Kurzfassung</h2><p>Das Budget 2027 wird mit 3 % Kostensteigerung geplant. Die Personalplanung für die Bauleitung bleibt offen, bis die Auftragslage im Januar feststeht.</p><h2>Entscheidungen</h2><ul><li>Investitionsbudget Fuhrpark wird auf zwei Fahrzeuge begrenzt.</li></ul><h2>Aufgaben</h2><table><thead><tr><th>Aufgabe</th><th>Verantwortlich</th><th>Frist</th></tr></thead><tbody><tr><td>Entwurf Budget an Beirat senden</td><td>Nadine Krüger</td><td>04.12.</td></tr></tbody></table></div></div>
+    <p class="help" style="margin-top:12px">${I("lock", "ico-sm")} Übergeben wird nur die Zusammenfassung – nie Transkript, Audio oder Stimmprofile. Die Zusammenfassung kann einzelne Aussagen wörtlich zitieren.</p>`,
+    `${btn("Abbrechen", { act: "close" })}${btn("An SharePoint übergeben", { cls: "btn-primary", icon: "send", act: "close-msg", attrs: 'data-msg="Übergeben – SharePoint › Geschäftsführung › Protokolle"' })}`, "wide"),
+  delete: () => modal("del", `<h2>Aufnahme löschen?</h2>`, `<p>„${esc(rec(S.selected).title)}“ wird mit Audio, Transkript, Zusammenfassung und Stimmdaten in den Windows-Papierkorb verschoben.</p><p class="muted" style="margin-top:8px">Bereits an SharePoint übergebene Zusammenfassungen bleiben in SharePoint.</p>`,
+    `${btn("Abbrechen", { act: "close" })}<button class="btn btn-record" data-act="close-msg" data-msg="In den Papierkorb verschoben">${I("trash", "ico-sm")}In den Papierkorb</button>`),
+  rename: () => modal("rn", `<h2>Umbenennen</h2>`, `<div class="field"><label class="label" for="rn-i">Angezeigter Titel</label><input class="input" id="rn-i" value="${esc(rec(S.selected).title)}"><p class="help">Der Ordnername bleibt gleich, damit SharePoint und Ihr Assistent die Aufnahme wiedererkennen.</p></div>`,
+    `${btn("Abbrechen", { act: "close" })}${btn("Speichern", { cls: "btn-primary", act: "close-msg", attrs: 'data-msg="Titel geändert"' })}`),
+  event: () => modal("ev", `<h2>Termin zuordnen</h2><p class="muted" style="margin-top:2px">Termine im Zeitraum der Aufnahme, der passendste zuerst</p>`, `<div class="radio-cards">
+    <label class="rcard"><input type="radio" name="ev" checked><span class="rt">14:00–14:45 · Jour fixe Neubau Hafenkante</span>${chip("chip-accent", "", "passt am besten")}<span class="rd">Teams · 4 Teilnehmende</span></label>
+    <label class="rcard"><input type="radio" name="ev"><span class="rt">14:30–15:00 · Telefonat Bauleitung</span><span></span><span class="rd">1 Teilnehmer</span></label></div>
+    <label class="check" style="margin-top:16px"><input type="checkbox"><span class="t">Betreff als Titel übernehmen</span></label><p class="help" style="margin-top:8px">Danach läuft die Sprechererkennung mit diesen Teilnehmenden erneut. Ihre manuellen Zuordnungen bleiben.</p>`,
+    `${btn("Abbrechen", { act: "close" })}${btn("Zuordnen", { cls: "btn-primary", act: "close-msg", attrs: 'data-msg="Termin zugeordnet"' })}`),
+  participants: () => modal("pa", `<h2>Teilnehmende bearbeiten</h2>`, `<div class="people" style="margin-bottom:12px">${rec(S.selected).people.map(k => `<span class="person">${av(k)}<span>${P[k].name}</span></span>`).join("")}</div><input class="input" placeholder="Name oder E-Mail hinzufügen"><p class="help" style="margin-top:8px">Nur diese Personen werden automatisch als Sprecher erkannt.</p>`,
+    `${btn("Abbrechen", { act: "close" })}${btn("Speichern", { cls: "btn-primary", act: "close" })}`),
+  restore: () => modal("rs", `<h2>Standard wiederherstellen?</h2>`, `<p>Ihre angepasste Hauptanweisung wird durch die aktuelle Standardvorlage ersetzt. Ihre Fassung wird als „summary_final.eigene.txt“ gesichert.</p>`,
+    `${btn("Abbrechen", { act: "close" })}${btn("Standard wiederherstellen", { cls: "btn-primary", act: "close-msg", attrs: 'data-msg="Standard wiederhergestellt"' })}`),
+};
+
+/* =====================================================================
+   RENDER + EVENTS
+   ===================================================================== */
+function applyTheme() {
+  const dark = S.theme === "dark" || (S.theme === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+}
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
+let lastFocus = null;
+function render(routeChanged) {
+  applyTheme();
+  renderNav(); renderRecbar();
+  const main = document.getElementById("main");
+  const scrollTop = routeChanged ? 0 : main.scrollTop;
+  const fn = { home: screenHome, library: screenLibrary, speakers: screenSpeakers, setup: screenSetup, settings: screenSettings, prompt: screenPrompt, mini: screenMini }[S.screen];
+  main.innerHTML = fn();
+  main.scrollTop = scrollTop;
+  main.classList.toggle("lib-mode", S.screen === "library" && !S.empty);
+  main.style.overflowY = S.screen === "library" && !S.empty ? "hidden" : "";
+  document.title = `${SCREEN_TITLES[S.screen]} – CallRecorder`;
+  const ov = document.getElementById("overlay");
+  ov.innerHTML = (S.modal ? MODALS[S.modal]() : "") + (S.toast ? toastWindow() : "");
+  if (S.modal) { const m = ov.querySelector(".modal"); const f = m.querySelector(".modal-body input:not([disabled]):not([type=checkbox]):not([type=radio])") || m.querySelector(".modal-foot .btn-primary") || m.querySelector(".modal-foot button"); (f || m).focus(); }
+  else if (routeChanged) { const h = main.querySelector("[data-focus]"); if (h) h.focus({ preventScroll: true }); }
+  renderProto();
+}
+function renderProto() {
+  const groups = [
+    ["Start", [["home", "Übersicht"], ["toast", "Call erkannt (Toast)"], ["consent", "Aufnahme vorbereiten / Einwilligung"], ["no-calendar", "Kalender nicht verbunden"], ["empty", "Erster Start, keine Aufnahmen"]]],
+    ["Aufnahme", [["recording", "Aufnahme läuft"], ["countdown", "Call scheint beendet (Countdown)"], ["rec-library", "Aufnahme läuft, andere Seite"], ["postcall", "Nach dem Call: verarbeiten?"], ["mini", "Begleitfenster"]]],
+    ["Aufnahmen", [["pipeline", "Verarbeitung läuft"], ["library", "Zusammenfassung"], ["transcript", "Transkript"], ["actions", "Weitere Aktionen"], ["retranscribe", "Neu transkribieren"], ["handoff", "Übergabe mit Vorschau"], ["error-vpn", "Fehler: VPN blockiert"], ["library-empty", "Keine Aufnahmen"], ["speakers", "Sprecher zuordnen"]]],
+    ["Einrichtung", [["setup", "Einrichtung"], ["settings", "Einstellungen"], ["settings-recording", "Aufnahme und Ende"], ["settings-summary", "Zusammenfassung"], ["prompt", "Anweisungen bearbeiten"], ["profiles", "Stimmprofile"], ["update", "Updates"], ["settings-advanced", "Fortgeschritten"]]],
+  ];
+  const open = S.menu === "proto";
+  document.getElementById("proto").innerHTML = `<button data-act="menu" data-menu="proto" aria-expanded="${open}">Prototyp: Zustände ${open ? "▴" : "▾"}</button>${open ? `<div class="menu up" role="menu">${groups.map(([g, list]) => `<div class="menu-label">${g}</div>${list.map(([k, t]) => `<button role="menuitem" data-to="${k}" ${k === current ? 'aria-current="true" style="font-weight:600"' : ""}>${t}</button>`).join("")}`).join("")}</div>` : ""}`;
+}
+function toastMsg(text) {
+  say(text);
+  let t = document.getElementById("snack");
+  if (!t) { t = document.createElement("div"); t.id = "snack"; t.setAttribute("role", "status"); t.className = "miniwin"; t.style.cssText = "position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:90;padding:10px 16px;display:flex;gap:10px;align-items:center;max-width:90vw"; document.body.appendChild(t); }
+  t.innerHTML = `${I("check-circle")}<span>${esc(text)}</span>`; t.hidden = false;
+  clearTimeout(t._h); t._h = setTimeout(() => t.hidden = true, 2600);
+}
+document.addEventListener("click", e => {
+  const el = e.target.closest("[data-act],[data-to]");
+  if (!el) { if (S.menu && !e.target.closest(".menu")) { S.menu = null; render(); } return; }
+  if (el.dataset.to) { e.preventDefault(); S.menu = null; go(el.dataset.to); return; }
+  const a = el.dataset.act;
+  switch (a) {
+    case "scrim": if (e.target === el) { S.modal = null; render(); } break;
+    case "theme": S.theme = { auto: "light", light: "dark", dark: "auto" }[S.theme]; render(); say("Darstellung: " + { auto: "wie Windows", light: "hell", dark: "dunkel" }[S.theme]); break;
+    case "menu": { const m = el.dataset.menu; S.menu = S.menu === m ? null : m; render(); const first = document.querySelector(".menu [role=menuitem]"); if (S.menu && first && m !== "proto") first.focus(); break; }
+    case "start": case "consent": S.menu = null; S.toast = false; S.modal = "consent"; S.consent = false; render(); break;
+    case "consent-check": S.consent = el.checked; document.getElementById("c-start").disabled = !el.checked; break;
+    case "do-start": S.modal = null; S.keepRec = true; go("recording"); break;
+    case "stop": S.keepRec = false; S.rec = "idle"; go("postcall"); break;
+    case "simulate-end": S.rec = "countdown"; S.keepRec = true; go("countdown"); break;
+    case "keep": S.rec = "recording"; go("recording"); toastMsg("Weiter aufnehmen – 15 Minuten keine Nachfrage"); break;
+    case "close": S.modal = null; render(); if (lastFocus) lastFocus.focus?.(); break;
+    case "close-later": S.modal = null; render(); toastMsg("Gespeichert – später in Aufnahmen „Jetzt verarbeiten“"); break;
+    case "close-msg": S.modal = null; render(); toastMsg(el.dataset.msg); break;
+    case "process": S.modal = null; go("pipeline"); break;
+    case "postcall": S.menu = null; S.modal = "postcall"; render(); break;
+    case "modal": lastFocus = document.activeElement; S.menu = null; S.modal = el.dataset.m; render(); break;
+    case "pipe-toggle": el.closest(".pipe-step").classList.toggle("off", !el.checked); break;
+    case "dismiss-toast": S.toast = false; render(); break;
+    case "open": S.selected = el.dataset.id; S.tab = "summary"; S.mobileDetail = true; S.menu = null;
+      if (S.selected === "r3") go("error-vpn"); else if (S.selected === "r2") go("pipeline"); else { if (location.hash !== "#library") { location.hash = "library"; setTimeout(() => { S.selected = el.dataset.id; render(); }, 0); } else render(); } break;
+    case "select": S.selected = el.dataset.id; S.tab = "summary"; S.menu = null; S.mobileDetail = true; render(); document.querySelector(`[data-id="${S.selected}"]`)?.focus(); break;
+    case "back": S.mobileDetail = false; render(); break;
+    case "filter": S.filter = el.dataset.f; render(); break;
+    case "clearq": S.query = ""; render(); break;
+    case "tab": S.tab = el.dataset.tab; render(); break;
+    case "section": S.setSection = el.dataset.s; render(); document.querySelector(`[data-s="${el.dataset.s}"]`)?.focus(); break;
+    case "prompt-test": S.promptTested = true; render(); break;
+    case "apply-speakers": toastMsg("Zuordnung übernommen – Zusammenfassung wird neu erstellt"); go("library"); break;
+    case "play": toastMsg("Spielt einen 8-Sekunden-Ausschnitt ab"); break;
+    case "cancel": toastMsg("Verarbeitung wird abgebrochen"); break;
+    case "pick": S.menu = null; render(); break;
+    case "help": toastMsg("Anleitung öffnet sich"); break;
+    case "toast-msg": S.menu = null; render(); toastMsg(el.dataset.msg); break;
+    case "simulate": simulatePipeline(); break;
+  }
+});
+document.addEventListener("input", e => {
+  if (e.target.id === "q") { S.query = e.target.value; const pos = e.target.selectionStart; render(); const q = document.getElementById("q"); q.focus(); q.setSelectionRange(pos, pos); }
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") {
+    if (S.menu) { S.menu = null; render(); return; }
+    if (S.modal) { S.modal = null; render(); return; }
+    if (S.toast) { S.toast = false; render(); return; }
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") { e.preventDefault(); if (S.screen !== "library") go("library"); setTimeout(() => document.getElementById("q")?.focus(), 0); }
+  if (e.ctrlKey && e.altKey && e.shiftKey && e.key.toLowerCase() === "r") { e.preventDefault(); S.rec === "idle" ? (S.modal = "consent", render()) : go("postcall"); }
+  // listbox arrow navigation
+  if ((e.key === "ArrowDown" || e.key === "ArrowUp") && e.target.classList?.contains("rec-item")) {
+    e.preventDefault(); const items = [...document.querySelectorAll(".rec-item")]; const i = items.indexOf(e.target);
+    const n = items[Math.max(0, Math.min(items.length - 1, i + (e.key === "ArrowDown" ? 1 : -1)))]; n.click();
+  }
+  if ((e.key === "ArrowDown" || e.key === "ArrowUp") && e.target.closest?.(".menu")) {
+    e.preventDefault(); const items = [...e.target.closest(".menu").querySelectorAll("[role=menuitem]")]; const i = items.indexOf(e.target);
+    items[(i + (e.key === "ArrowDown" ? 1 : items.length - 1)) % items.length]?.focus();
+  }
+  // focus trap in modals
+  if (e.key === "Tab" && S.modal) {
+    const m = document.querySelector(".modal"); const f = [...m.querySelectorAll("button:not([disabled]),input:not([disabled]),select,textarea,[tabindex]:not([tabindex='-1'])")];
+    if (!f.length) return; const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+});
+function simulatePipeline() {
+  let p = 63; const bar = document.querySelector(".vstep.active .bar i"), lbl = document.querySelector(".vstep.active .vs");
+  const t = setInterval(() => { p = Math.min(100, p + 3); if (bar) { bar.style.width = p + "%"; lbl.textContent = p + "\u00a0%"; } if (p >= 100) { clearInterval(t); toastMsg("Transkript fertig – 2 Stimmen offen: Sprecher zuordnen"); } }, 120);
+}
+// live clock, level meters and countdown (off with ?static=1)
+if (!STATIC) setInterval(() => {
+  if (S.rec === "idle") return;
+  S.elapsed++;
+  document.querySelectorAll("[data-clock]").forEach(n => n.textContent = clock(S.elapsed));
+}, 1000);
+if (!STATIC) setInterval(() => {
+  if (S.rec === "idle") return;
+  document.querySelectorAll("[data-lv]").forEach(n => { const v = n.dataset.lv === "0" ? 30 + Math.random() * 50 : 15 + Math.random() * 45; n.style.width = v + "%"; n.parentElement.setAttribute("aria-valuenow", Math.round(v)); });
+}, 140);
+
+applyRoute(location.hash.slice(1) || "home");
+render(true);
+</script>
+</body>
+</html>

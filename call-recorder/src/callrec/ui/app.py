@@ -7,6 +7,7 @@ import json
 import logging
 import sys
 import threading
+import time
 from datetime import UTC, datetime
 from typing import Any
 
@@ -109,12 +110,42 @@ def detection_loop(cfg: Config, controller: Controller, ui: Any, stop: threading
                 ui.post(lambda p=prompt: controller.on_reminder(p))
 
 
+UPDATE_CHECK_INTERVAL_S = 24 * 3600
+
+
+def schedule_daily_update_check(cfg: Config, root: Any, actions: Any) -> None:
+    """Once a day (first time 5 minutes after the start) look for a release and only notify."""
+    state = paths.data_dir() / "update_check.json"
+
+    def due() -> bool:
+        try:
+            last = float(json.loads(state.read_text(encoding="utf-8")).get("at", 0))
+        except (OSError, ValueError, AttributeError):
+            last = 0.0
+        return time.time() - last >= UPDATE_CHECK_INTERVAL_S
+
+    def tick() -> None:
+        if cfg.update.check_daily and due():
+            try:
+                state.parent.mkdir(parents=True, exist_ok=True)
+                state.write_text(json.dumps({"at": time.time()}), encoding="utf-8")
+            except OSError:
+                pass
+            actions.check_updates(quiet=True)
+        root.after(3600 * 1000, tick)
+
+    root.after(5 * 60 * 1000, tick)
+
+
 def run_tray_app(cfg: Config | None = None, start_minimized: bool = False) -> int:
     log_file = setup_logging(console=sys.stderr is not None)
     if not acquire_single_instance():
         log.error("CallRecorder läuft bereits")
         return 1
     cfg = cfg or load_config()
+    from callrec.updater import version_text
+
+    log.info("Start: %s, Python %s", version_text(), sys.version.split()[0])
     from callrec.audio.wasapi import WasapiBackend
     from callrec.ui.actions import AppActions
     from callrec.ui.mainwindow import MainWindow
@@ -144,6 +175,8 @@ def run_tray_app(cfg: Config | None = None, start_minimized: bool = False) -> in
     window = MainWindow(ui.root, actions)
     ui.notify_listeners.append(window.notify)
     actions.show_window_handler = window.show
+    ui.root.after(3000, actions.show_update_result)
+    schedule_daily_update_check(cfg, ui.root, actions)
 
     # automatic end of a recording (its own thread; stops go through controller.stop on the Tk thread)
     from callrec import autostop as autostop_mod

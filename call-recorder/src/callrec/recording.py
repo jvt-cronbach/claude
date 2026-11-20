@@ -54,9 +54,16 @@ def new_meta(
     devices: dict[str, Any],
     started_at: datetime,
 ) -> dict[str, Any]:
+    try:
+        from callrec.updater import read_install_info
+
+        commit = str(read_install_info().get("commit") or "")
+    except Exception:  # noqa: BLE001 - never block a recording for this
+        commit = ""
     return {
         "schema": META_SCHEMA,
         "app_version": __version__,
+        "app_commit": commit,
         "title": title,
         "recording": {"status": "recording", "started_at": started_at.isoformat(), "stopped_at": None, "duration_s": None},
         "event": event.to_dict() if event else None,

@@ -28,7 +28,7 @@ geschieht nie automatisch.
 1. [Rechtlicher Hinweis](#1-rechtlicher-hinweis)
 2. [So funktioniert es](#2-so-funktioniert-es)
 3. [Voraussetzungen](#3-voraussetzungen)
-4. [Installation](#4-installation)
+4. [Installation](#4-installation) (4a. [Updates](#4a-updates))
 5. [Entra-App-Registrierung (Kalender, optional SharePoint-Upload)](#5-entra-app-registrierung-kalender-optional-sharepoint-upload)
 6. [Sprachmodell für die Zusammenfassung](#6-sprachmodell-für-die-zusammenfassung)
    (6a. [Claude über die Anthropic-API](#6a-claude-über-die-anthropic-api-cloud))
@@ -155,6 +155,23 @@ Die Mikrofonspur ist immer **Sie** (Name aus dem Microsoft-Konto bzw. den Einste
 
 ## 4. Installation
 
+**Empfohlen (mit Updates aus der App):** Git für Windows installieren (`winget install Git.Git`, enthält
+den Git Credential Manager – bei einem privaten Repository einmal im Browser bei GitHub anmelden), dann
+`install-callrecorder.ps1` herunterladen und ausführen:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install-callrecorder.ps1
+```
+
+Das Skript klont das Repository nach `%LOCALAPPDATA%\Programs\CallRecorder` (anderer Ordner:
+`-InstallDir`; nur der Ordner `call-recorder` wird ausgecheckt), checkt **genau die freigegebene
+Version** aus (Abschnitt 4a) und ruft `setup.ps1` auf (Optionen wie `-NoCuda` werden weitergegeben). Eine
+bisherige ZIP-Installation: CallRecorder vorher beenden; Einstellungen, API-Schlüssel, Modelle,
+Stimmprofile und Aufnahmen liegen außerhalb des Programmordners und bleiben erhalten; Startmenü-Verknüpfung
+und Autostart-Eintrag werden auf den neuen Ordner umgestellt. Der alte Ordner kann danach gelöscht werden.
+
+**Ohne Git (ZIP, wie bisher):**
+
 1. Ordner `call-recorder` an einen festen Ort kopieren, z. B. `C:\Tools\call-recorder`.
 2. PowerShell in diesem Ordner öffnen und ausführen:
 
@@ -202,6 +219,35 @@ Die Mikrofonspur ist immer **Sie** (Name aus dem Microsoft-Konto bzw. den Einste
    ```powershell
    .venv\Scripts\python -m callrec record --title "Test" --no-calendar
    ```
+
+### 4a. Updates
+
+*Hilfe → Nach Updates suchen …* (auch im Reiter **Einrichtung**, Zeile „Version und Updates“) zeigt die
+installierte und die freigegebene Version mit den Neuerungen. Aktualisiert wird **nur nach Ihrem Klick**;
+zusätzlich sieht CallRecorder einmal täglich nach und benachrichtigt nur (`update.check_daily`). Während
+einer Aufnahme oder Verarbeitung ist ein Update nicht möglich – „Nach Abschluss aktualisieren“ merkt es
+vor. Für das Update beendet sich CallRecorder; ein kleines Hilfsprogramm (außerhalb der Python-Umgebung
+der App, deren Dateien Windows sonst sperrt) wechselt auf die neue Version, installiert Python-Pakete nur,
+wenn sich die Anforderungen geändert haben (die bisherige Umgebung wird dafür gesichert), richtet
+Verknüpfung, Autostart und GPU-Prüfung neu ein (`callrec postinstall`) und startet CallRecorder wieder.
+Schlägt ein Schritt fehl, werden Programmstand und Python-Umgebung zurückgesetzt; beim nächsten Start
+steht, was schiefging (Einzelheiten: `%LOCALAPPDATA%\CallRecorder\logs\update.log`). *Vorherige Version
+wiederherstellen* im selben Dialog kehrt zum Stand vor dem letzten Update zurück. Ist GitHub nicht
+erreichbar (VPN, Proxy), bricht die Suche nach spätestens 3 Minuten mit einer Meldung ab.
+
+**Was installiert wird:** Auf dem Zweig wird laufend gearbeitet; installiert wird nie der neueste Stand,
+sondern genau der Commit, den `call-recorder/release.json` nennt (Version, Commit, Datum, Neuerungen,
+Python-Bereich). CallRecorder prüft vor dem Wechsel, dass dieser Commit zum Zweig gehört und in
+`src/callrec/__init__.py` dieselbe Version meldet, und nach dem Wechsel, dass genau er ausgecheckt ist.
+Die Quelle steht nur in `config.toml` (`[update] repo_url`, `branch`; nur `https://github.com/…`), nie in
+einem Preset oder im Repository selbst. Kommandozeile: `callrec update check | install | restore`.
+
+**Eine Version freigeben (Betreuer):** Eine Datei kann nicht den Commit nennen, der sie selbst enthält.
+Deshalb: 1. die geprüfte Version mit erhöhtem `__version__` committen und pushen; 2.
+`python call-recorder/tools/cut_release.py <geprüfter Commit> --notes "…"` – prüft, dass der Commit zum
+aktuellen Stand gehört und die Version passt, und schreibt `release.json`; 3. **nur** `release.json`
+committen und pushen. Spätere Arbeitsstände auf dem Zweig ändern daran nichts. Solange `release.json`
+`"commit": null` enthält, ist nichts freigegeben (Installation und Update lehnen dann ab).
 
 ---
 
@@ -1055,6 +1101,8 @@ Wichtige Einstellungen:
 | `diarization.cluster_threshold` | `0.4` | kleiner = Stimmen werden feiner getrennt |
 | `diarization.num_speakers` | `0` | feste Sprecheranzahl der Gegenseite (0 = automatisch) |
 | `diarization.num_threads` | `0` | Rechen-Threads der Sprechertrennung; `0` = automatisch (physische Kerne − 1, höchstens 8; während einer Aufnahme etwa die Hälfte). Der wirksame Wert steht unter *Einstellungen → Sprecher* und in `meta.json` (`processing.diarization.timing`) |
+| `update.check_daily` | `true` | einmal täglich nach einer freigegebenen Version sehen und nur benachrichtigen |
+| `update.repo_url` / `update.branch` | dieses Repository | Update-Quelle (nur `https://github.com/…`; nur in `config.toml`) |
 | `speakers.match_scope` | `participants` | `participants` = automatisch nur Teilnehmende dieser Aufnahme; `all_profiles` = alle Profile (früheres Verhalten). Nur in `config.toml`/Einstellungen, nie per Preset |
 | `speakers.match_threshold` / `match_margin` | `0.55` / `0.08` | Schwelle für die Wiedererkennung; Mindestabstand zum zweitbesten Profil |
 | `speakers.min_match_speech_s` / `min_learn_speech_s` | `8` / `20` | Mindest-Sprechzeit (ohne Überlappung) für die automatische Erkennung bzw. damit ein Profil lernt |

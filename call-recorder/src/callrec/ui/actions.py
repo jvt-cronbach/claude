@@ -538,6 +538,117 @@ class AppActions:
             test = lambda: self.resummarize(rec)  # noqa: E731
         return edit_summary_prompts(self.root, test=test)
 
+    # -- updates ----------------------------------------------------------
+    def busy_reason(self) -> str:
+        """Why an update must wait ("" = it may run now)."""
+        if self.controller.is_recording:
+            return "Es läuft gerade eine Aufnahme."
+        snap = self.queue.snapshot() if hasattr(self.queue, "snapshot") else None
+        if snap is not None and (snap.current is not None or snap.pending):
+            return "Es wird gerade eine Aufnahme verarbeitet."
+        return ""
+
+    def updater(self) -> Any:
+        from callrec.updater import Updater
+
+        return Updater(self.cfg.update.repo_url, self.cfg.update.branch)
+
+    def check_updates(self, quiet: bool = False, done: Callable[[Any], None] | None = None) -> None:
+        """ "Nach Updates suchen": look up the release (worker thread), then show the dialog.
+        ``quiet`` (daily check): only a notification when a new version is available."""
+
+        def worker() -> None:
+            try:
+                res: Any = self.updater().check()
+            except Exception as exc:  # UpdateError (git missing, VPN, no release) or unexpected
+                res = exc
+            if done is not None:
+                done(res)
+            if quiet:
+                if not isinstance(res, Exception) and res.available and res.release is not None:
+                    self.ui.notify("Update verfügbar", f"CallRecorder {res.release.version} – im Hauptfenster: Hilfe → "
+                                   "Nach Updates suchen …")
+                return
+            self.ui.post(lambda: self._show_update(res))
+
+        threading.Thread(target=worker, name="update-check", daemon=True).start()
+
+    def _show_update(self, res: Any) -> None:
+        from callrec.updater import read_install_info
+
+        info = read_install_info()
+        choice = dialogs.ask_update(self.root, res, self.busy_reason(), info)
+        if choice in ("now", "after") and not isinstance(res, Exception):
+            self.start_update(res, "update", wait=choice == "after")
+        elif choice == "restore":
+            self.restore_previous_version()
+
+    def start_update(self, res: Any, mode: str = "update", wait: bool = False) -> bool:
+        """Only ever after a click. Refused while recording/processing (``wait``: run when done)."""
+        from callrec.updater import UpdateError, helper_plan, launch_helper
+
+        busy = self.busy_reason()
+        if busy:
+            if not wait:
+                self.ui.notify("Update später", f"{busy} Das Update ist erst danach möglich.")
+                return False
+            self.ui.notify("Update vorgemerkt", f"{busy} CallRecorder aktualisiert sich, sobald das abgeschlossen ist.")
+            self._pending_update = (res, mode)
+            self.root.after(15000, self._pending_update_tick)
+            return False
+        try:
+            if mode == "update":
+                if self.updater().local_changes():
+                    raise UpdateError("Im Programmordner gibt es lokale Änderungen an Programmdateien – Update abgelehnt. "
+                                      "Bitte install-callrecorder.ps1 erneut ausführen oder die Änderungen entfernen.")
+                plan = helper_plan(res, res.release.commit, res.release.version)
+            else:
+                plan = helper_plan(res, res.target, res.target_version, mode="restore")
+            launch_helper(plan)
+        except Exception as exc:
+            log.exception("Update nicht gestartet")
+            self.ui.notify("Update nicht möglich", str(exc))
+            return False
+        self.ui.notify("Update", "CallRecorder wird für das Update beendet und danach neu gestartet.")
+        self.root.after(500, self.quit)
+        return True
+
+    _pending_update: tuple[Any, str] | None = None
+
+    def _pending_update_tick(self) -> None:
+        pending = self._pending_update
+        if pending is None:
+            return
+        if self.busy_reason():
+            self.root.after(15000, self._pending_update_tick)
+            return
+        self._pending_update = None
+        self.start_update(pending[0], pending[1])
+
+    def restore_previous_version(self) -> bool:
+        from callrec.updater import read_install_info, restore_check
+
+        info = read_install_info()
+        prev = str(info.get("previous_commit") or "")
+        try:
+            res = restore_check(self.updater(), prev, str(info.get("previous_version") or ""))
+        except Exception as exc:
+            self.ui.notify("Wiederherstellen nicht möglich", str(exc))
+            return False
+        if not messagebox.askyesno("Vorherige Version wiederherstellen",
+                                   f"Zurück auf CallRecorder {res.target_version} ({prev[:10]})? CallRecorder wird "
+                                   "dafür beendet und neu gestartet.", parent=self.root):
+            return False
+        return self.start_update(res, "restore", wait=True)
+
+    def show_update_result(self) -> None:
+        """At the start: the result of an update that ran while the app was closed."""
+        from callrec.updater import take_status
+
+        st = take_status()
+        if st is not None:
+            self.ui.notify("Update abgeschlossen" if st.get("ok") else "Update fehlgeschlagen", str(st.get("message", "")))
+
     def manage_profiles(self) -> None:
         from callrec.review import rebuild_profile
 

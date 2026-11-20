@@ -399,7 +399,7 @@ def test_setup_checks_fresh_install_is_usable_without_microsoft_and_sharepoint()
     items = setupcheck.run_all(cfg, None, resolve=lambda m, lb: (dev, dev), selected=lambda: ("large-v3-turbo", ""),
                                find=lambda m: SimpleNamespace(complete=True), key_present=lambda: False,
                                signed_in=lambda: None)
-    states = {i.key: i.state for i in items}
+    states = {i.key: i.state for i in items if i.key != "updates"}  # depends on the checkout (own test)
     assert states == {"audio": "ok", "whisper": "ok", "summary": "unknown", "microsoft": "optional",
                       "sharepoint": "optional", "autostop": "ok"}
     ready, text = setupcheck.summary_line(items)

@@ -544,3 +544,16 @@ def test_prompt_editor_validates_restores_and_tests(root, tmp_path: Path):
     root.after(200, drive)
     assert st.edit_summary_prompts(root, test=lambda: tested.append(1)) is True
     assert (paths.prompts_dir() / "summary_final.txt").read_text(encoding="utf-8").strip() == SUMMARY_FINAL_TEMPLATE.strip()
+
+
+def test_update_dialog_offers_update_or_waiting(root):
+    from callrec.updater import Release, UpdateCheck, UpdateError
+
+    rel = Release("0.2.0", "a" * 40, "2026-11-20", ["Neu: Updates"], ">=3.12")
+    res = UpdateCheck("0.1.0", "b" * 40, rel, True, "Version 0.2.0 ist verfügbar.", requirements_changed=True)
+    for busy, button, expected in (("", "Jetzt aktualisieren", "now"), ("Es läuft gerade eine Aufnahme.",
+                                                                      "Nach Abschluss aktualisieren", "after")):
+        root.after(200, lambda b=button: find(toplevel(root), ttk.Button, b).invoke())
+        assert dialogs.ask_update(root, res, busy, {"previous_commit": "c" * 40}) == expected
+    root.after(200, lambda: find(toplevel(root), ttk.Button, "Vorherige Version").invoke())
+    assert dialogs.ask_update(root, UpdateError("GitHub nicht erreichbar"), "", {"previous_commit": "c" * 40}) == "restore"

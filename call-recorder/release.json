@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "version": "0.2.0",
+  "commit": null,
+  "date": "",
+  "notes": [
+    "Sprecher werden automatisch nur noch Teilnehmenden des Termins zugeordnet; Sprecherzahl nach Teilnehmenden begrenzt.",
+    "Eigene Spur mit Ihrem Vornamen; Prüfung der Mikrofonspur auf Echo und fehlende Sprache.",
+    "Termin-Auswahl zeigt alle Termine des Tages; Blocker und ganztägige Einträge stehen am Ende.",
+    "Zusammenfassung ohne Smalltalk und Privates; Prompt in der App bearbeitbar.",
+    "Updates direkt aus der App."
+  ],
+  "python": ">=3.12,<3.14"
+}

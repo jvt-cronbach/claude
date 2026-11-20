@@ -173,6 +173,10 @@ if ($Autostart) {
     if (Test-Path $oldAuto) { Remove-Item $oldAuto -Force }
 }
 
+Write-Step "Installationsstand merken (für Updates aus der App)"
+& $VenvPython -m callrec postinstall
+if ($LASTEXITCODE -ne 0) { Write-Warning "callrec postinstall meldete einen Fehler (Exit-Code $LASTEXITCODE)." }
+
 Write-Step "Fertig"
 Write-Host "Nächste Schritte (siehe README.md):"
 Write-Host "  1. Konfiguration bearbeiten:   notepad `"$env:APPDATA\CallRecorder\config.toml`""

@@ -802,3 +802,60 @@ def ask_after_recording(root: tk.Misc, rec: Recording, plan: Any, handoff_proble
     full_btn.focus_set()
     root.wait_window(win)
     return result["v"]
+
+
+# ---------------------------------------------------------------------------
+# Updates
+# ---------------------------------------------------------------------------
+def ask_update(root: tk.Misc, res: Any, busy: str, install_info: dict[str, Any]) -> str | None:
+    """ "now" | "after" | "restore" | None. ``res``: UpdateCheck or the exception of the check."""
+    win = tk.Toplevel(root)
+    win.title("Nach Updates suchen")
+    win.resizable(False, False)
+    result: dict[str, str | None] = {"v": None}
+    from callrec.updater import version_text
+
+    ttk.Label(win, text=f"Installiert: {version_text()}", font=("Segoe UI", 10, "bold")).pack(anchor="w", **PAD)
+    available = False
+    if isinstance(res, Exception):
+        ttk.Label(win, text=str(res), wraplength=520, foreground="#b00020").pack(anchor="w", **PAD)
+    else:
+        ttk.Label(win, text=res.message, wraplength=520).pack(anchor="w", **PAD)
+        rel = res.release
+        available = bool(res.available and rel is not None)
+        if rel is not None:
+            ttk.Label(win, text=f"Freigegeben: {rel.version} ({rel.commit[:10]})" + (f" vom {rel.date}" if rel.date else ""),
+                      foreground="#444").pack(anchor="w", padx=8)
+            if rel.notes:
+                ttk.Label(win, text="\n".join(f"• {n}" for n in rel.notes), wraplength=520, justify="left").pack(
+                    anchor="w", **PAD)
+        if available and res.requirements_changed:
+            ttk.Label(win, text="Dieses Update installiert auch geänderte Python-Pakete (dauert einige Minuten; die "
+                      "bisherige Umgebung wird für eine Rückkehr gesichert).", wraplength=520, foreground="#555").pack(
+                anchor="w", **PAD)
+    if busy and available:
+        ttk.Label(win, text=busy + " Aktualisieren ist erst danach möglich.", wraplength=520,
+                  foreground="#b00020").pack(anchor="w", **PAD)
+    ttk.Label(win, text="Für das Update wird CallRecorder beendet und danach automatisch neu gestartet. Schlägt etwas "
+              "fehl, wird der bisherige Stand wiederhergestellt. Einstellungen, Stimmprofile und Aufnahmen bleiben "
+              "unverändert.", wraplength=520, foreground="#555").pack(anchor="w", **PAD)
+    bar = ttk.Frame(win)
+    bar.pack(fill="x", **PAD)
+
+    def choose(v: str) -> None:
+        result["v"] = v
+        win.destroy()
+
+    ttk.Button(bar, text="Schließen", command=win.destroy).pack(side="right", padx=4)
+    if available:
+        if busy:
+            ttk.Button(bar, text="Nach Abschluss aktualisieren", command=lambda: choose("after")).pack(side="right", padx=4)
+        else:
+            ttk.Button(bar, text="Jetzt aktualisieren", command=lambda: choose("now")).pack(side="right", padx=4)
+    if install_info.get("previous_commit"):
+        ttk.Button(bar, text="Vorherige Version wiederherstellen", command=lambda: choose("restore")).pack(
+            side="left", padx=4)
+    win.bind("<Escape>", lambda e: win.destroy())
+    _modal(win)
+    root.wait_window(win)
+    return result["v"]

@@ -235,6 +235,102 @@ def cmd_profiles(args: argparse.Namespace) -> int:
     return 2
 
 
+def _version_string() -> str:
+    try:
+        from callrec.updater import read_install_info
+
+        commit = str(read_install_info().get("commit") or "")
+    except Exception:  # noqa: BLE001 - --version must always work
+        commit = ""
+    return f"callrec {__version__}" + (f" ({commit[:10]})" if commit else "")
+
+
+def cmd_postinstall(args: argparse.Namespace) -> int:
+    """After setup.ps1 / an update: Start-menu shortcut, autostart entry, GPU check, install record."""
+    from callrec.autostart import Autostart
+    from callrec.updater import record_install
+
+    if sys.platform == "win32":
+        try:
+            create_start_menu_shortcut()
+        except Exception as exc:  # noqa: BLE001
+            print(f"Startmenü-Verknüpfung nicht erstellt: {exc}")
+        try:
+            print(Autostart.for_this_pc().repair_if_stale() or "Autostart unverändert.")
+        except Exception as exc:  # noqa: BLE001
+            print(f"Autostart nicht geprüft: {exc}")
+        try:
+            from callrec.asr.gpu import gpu_status
+
+            print(gpu_status(force=True).describe())
+        except Exception as exc:  # noqa: BLE001
+            print(f"GPU-Prüfung fehlgeschlagen: {exc}")
+    info = record_install()
+    print(f"Installiert: CallRecorder {info.get('version')} ({str(info.get('commit') or 'kein Git-Stand')[:10]})")
+    return 0
+
+
+def create_start_menu_shortcut() -> None:  # pragma: no cover - Windows only
+    import subprocess
+
+    from callrec.autostart import pythonw_for
+    from callrec.updater import app_root
+
+    target = str(pythonw_for())
+    script = (
+        "$s = New-Object -ComObject WScript.Shell; "
+        "$l = $s.CreateShortcut([IO.Path]::Combine([Environment]::GetFolderPath('Programs'), 'CallRecorder.lnk')); "
+        f"$l.TargetPath = '{target}'; $l.Arguments = '-m callrec tray'; $l.WorkingDirectory = '{app_root()}'; "
+        "$l.Description = 'CallRecorder - lokale Gesprächsaufnahme'; $l.Save()"
+    )
+    subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script], check=True,  # noqa: S603, S607
+                   capture_output=True, timeout=60)
+
+
+def cmd_update(args: argparse.Namespace) -> int:
+    """Check for / install the released version (``check`` only reads)."""
+    from callrec.updater import (
+        UpdateError,
+        Updater,
+        helper_plan,
+        launch_helper,
+        read_install_info,
+        restore_check,
+    )
+
+    cfg = load_config()
+    try:
+        up = Updater(cfg.update.repo_url, cfg.update.branch)
+        if args.action == "restore":
+            info = read_install_info()
+            res = restore_check(up, str(info.get("previous_commit") or ""), str(info.get("previous_version") or ""))
+            plan = helper_plan(res, str(info["previous_commit"]), str(info.get("previous_version") or ""), "restore")
+            plan["app_pid"], plan["restart"] = 0, []
+            launch_helper(plan)
+            print("Wiederherstellung gestartet – Protokoll: " + plan["log"])
+            return 0
+        res = up.check()
+    except UpdateError as exc:
+        print(f"Update nicht möglich: {exc}")
+        return 1
+    print(res.message)
+    if res.release is not None and res.release.notes:
+        print("Neu:\n" + "\n".join(f"  - {n}" for n in res.release.notes))
+    if args.action == "check":
+        return 0
+    if not res.available or res.release is None:
+        return 0
+    if up.local_changes():
+        print("Im Programmordner gibt es lokale Änderungen – Update abgelehnt.")
+        return 1
+    plan = helper_plan(res, res.release.commit, res.release.version)
+    plan["app_pid"] = 0  # from the console: nothing to wait for (quit the tray app first!)
+    plan["restart"] = []
+    launch_helper(plan)
+    print("Update-Helfer gestartet – Fortschritt im eigenen Fenster, Protokoll: " + plan["log"])
+    return 0
+
+
 def cmd_recheck(args: argparse.Namespace) -> int:
     """ "Sprecherzuordnung neu prüfen" for one recording (automatic assignments only)."""
     from callrec.factory import build_pipeline, profile_store
@@ -773,7 +869,7 @@ def cmd_config(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="callrec", description="Lokaler Gesprächsrekorder mit Transkript und Zusammenfassung")
-    p.add_argument("--version", action="version", version=f"callrec {__version__}")
+    p.add_argument("--version", action="version", version=_version_string())
     p.add_argument("-v", "--verbose", action="store_true")
     sub = p.add_subparsers(dest="cmd")
 
@@ -835,6 +931,13 @@ def build_parser() -> argparse.ArgumentParser:
     pf.add_argument("key", nargs="?")
     pf.add_argument("--yes", action="store_true")
     pf.set_defaults(func=cmd_profiles)
+
+    pi = sub.add_parser("postinstall", help="Nach Installation/Update: Verknüpfung, Autostart, GPU, Versionsstand")
+    pi.set_defaults(func=cmd_postinstall)
+
+    up = sub.add_parser("update", help="Updates: check | install | restore (vorherige Version)")
+    up.add_argument("action", choices=["check", "install", "restore"])
+    up.set_defaults(func=cmd_update)
 
     rc = sub.add_parser("recheck", help="Sprecherzuordnung neu prüfen (nur automatische, nach Teilnehmenden)")
     rc.add_argument("folder")

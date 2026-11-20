@@ -147,7 +147,9 @@ class MainWindow:
 
         self.win = tk.Toplevel(root)
         self.win.withdraw()
-        self.win.title("CallRecorder")
+        from callrec.updater import version_text
+
+        self.win.title(version_text())
         self.win.protocol("WM_DELETE_WINDOW", self.hide)
         self.scale = max(1.0, float(self.win.winfo_fpixels("1i")) / 96.0)
         self._set_icon()
@@ -262,11 +264,21 @@ class MainWindow:
                            command=lambda: app.edit_prompts(self.selected_recording()))
         hilfe = tk.Menu(bar, tearoff=False)
         hilfe.add_command(label="Anleitung (README) öffnen", underline=0, command=app.open_readme)
+        hilfe.add_command(label="Nach Updates suchen …", underline=5, command=lambda: app.check_updates())
+        hilfe.add_command(label="Über CallRecorder", underline=0, command=self.about)
         bar.add_cascade(label="Datei", menu=datei, underline=0)
         bar.add_cascade(label="Extras", menu=extras, underline=0)
         bar.add_cascade(label="Hilfe", menu=hilfe, underline=0)
         self.win.configure(menu=bar)
         self.menus = {"Datei": datei, "Extras": extras, "Hilfe": hilfe}
+
+    def about(self) -> None:
+        from tkinter import messagebox
+
+        from callrec.updater import version_text
+
+        messagebox.showinfo("Über CallRecorder", f"{version_text()}\nLokale Gesprächsaufnahme mit Transkript, "
+                            "Sprechererkennung und Zusammenfassung.", parent=self.win)
 
     def open_setup(self) -> None:
         self.set_compact(False)
@@ -1539,6 +1551,8 @@ class MainWindow:
             self.app.open_readme()
         elif key == setupcheck.A_RECHECK:
             self.run_checks(force_audio=True)
+        elif key == setupcheck.A_UPDATES:
+            self.app.check_updates()
         elif key in (setupcheck.A_AUTOSTART_ON, setupcheck.A_AUTOSTART_OFF):
             self.app.set_autostart(key == setupcheck.A_AUTOSTART_ON)
             self.run_checks()
