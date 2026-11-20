@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "version": "0.3.0",
-  "commit": "37407104c2f4a10e6b0667e4770a51b97f487199",
+  "commit": "d57b3fad96091372023368becaa68c1ca1376682",
   "date": "2026-11-20",
   "notes": [
     "Neue Oberfläche als Vorschau (Einstellungen › Allgemein › Oberfläche bzw. callrec tray --ui web): im Fluent-Stil passend neben Teams, hell/dunkel wie Windows, Übersicht mit „Als Nächstes · Wartet · In Arbeit“. Startet sie nicht, öffnet sich automatisch das klassische Fenster.",
