@@ -33,7 +33,8 @@ geschieht nie automatisch.
 6. [Sprachmodell für die Zusammenfassung](#6-sprachmodell-für-die-zusammenfassung)
    (6a. [Claude über die Anthropic-API](#6a-claude-über-die-anthropic-api-cloud))
 7. [Erster Start und Bedienung](#7-erster-start-und-bedienung)
-   (7a. [Das Hauptfenster](#7a-das-hauptfenster))
+   (7a. [Das Hauptfenster](#7a-das-hauptfenster), 7b. [Automatisches Ende einer Aufnahme](#7b-automatisches-ende-einer-aufnahme),
+   7c. [Nach der Aufnahme](#7c-nach-der-aufnahme))
 8. [Sprecher zuordnen und Stimmprofile](#8-sprecher-zuordnen-und-stimmprofile)
 9. [Transkript schrittweise verbessern](#9-transkript-schrittweise-verbessern)
 10. [Zusammenfassung an SharePoint übergeben](#10-zusammenfassung-an-sharepoint-übergeben)
@@ -59,6 +60,11 @@ keine Aufnahme; die Abfrage lässt sich bewusst nicht per Konfiguration abschalt
 Die Bestätigung wird mit Zeitstempel, Ihrem Namen, der Teilnehmerliste und dem zu diesem Zeitpunkt
 eingestellten Zusammenfassungs-Anbieter (`summary_provider`) in `meta.json` gespeichert. Die
 Verantwortung, dass die Zustimmung tatsächlich vorliegt, bleibt bei Ihnen.
+
+**Ende der Aufnahme.** Die Zustimmung gilt für das Gespräch, nicht für das, was danach im Raum gesagt
+oder abgespielt wird. CallRecorder erkennt deshalb das Gesprächsende und beendet die Aufnahme nach
+einem sichtbaren Countdown (Abschnitt 7b); zusätzlich gibt es eine Höchstdauer. Der **Start** bleibt
+immer Ihre Entscheidung – automatisch gestartet wird nie.
 
 **Zusammenfassung durch Claude (Anthropic).** Ist dieser Anbieter gewählt (Abschnitt 6a), lautet
 der Einwilligungstext vor jeder Aufnahme (Dialog und Konsole) ausdrücklich, dass das Transkript zur
@@ -108,7 +114,10 @@ die Embeddings der Sprecher dieses Gesprächs (für die spätere Zuordnung); lö
    - ein Loopback-Mitschnitt des Ausgabegeräts (Headset) = die Gegenseite.
    Beide Spuren werden fortlaufend auf die Festplatte geschrieben (absturzsicher; bei einem
    Absturz geht höchstens die letzte ~2 Sekunden verloren).
-5. **Nach dem Stopp** (im Hintergrund, Fortschritt im Hauptfenster und im Tray-Tooltip):
+   **Ende:** von Hand (Schaltfläche, roter Balken, Tastenkürzel, Tray) oder – wenn das Gespräch vorbei
+   ist – nach einem Countdown „Call scheint beendet – Aufnahme endet in 30 s“ (Abschnitt 7b).
+5. **Nach dem Stopp** fragt CallRecorder einmal „Aufnahme beendet – jetzt vollständig verarbeiten?“
+   (Abschnitt 7c). Dann läuft im Hintergrund (Fortschritt im Hauptfenster und im Tray-Tooltip):
    FLAC/Opus erzeugen → Transkription mit faster-whisper (NVIDIA-GPU, sonst direkt CPU) →
    Sprechertrennung der Gegenseite (sherpa-onnx) → Abgleich mit gespeicherten Stimmprofilen →
    `transcript.md` → Zusammenfassung lokal über Ollama/OpenAI-kompatiblen Server **oder** – nur
@@ -153,7 +162,12 @@ Die Mikrofonspur ist immer **Sie** (Name aus dem Microsoft-Konto bzw. den Einste
    ```
 
    Optionen:
-   - `-Autostart` – CallRecorder bei der Anmeldung starten
+   - `-Autostart` – CallRecorder bei der Anmeldung starten (im Infobereich). Das ist derselbe Eintrag wie
+     *Einstellungen → Allgemein → Mit Windows starten* bzw. die Zeile „Mit Windows starten“ im Reiter
+     **Einrichtung**: ein Wert `CallRecorder` unter `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
+     mit `"<Ordner>\.venv\Scripts\pythonw.exe" -m callrec tray --minimized`. Wird der Programmordner
+     verschoben, korrigiert CallRecorder den Eintrag beim nächsten Start selbst (Hinweis im Tray); eine
+     Autostart-Verknüpfung älterer Versionen im Autostart-Ordner wird dabei entfernt.
    - `-WithWhisperModel` – das Whisper-Modell (≈ 3 GB) gleich mitladen
    - NVIDIA-Bibliotheken (ca. 1,5 GB) werden **nur installiert, wenn eine NVIDIA-Grafikkarte
      erkannt wird** (Grafikadapter bzw. `nvidia-smi`).
@@ -229,8 +243,19 @@ nur lesend). Es wird **kein** geheimer Schlüssel benötigt („öffentlicher Cl
    .venv\Scripts\python -m callrec event     # zeigt, welcher Termin jetzt gewählt würde
    ```
 
-   Einfacher: Anwendungs-ID und Verzeichnis-ID im Hauptfenster unter *Extras → Einstellungen →
-   Microsoft-Konto* eintragen, dann im Reiter **Einrichtung** auf **„Anmelden …“** klicken.
+   Einfacher: Der Reiter **Einrichtung** führt durch genau diese Schritte (Zeile „Microsoft-Anmeldung“):
+   Anwendungs-ID und Verzeichnis-ID über **„Client-ID eintragen …“** speichern, dann **„Bei Microsoft
+   anmelden …“** klicken. Danach steht dort zur Kontrolle Ihr aktueller bzw. nächster Termin mit den
+   Teilnehmenden („Termine prüfen“ fragt erneut ab).
+
+   **Wofür die Kalenderdaten genutzt werden:** Die Aufnahme heißt wie der Termin (Ordner
+   `2026-11-19_1400_<Betreff>`); die Teilnehmenden werden bei der Stimmerkennung bevorzugt
+   (`speakers.invitee_bonus`) und stehen im Dialog „Sprecher zuordnen“ als erste Vorschläge.
+   **Nachträglich:** Für Aufnahmen von vor der Anmeldung im Hauptfenster die Aufnahme wählen → *Weitere … →
+   Termin zuordnen …*. CallRecorder sucht die Termine im Zeitraum der Aufnahme (der am besten passende
+   zuerst), übernimmt nach Ihrer Wahl Teilnehmende (und auf Wunsch den Betreff als Titel; der Ordnername
+   bleibt) und lässt die Sprechererkennung mit den Eingeladenen erneut laufen – manuelle Zuordnungen
+   bleiben.
 
 ### Optional: Berechtigung für den direkten SharePoint-Upload
 
@@ -404,12 +429,18 @@ empfangenen Zeichen.
 
 ## 7. Erster Start und Bedienung
 
-Start über **Startmenü → CallRecorder**. Es öffnet sich das **Hauptfenster** (Abschnitt 7a); das
+Start über **Startmenü → CallRecorder** (oder automatisch mit Windows, siehe unten). Es öffnet sich das
+**Hauptfenster** (Abschnitt 7a); das
 Symbol erscheint zusätzlich im Infobereich (ggf. über „^“ einblenden und in die Taskleiste ziehen).
 **Schließen des Fensters beendet CallRecorder nicht** – es läuft im Infobereich weiter (Aufnahme per
 Tastenkürzel, Erinnerungen, Verarbeitung). Ein Klick auf das Symbol öffnet das Fenster wieder.
 Wer CallRecorder lieber nur im Infobereich starten möchte: *Einstellungen → Allgemein → Beim Start
 nur im Infobereich* (`[ui] start_minimized = true`).
+
+**Mit Windows starten:** *Einstellungen → Allgemein → Mit Windows starten* oder im Reiter **Einrichtung**
+„Mit Windows starten“. CallRecorder startet dann bei der Anmeldung im Infobereich (ohne Fenster), damit
+Erinnerung, Tastenkürzel und das automatische Aufnahme-Ende immer bereit sind. Der Eintrag liegt nur in
+Ihrem Benutzerkonto (keine Administratorrechte); Details und Reparatur siehe Abschnitt 4, `-Autostart`.
 
 | Symbol | Bedeutung |
 |---|---|
@@ -444,8 +475,13 @@ repariert und verarbeitet (oder `callrec repair <Ordner>`).
 
 ### 7a. Das Hauptfenster
 
-Das Fenster hat oben den Bereich **Aufnahme**, in der Mitte die Reiter **Aufnahmen** und
-**Einrichtung** und unten den Bereich **Verarbeitung**.
+Das Fenster hat oben den Bereich **Aufnahme** und unten den Bereich **Verarbeitung**. Dazwischen steht
+standardmäßig die **kompakte Ansicht**: die letzten fünf Aufnahmen mit ihrem Stand und je **einer**
+Schaltfläche für den wichtigsten nächsten Schritt („Jetzt verarbeiten“, „Sprecher zuordnen“,
+„Zusammenfassung erstellen“, „Übergeben“) sowie „Öffnen“. Ist die Einrichtung unvollständig, steht darüber
+ein Hinweis mit „Einrichtung öffnen“. **„Mehr …“** (oben rechts im Bereich Aufnahme) bzw. „Alle Aufnahmen …“
+schaltet auf die volle Ansicht mit den Reitern **Aufnahmen** und **Einrichtung** um, „Kompakt“ zurück; die
+Wahl wird gemerkt.
 
 **Aufnahme (oben)**
 
@@ -458,6 +494,10 @@ Das Fenster hat oben den Bereich **Aufnahme**, in der Mitte die Reiter **Aufnahm
   mit leerem Titel. Ohne Microsoft-Anmeldung gibt es nur diesen Eintrag.
 - Gestartet wird **immer über die Einwilligungsabfrage** (Abschnitt 1): Dort stehen Titel und
   Teilnehmende des gewählten Termins und lassen sich ändern oder von Hand eintippen.
+- Darunter eine Zeile **„Automatisches Ende: …“**: was am Gesprächsende passiert (z. B. „Anruf-App
+  erkannt: ms-teams.exe (PID 1234) auf Headset Mikrofon, Stille 3 min, höchstens 4 h, Stille seit 0:45“).
+  Erkennt CallRecorder das Ende, erscheint hier (und im roten Balken) der gelbe Hinweis mit Countdown und
+  den Schaltflächen **„Weiter aufnehmen“** und **„Jetzt beenden“** (Abschnitt 7b).
 
 **Reiter „Aufnahmen“**
 
@@ -476,10 +516,11 @@ Das Fenster hat oben den Bereich **Aufnahme**, in der Mitte die Reiter **Aufnahm
   Gibt es mehrere Versionen (Abschnitt 9), wählt **„Version“** eine ältere aus.
 - **„Groß anzeigen“** öffnet Zusammenfassung bzw. Transkript in einem eigenen, großen Fenster (praktisch
   auf kleinen Bildschirmen; **Esc** schließt es).
-- Schaltflächen: **An SharePoint übergeben …** (übergibt nur die Zusammenfassung, mit Vorschau und
+- Schaltflächen: **Jetzt verarbeiten** (nur bei noch nicht verarbeiteten Aufnahmen, z. B. nach „Später“),
+  **An SharePoint übergeben …** (übergibt nur die Zusammenfassung, mit Vorschau und
   Rückfrage wie bisher; steht „Erneut an SharePoint übergeben …“ da, hat sich die Zusammenfassung seit
   der letzten Übergabe geändert), **Sprecher zuordnen …**, **Zusammenfassung neu erstellen**,
-  **Anhören** (Audio im Standard-Player). Unter **„Weitere …“**: **Ordner öffnen**, **Neu transkribieren …** (Sprache automatisch /
+  **Anhören** (Audio im Standard-Player). Unter **„Weitere …“**: **Ordner öffnen**, **Termin zuordnen …** (Abschnitt 5, nur mit Microsoft-Anmeldung), **Neu transkribieren …** (Sprache automatisch /
   Deutsch / Englisch, optional ein Preset; neue Version, die alte bleibt), **Komplett neu
   verarbeiten …**, **Umbenennen …** und **Löschen …**.
 - **Umbenennen** ändert nur den angezeigten Titel. Der Ordnername bleibt, weil SharePoint und der
@@ -501,8 +542,10 @@ Das Fenster hat oben den Bereich **Aufnahme**, in der Mitte die Reiter **Aufnahm
 | Audiogeräte | Mikrofon und Ausgabegerät gefunden (nicht während einer Aufnahme) | *Geräte einstellen …* |
 | Whisper-Modell | gewähltes Modell vollständig heruntergeladen | *Jetzt herunterladen* (wie `callrec models --whisper`) |
 | Zusammenfassung | Anbieter eingerichtet; **Verbindung testen** (lokal automatisch, Claude nur auf Klick) | *Verbindung testen*, *Einstellungen …* |
-| Microsoft-Anmeldung (optional) | Client-ID eingetragen? angemeldet? | *Client-ID eintragen …*, *Anmelden …* |
+| Microsoft-Anmeldung (optional) | Schritt-für-Schritt-Anleitung; Client-ID eingetragen? angemeldet? aktueller/nächster Termin mit Teilnehmenden | *Client-ID eintragen …*, *Bei Microsoft anmelden …*, *Termine prüfen* |
 | SharePoint-Übergabe (optional) | Übergabeordner eingestellt, erreichbar, von OneDrive synchronisiert | *Einstellungen …* |
+| Automatisches Aufnahme-Ende | an/aus, welche Signale, Countdown, Höchstdauer – also was am Gesprächsende passiert | *Einstellungen …* |
+| Mit Windows starten (optional) | Autostart-Eintrag vorhanden und aktuell (veraltet → wird korrigiert) | *Mit Windows starten*, *Jetzt korrigieren*, *Entfernen* |
 
 Microsoft-Anmeldung und SharePoint-Ordner sind **optional**. Ohne sie funktioniert alles andere:
 Titel und Teilnehmende tippen Sie beim Start ein, die Zusammenfassung bleibt lokal, bis die Übergabe
@@ -522,6 +565,74 @@ Fenstergröße, -position, Listenbreite, Reiter und Filter werden gemerkt
 (`%LOCALAPPDATA%\CallRecorder\window.json`); war das Fenster auf einem größeren oder inzwischen
 abgezogenen Bildschirm, wird es auf den sichtbaren Bereich verkleinert. Das Fenster passt auf
 1366×768 und ist für 125–150 % Skalierung ausgelegt (scharfe Schrift durch DPI-Awareness).
+
+### 7b. Automatisches Ende einer Aufnahme
+
+Eine vergessene Aufnahme würde sonst weiter aufnehmen, was nach dem Gespräch im Raum gesagt oder abgespielt
+wird. CallRecorder erkennt deshalb das Gesprächsende aus mehreren Signalen zusammen:
+
+1. **Die Anruf-App gibt das Mikrofon frei.** Hatte Teams (`detection.teams_processes`, Standard
+   `ms-teams.exe`, `teams.exe`; Groß/Klein und `.exe` egal, auch Hilfsprozesse wie `msedgewebview2.exe`,
+   die *von Teams gestartet* wurden) während der Aufnahme eine aktive Mikrofon-Sitzung und ist sie dann
+   **20 s** weg (`session_gone_s`) **und** die Gegenseite ebenso lange still, gilt das Gespräch als beendet.
+   Spielt danach noch etwas (Video, Musik), reichen **120 s** ohne Teams-Sitzung (`session_gone_max_s`).
+   Welche App erkannt wurde, steht im Hauptfenster und im Protokoll („Anruf-App erkannt: …“, beim Start der
+   Aufnahme zusätzlich „Mikrofon-Sitzungen der Anruf-App: …“). Fehler der Abfrage (z. B. während ein
+   Bluetooth-Headset das Profil wechselt und die Geräte kurz verschwinden) zählen als „unbekannt“, nie als
+   „beendet“.
+2. **Stille auf beiden Spuren** für **3 min** (`silence_minutes`; still = Spitzenpegel unter −45 dBFS,
+   `silence_dbfs`). Das deckt auch Gespräche ohne Teams ab (andere App, Telefon über Softphone). Sind Sie
+   stummgeschaltet, während andere reden, oder läuft Warteschleifenmusik, ist die Gegenseite nicht still –
+   das zählt also nicht als Ende.
+3. **Ende des Kalendertermins** – nur ein schwacher Hinweis: Danach genügen **60 s** Stille
+   (`silence_after_event_end_s`). Allein beendet das Terminende nie eine Aufnahme.
+
+**Nichts wird still abgeschnitten.** Im Hauptfenster und im roten Balken erscheint „**Call scheint beendet –
+Aufnahme endet in 30 s**“ (`countdown_s`) mit **„Weiter aufnehmen“** und **„Jetzt beenden“**; dazu eine
+Tray-Meldung (ist der rote Balken ausgeschaltet, öffnet sich das Fenster, ohne den Fokus zu nehmen). Spricht
+jemand wieder bzw. ist Teams wieder aktiv, verschwindet der Hinweis von selbst. Ohne Reaktion wird die
+Aufnahme genau wie von Hand beendet und verarbeitet. Vom Ton wird nichts weggeschnitten.
+**„Weiter aufnehmen“** unterdrückt weitere Nachfragen für **15 min** (`snooze_minutes`); das Signal „Teams
+weg“ zählt danach erst wieder, wenn Teams das Mikrofon erneut aktiv nutzt.
+
+**Sicherheitsnetz** (gilt auch, wenn die Erkennung ausgeschaltet ist): **Höchstdauer 4 h**
+(`max_duration_minutes`, 0 = aus) mit Vorwarnung **10 min** vorher; „Weiter aufnehmen“ verlängert um **60 min**
+(`max_duration_extend_minutes`). Und eine Nachfrage, wenn **15 min** lang nur Stille aufgenommen wurde
+(`silence_safety_minutes`).
+
+Alles ist unter *Einstellungen → Aufnahme-Ende* einstellbar (Abschnitt 13). In `meta.json` steht unter
+`recording.stop`, **warum und wann** die Aufnahme endete (`reason`: `manual`, `call_ended`, `silence`,
+`max_duration`, `app_quit`; `by`: `user` oder `automatic`; `at`; `detail`), unter `recording.autostop` die
+erkannte Anruf-App und jede Nachfrage mit Ihrer Reaktion.
+
+Grenzen: Wird nach dem Gespräch im Raum weitergesprochen und es war **kein** Teams-Gespräch, ist keine Spur
+still – dann greift erst die Höchstdauer. Ein Tastenklick o. Ä. über −45 dBFS setzt die Stille zurück
+(Schwelle ggf. anpassen).
+
+### 7c. Nach der Aufnahme
+
+Endet eine Aufnahme (von Hand oder automatisch), fragt CallRecorder **einmal**: „**Aufnahme beendet – jetzt
+vollständig verarbeiten?**“ mit der Liste, was passiert, und Häkchen (vorbelegt aus *Einstellungen →
+Allgemein*, `[processing]`): **Transkript**, **Sprecherzuordnung**, **Zusammenfassung**, **Übergabe der
+Zusammenfassung an SharePoint (für den Claude-Assistenten)**.
+
+- **Vollständig verarbeiten** startet eine Kette: Transkript (+ Sprechertrennung und -erkennung) → **sind
+  Stimmen mit Text noch offen, öffnet sich „Sprecher zuordnen“** und die Kette wartet (mit „Überspringen“) →
+  Zusammenfassung (damit die Namen drinstehen) → Übergabe. Die Übergabe ist durch Ihr Häkchen **für diese
+  Aufnahme** freigegeben und läuft deshalb ohne die sonst übliche Vorschau – übergeben wird weiterhin
+  ausschließlich die Zusammenfassung, vermerkt in `meta.json` (`handoffs[].authorized_by =
+  "postcall_dialog"`, `preview_shown = false`). Ist kein SharePoint-Ordner eingerichtet oder gibt es keine
+  Zusammenfassung, wird die Übergabe mit Hinweis übersprungen – die Kette scheitert daran nicht.
+- **Später**: Die Aufnahme bleibt unverarbeitet in der Liste mit **„Jetzt verarbeiten“** (ein Klick:
+  Transkript, Sprecher, Zusammenfassung – ohne Übergabe; die Übergabe danach wie gewohnt mit Vorschau).
+- **Verwerfen …**: nach einer Rückfrage in den Papierkorb.
+
+Der Stand der Kette steht in `meta.json` (`processing.chain`); nach einem Neustart wird sie fortgesetzt
+(auch ein offener Zuordnungsdialog erscheint wieder). „Abbrechen“ im Bereich Verarbeitung bricht sie ab.
+Wird CallRecorder während einer Aufnahme beendet, kommt die Frage beim nächsten Start.
+**Ohne Rückfrage:** `[processing] after_recording = "full"` verarbeitet sofort vollständig; die Übergabe
+läuft dann **nur**, wenn zusätzlich `handoff_without_asking = true` gesetzt ist (in den Einstellungen mit
+eigener Bestätigung; nie über ein Preset).
 
 ---
 
@@ -721,6 +832,9 @@ die die Vorschau zeigt – hat sich die Zusammenfassung inzwischen geändert (z.
 Neuerstellung fertig wurde), bricht die Übergabe ab. Achtung: Die Zusammenfassung ist ein Text
 des Sprachmodells und kann einzelne Aussagen wörtlich zitieren – deshalb die Vorschau lesen.
 
+**In der Kette nach der Aufnahme** (Abschnitt 7c) läuft die Übergabe ohne Vorschau, weil Sie sie dort
+für genau diese Aufnahme angehakt haben; übergeben wird auch dann nur die Zusammenfassung.
+
 **Auslösen:** im Hauptfenster die Aufnahme wählen → **„An SharePoint übergeben …“**,
 Tray-Menü **„Letzte Aufnahme: Zusammenfassung an SharePoint übergeben …“**, Schaltfläche im
 Sprecher-Zuordnungsdialog oder `callrec handoff <Ordner>`. Das Hauptfenster zeigt je Aufnahme, wann und
@@ -757,7 +871,7 @@ wird in `meta.json` unter `handoffs` vermerkt.
 ├── transcript.v1.md …    alle Versionen (Abschnitt 9)
 ├── summary.md            Kurzfassung, Entscheidungen, Aufgaben, Projektstand, offene Fragen, nächste Termine
 ├── summary.v1.md …       alle Versionen
-├── meta.json             Termin, Teilnehmende, Einwilligung, Geräte, Modelle, Versionen mit Einstellungen, Übergaben
+├── meta.json             Termin, Teilnehmende, Einwilligung, Geräte, Ende der Aufnahme (recording.stop), Modelle, Versionen mit Einstellungen, Übergaben, Verarbeitungskette
 └── data\                 Zwischenergebnisse für die Nachbearbeitung
     ├── asr_mic.json / asr_remote.json   Whisper-Ergebnis mit Wort-Zeitstempeln
     ├── diarization.json                 Sprecherabschnitte der Gegenseite
@@ -780,7 +894,7 @@ Umgebung):
 
 | Befehl | Zweck |
 |---|---|
-| `tray` (oder ohne Argument) | Hauptfenster und Tray-Symbol starten |
+| `tray [--minimized]` (oder ohne Argument) | Hauptfenster und Tray-Symbol starten; `--minimized` nur im Infobereich (so startet der Autostart) |
 | `record [--title T] [--participants "A <a@x>; B"] [--ics F] [--no-calendar] [--no-process]` | Aufnahme in der Konsole (Einwilligung durch Eintippen von `ja` im Konsolenfenster; umgeleitete Eingabe wird nicht akzeptiert) |
 | `process <Ordner> [--steps …] [--model M] [--device cuda\|cpu] [--language de\|en\|auto] [--preset P]` | (Neu-)Verarbeitung; Schritte: `finalize,transcribe,diarize,identify,render,summarize` oder Presets `all`, `retranscribe`, `rediarize`, `resummarize`, `render` |
 | `retranscribe <Ordner> [--preset P] [--language en\|de\|auto]` | mit aktuellen Einstellungen neu transkribieren (neue Version, alte bleibt); `--language` erzwingt die Sprache für diesen Lauf (`auto` = neu erkennen) |
@@ -848,7 +962,16 @@ Wichtige Einstellungen:
 | `summary.allow_remote_endpoint_data_leaves_this_computer` | `false` | nur `true`, wenn Inhalte den Rechner verlassen dürfen |
 | `handoff.mode` | `folder` | `folder` (OneDrive-Ordner) oder `graph` |
 | `handoff.folder` | leer | synchronisierter SharePoint-Ordner |
-| `detection.teams_processes` | `["ms-teams.exe", "teams.exe"]` | Prozessnamen für die Erinnerung |
+| `detection.teams_processes` | `["ms-teams.exe", "teams.exe"]` | Prozessnamen der Anruf-App für Erinnerung und Gesprächsende (auch von ihnen gestartete Hilfsprozesse) |
+| `autostop.enabled` | `true` | Gesprächsende automatisch erkennen (Abschnitt 7b) |
+| `autostop.call_app_session` / `session_gone_s` / `session_gone_max_s` | `true` / `20` / `120` | Signal „Anruf-App nutzt das Mikrofon nicht mehr“ (mit stiller Gegenseite / auch wenn etwas spielt) |
+| `autostop.silence_minutes` / `silence_dbfs` / `silence_after_event_end_s` | `3` / `-45` / `60` | Stille auf beiden Spuren; Schwelle; kürzere Stille nach Terminende |
+| `autostop.countdown_s` / `snooze_minutes` | `30` / `15` | Countdown vor dem Beenden; Ruhe nach „Weiter aufnehmen“ |
+| `autostop.max_duration_minutes` / `max_duration_warning_minutes` / `max_duration_extend_minutes` | `240` / `10` / `60` | Höchstdauer (0 = aus), Vorwarnung, Verlängerung |
+| `autostop.silence_safety_minutes` | `15` | Nachfrage nach so langer Stille (0 = aus), auch bei `enabled = false` |
+| `processing.after_recording` | `ask` | `ask` = nach der Aufnahme fragen, `full` = sofort vollständig verarbeiten (Abschnitt 7c) |
+| `processing.default_speakers` / `default_summary` / `default_handoff` | `true` / `true` / `false` | Vorbelegung der Häkchen in der Frage |
+| `processing.handoff_without_asking` | `false` | nur mit `full`: Zusammenfassung ohne Rückfrage an SharePoint übergeben (nie per Preset) |
 | `hotkey.toggle` | `ctrl+alt+shift+r` | z. B. `ctrl+shift+f9`, `win+alt+r` |
 
 Eine Einstellung zum Abschalten der Einwilligungsabfrage gibt es nicht; entsprechende
@@ -995,6 +1118,13 @@ Abmelden und neu anmelden: `callrec logout`, dann `callrec login`.
 **Tastenkürzel funktioniert nicht.** Ein anderes Programm nutzt die Kombination (Hinweis
 beim Start). Anderes Kürzel wählen und CallRecorder neu starten.
 
+**Aufnahme endet nicht automatisch / zu früh.** Im Hauptfenster steht während der Aufnahme
+„Automatisches Ende: …“. „Anruf-App (Teams) nicht erkannt“ → im Protokoll nach „Mikrofon-Sitzungen der
+Anruf-App“ suchen bzw. im Task-Manager den Prozessnamen prüfen und `detection.teams_processes` ergänzen.
+„Stille seit …“ zählt nie hoch → das Mikrofon rauscht über der Schwelle: `autostop.silence_dbfs` z. B. auf
+`-40` setzen. Endet es in langen Pausen zu früh → `silence_minutes` erhöhen; „Weiter aufnehmen“ hilft im
+Einzelfall. Warum eine Aufnahme endete, steht in `meta.json` unter `recording.stop`.
+
 **Keine Teams-Erinnerung.** Das neue Teams heißt `ms-teams.exe`. Im Task-Manager prüfen, wie
 der Prozess bei Ihnen heißt, und `detection.teams_processes` anpassen. Die Erinnerung ist
 nur ein Komfort – Start per Tastenkürzel funktioniert immer.
@@ -1054,10 +1184,13 @@ Aufbau (`src/callrec/`):
 | `userfiles.py`, `versions.py` | Glossar, Korrekturliste, Prompt-Vorlagen; versionierte Ausgaben |
 | `handoff.py` | Übergabe **nur** der Zusammenfassung (Ordner oder Graph) |
 | `pipeline.py`, `jobs.py` | Verarbeitungsschritte, Hintergrund-Warteschlange |
-| `controller.py` | Ablaufsteuerung der App (UI-unabhängig) |
+| `controller.py` | Ablaufsteuerung der App (UI-unabhängig); **ein** Stopp-Pfad für Hand, Tastenkürzel, Overlay, Beenden und automatisches Ende |
+| `autostop.py` | automatisches Ende: reine Zustandsmaschine (`AutoStopMonitor`) und Abfrage-Thread (`AutoStopRunner`); der Stopp läuft über `ui.post` → `Controller.stop` |
+| `postcall.py` | Frage nach der Aufnahme und geführte Verarbeitungskette (fortsetzbar, abbrechbar) |
+| `autostart.py` | „Mit Windows starten“ (HKCU-Run-Eintrag, Erkennung und Reparatur veralteter Einträge) |
 | `library.py`, `setupcheck.py`, `hints.py` | Aufnahmeliste mit Stand je Schritt (zwischengespeichert), Umbenennen/Löschen; Einrichtungs-Checkliste; Fehlertexte → nächster Schritt (alles ohne Tk, getestet) |
 | `ui/` | Hauptfenster (`mainwindow.py`, Hilfsfunktionen ohne Tk in `viewmodel.py`), gemeinsame Aktionen für Fenster und Tray (`actions.py`), Tk-Dialoge (inkl. Einstellungen mit Reitern, Übergabe-Vorschau), Overlay, pystray-Tray, App-Verdrahtung |
-| `detect.py`, `hotkey.py` | Erinnerungslogik, globales Tastenkürzel (RegisterHotKey) |
+| `detect.py`, `hotkey.py` | Erinnerungslogik, großzügiger Abgleich der Anruf-App-Prozesse, globales Tastenkürzel (RegisterHotKey) |
 
 Tests (laufen auch unter Linux/macOS; Windows-spezifisches ist gekapselt):
 

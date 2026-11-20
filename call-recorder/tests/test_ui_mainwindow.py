@@ -469,3 +469,140 @@ def test_speaker_review_is_refused_while_the_recording_is_processed(world: World
     rec.speakers_path.write_text("{}", encoding="utf-8")
     w.actions.review(rec)
     assert [r.folder for r in opened] == [rec.folder]
+
+
+def test_autostop_countdown_banner_keep_and_stop_now(world: World, monkeypatch):
+    from callrec.autostop import AutoStopRunner
+
+    w = world
+    clock = {"t": 1000.0}
+    runner = AutoStopRunner(lambda: w.cfg.autostop, w.controller, w.ui.post, w.ui.notify, clock=lambda: clock["t"])
+    w.actions.autostop = runner
+    w.win.show()
+
+    def fake_ask_start(root, suggestion, me, calendar, summary_provider=""):
+        consent = confirm_consent(user_checked_box=True, confirmed_by=me.name, participants=[], method="dialog")
+        return StartDecision("Spontan", [], None, consent)
+
+    monkeypatch.setattr(dialogs, "ask_start", fake_ask_start)
+    w.controller._stopped_at = float("-inf")
+    assert w.actions.start_recording(Suggestion(None))
+    w.pump(lambda: "Automatisches Ende:" in w.win.autostop_info.get())
+    assert "Stille 3 min" in w.win.autostop_info.get() and "höchstens 4 h" in w.win.autostop_info.get()
+    assert not w.win.autostop_frame.winfo_ismapped()
+
+    silent = {"mic": 200.0, "remote": 200.0}
+    monkeypatch.setattr(w.controller, "silence_durations", lambda: dict(silent))
+    runner.step()
+    w.pump(lambda: w.win.autostop_frame.winfo_ismapped())
+    assert w.win.autostop_head.get() == "Call scheint beendet – Aufnahme endet in 30 s"
+    assert "beiden Spuren" in w.win.autostop_detail.get()
+    w.win.autostop_keep_btn.invoke()
+    assert w.controller.is_recording and "keine weitere Nachfrage" in w.win.autostop_head.get()
+    w.win.autostop_close_btn.invoke()
+    w.pump(lambda: not w.win.autostop_frame.winfo_ismapped())
+
+    clock["t"] += 16 * 60  # after the snooze, still silent -> prompt again
+    runner.step()
+    w.pump(lambda: w.win.autostop_frame.winfo_ismapped() and "endet in" in w.win.autostop_head.get())
+    rec = w.controller.current
+    w.win.autostop_stop_btn.invoke()
+    assert not w.controller.is_recording
+    stop = rec.load_meta()["recording"]["stop"]
+    assert stop["reason"] == "silence" and stop["by"] == "user"
+    w.pump(lambda: not w.win.autostop_frame.winfo_ismapped())
+
+
+def test_autostop_countdown_expiry_stops_like_manual_stop(world: World, monkeypatch):
+    from callrec.autostop import AutoStopRunner
+
+    w = world
+    clock = {"t": 0.0}
+    runner = AutoStopRunner(lambda: w.cfg.autostop, w.controller, w.ui.post, clock=lambda: clock["t"])
+    w.actions.autostop = runner
+
+    def fake_ask_start(root, suggestion, me, calendar, summary_provider=""):
+        consent = confirm_consent(user_checked_box=True, confirmed_by=me.name, participants=[], method="dialog")
+        return StartDecision("Spontan", [], None, consent)
+
+    monkeypatch.setattr(dialogs, "ask_start", fake_ask_start)
+    w.controller._stopped_at = float("-inf")
+    assert w.actions.start_recording(Suggestion(None))
+    rec = w.controller.current
+    monkeypatch.setattr(w.controller, "silence_durations", lambda: {"mic": 999.0, "remote": 999.0})
+    runner.step()
+    clock["t"] = 31
+    runner.step()  # expired -> the stop is posted to the Tk thread
+    w.pump(lambda: not w.controller.is_recording)
+    meta = rec.load_meta()
+    assert meta["recording"]["stop"]["by"] == "automatic" and meta["recording"]["status"] == "stopped"
+    w.pump(lambda: any(j[0] == rec.folder.name for j in w.jobs))  # processed like a manual stop
+
+
+def test_stop_asks_once_then_runs_the_chain_or_defers(world: World, monkeypatch):
+    from callrec.postcall import Plan, chain_state
+
+    w = world
+    w.controller.after_stop = w.actions.after_recording
+
+    def fake_ask_start(root, suggestion, me, calendar, summary_provider=""):
+        consent = confirm_consent(user_checked_box=True, confirmed_by=me.name, participants=[], method="dialog")
+        return StartDecision("Kette", [], None, consent)
+
+    answers = [("full", Plan(True, False, True, False)), ("later", None)]
+    asked = []
+
+    def fake_after(root, rec, plan, handoff_problem="", summary_problem=""):
+        asked.append((rec.folder.name, plan, handoff_problem))
+        return answers.pop(0)
+
+    monkeypatch.setattr(dialogs, "ask_start", fake_ask_start)
+    monkeypatch.setattr(dialogs, "ask_after_recording", fake_after)
+    w.controller._stopped_at = float("-inf")
+    assert w.actions.start_recording(Suggestion(None))
+    rec = w.controller.current
+    w.actions.stop_recording()
+    w.pump(lambda: len(asked) == 1)
+    assert asked[0][1] == Plan(True, True, True, False)  # pre-set from the settings
+    w.pump(lambda: chain_state(rec) is not None and chain_state(rec)["stage"] == "done")
+    steps = [s for name, s, _ in w.jobs if name == rec.folder.name]
+    assert steps == [frozenset({"finalize", "transcribe", "render"}), frozenset({"summarize"})]
+
+    w.controller._stopped_at = float("-inf")
+    assert w.actions.start_recording(Suggestion(None))
+    rec2 = w.controller.current
+    w.actions.stop_recording()
+    w.pump(lambda: len(asked) == 2)
+    w.pump(lambda: rec2.load_meta()["processing"].get("status") == "deferred")
+    assert not any(name == rec2.folder.name for name, _, _ in w.jobs)
+    w.win.refresh_list()
+    w.pump(lambda: w.tree_has(rec2.folder.name) if hasattr(w, "tree_has") else w.win.tree.exists(rec2.folder.name))
+    w.win.select(rec2.folder.name)
+    assert w.win.is_enabled("process_now")
+    w.win.invoke_action("process_now")
+    w.pump(lambda: chain_state(rec2) is not None and chain_state(rec2)["stage"] == "done")
+    assert chain_state(rec2)["handoff_authorized"] is False
+
+
+def test_compact_view_shows_last_recordings_with_next_action(world: World, monkeypatch):
+    w = world
+    w.win.set_compact(True)
+    w.win.show()
+    w.pump(lambda: len(w.win.compact_items) == 3)
+    assert w.win.compact_frame.winfo_ismapped() and not w.win.nb.winfo_ismapped()
+    by = {name: (status, key) for name, status, key in w.win.compact_items}
+    assert by["2026-11-18_1000_Kunde-Mueller"][1] == "review"  # 2 voices open
+    buttons = [str(b.cget("text")) for b in w.win.compact_rows.winfo_children() if isinstance(b, ttk.Button)]
+    assert "Sprecher zuordnen" in buttons and "Öffnen" in buttons
+    reviewed = []
+    monkeypatch.setattr(w.actions, "review", lambda rec=None: reviewed.append(rec.folder.name))
+    next(b for b in w.win.compact_rows.winfo_children()
+         if isinstance(b, ttk.Button) and str(b.cget("text")) == "Sprecher zuordnen").invoke()
+    assert reviewed == ["2026-11-18_1000_Kunde-Mueller"]
+    w.win.view_btn.invoke()  # "Mehr …" -> full view
+    w.pump(lambda: w.win.nb.winfo_ismapped())
+    assert not w.win.compact and str(w.win.view_btn.cget("text")) == "Kompakt"
+    w.win.save_state()
+    from callrec.ui.viewmodel import WindowState
+
+    assert WindowState.load(w.tmp / "window.json").compact is False

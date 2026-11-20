@@ -29,11 +29,14 @@ A_SETTINGS_TRANSCRIPTION = "settings:Transkription"
 A_SETTINGS_SUMMARY = "settings:Zusammenfassung"
 A_SETTINGS_MICROSOFT = "settings:Microsoft-Konto"
 A_SETTINGS_SHAREPOINT = "settings:SharePoint"
+A_SETTINGS_AUTOSTOP = "settings:Aufnahme-Ende"
 A_TEST_SUMMARY = "test_summary"
 A_DOWNLOAD_WHISPER = "download_whisper"
 A_LOGIN = "login"
 A_README = "readme"
 A_RECHECK = "recheck"
+A_AUTOSTART_ON = "autostart:on"
+A_AUTOSTART_OFF = "autostart:off"
 
 
 @dataclass
@@ -110,23 +113,49 @@ def check_summary(cfg: Config, key_present: Callable[[], bool], tested: str | No
     return CheckItem("summary", title, UNKNOWN, what + "\nNoch nicht getestet – „Verbindung testen“ klicken.", actions=actions)
 
 
-def check_microsoft(cfg: Config, signed_in_as: Callable[[], str | None]) -> CheckItem:
+MICROSOFT_STEPS = (
+    "So richten Sie es ein (einmalig, ca. 10 Minuten, README Abschnitt 5):\n"
+    "1. entra.microsoft.com → App-Registrierungen → Neue Registrierung, Name z. B. „CallRecorder (lokal)“, "
+    "Umleitungs-URI „Öffentlicher Client/nativ“ = http://localhost.\n"
+    "2. Unter Authentifizierung „Öffentliche Clientflows zulassen“ = Ja; unter API-Berechtigungen "
+    "Microsoft Graph → Delegiert → Calendars.Read (und User.Read).\n"
+    "3. Anwendungs-ID (Client) und Verzeichnis-ID (Mandant) hier unter „Client-ID eintragen …“ speichern.\n"
+    "4. „Bei Microsoft anmelden …“ klicken – danach steht hier Ihr nächster Termin mit den Teilnehmenden.\n"
+    "Damit heißen Aufnahmen wie der Termin, und die Eingeladenen werden bei der Sprechererkennung bevorzugt "
+    "und in der Sprecherzuordnung vorgeschlagen."
+)
+
+
+def check_microsoft(cfg: Config, signed_in_as: Callable[[], str | None],
+                    preview: Callable[[], str] | None = None) -> CheckItem:
+    """``preview()`` -> description of the current/next event with participants (only when signed in)."""
     title = "Microsoft-Anmeldung (Outlook-Kalender)"
+    login = ("Bei Microsoft anmelden …", A_LOGIN)
     if not cfg.calendar.client_id.strip():
         return CheckItem("microsoft", title, OPTIONAL,
-                         "Noch nicht eingerichtet (Entra-App-Registrierung, README Abschnitt 5). Die App funktioniert "
-                         "auch ohne: Titel und Teilnehmende tippen Sie dann beim Start selbst ein.",
+                         "Noch nicht eingerichtet. Die App funktioniert auch ohne: Titel und Teilnehmende tippen Sie "
+                         "dann beim Start selbst ein.\n" + MICROSOFT_STEPS,
                          required=False, actions=[("Client-ID eintragen …", A_SETTINGS_MICROSOFT), ("Anleitung", A_README)])
     try:
         who = signed_in_as()
     except Exception as exc:
         return CheckItem("microsoft", title, WARN, f"Anmeldestatus nicht lesbar: {exc}", required=False,
-                         actions=[("Anmelden …", A_LOGIN), ("Einstellungen …", A_SETTINGS_MICROSOFT)])
+                         actions=[login, ("Einstellungen …", A_SETTINGS_MICROSOFT)])
     if not who:
-        return CheckItem("microsoft", title, WARN, "Client-ID ist eingetragen, aber Sie sind nicht angemeldet.",
-                         required=False, actions=[("Anmelden …", A_LOGIN), ("Einstellungen …", A_SETTINGS_MICROSOFT)])
-    return CheckItem("microsoft", title, OK, f"Angemeldet als {who}.", required=False,
-                     actions=[("Neu anmelden …", A_LOGIN)])
+        return CheckItem("microsoft", title, WARN, "Client-ID ist eingetragen, aber Sie sind noch nicht angemeldet. "
+                         "Nächster Schritt: „Bei Microsoft anmelden …“ (öffnet den Browser; einmalig zustimmen). "
+                         "Danach erscheint hier Ihr nächster Termin mit den Teilnehmenden.",
+                         required=False, actions=[login, ("Einstellungen …", A_SETTINGS_MICROSOFT)])
+    detail = f"Angemeldet als {who}."
+    state = OK
+    if preview is not None:
+        try:
+            detail += "\n" + preview()
+        except Exception as exc:
+            state = WARN
+            detail += f"\nKalender nicht abrufbar: {exc} (Berechtigung Calendars.Read erteilt? Netz?)"
+    return CheckItem("microsoft", title, state, detail, required=False,
+                     actions=[("Neu anmelden …", A_LOGIN), ("Termine prüfen", A_RECHECK)])
 
 
 def check_sharepoint(cfg: Config, is_dir: Callable[[Path], bool] = Path.is_dir,
@@ -160,6 +189,56 @@ def check_sharepoint(cfg: Config, is_dir: Callable[[Path], bool] = Path.is_dir,
                          "werden vermutlich nicht nach SharePoint synchronisiert.", required=False, actions=fix)
     return CheckItem("sharepoint", title, OK, f"Übergabe in {folder} (wird von OneDrive synchronisiert).",
                      required=False, actions=fix)
+
+
+def check_autostop(cfg: Config, windows: bool | None = None) -> CheckItem:
+    """Informs what happens at the end of a call (no probe needed)."""
+    from callrec.autostop import fmt_minutes
+
+    a = cfg.autostop
+    title = "Automatisches Aufnahme-Ende"
+    actions = [("Einstellungen …", A_SETTINGS_AUTOSTOP)]
+    win = sys.platform == "win32" if windows is None else windows
+    nets = []
+    if a.max_duration_minutes > 0:
+        nets.append(f"Höchstdauer {fmt_minutes(a.max_duration_minutes * 60)} (Vorwarnung "
+                    f"{fmt_minutes(a.max_duration_warning_minutes * 60)} vorher)")
+    if a.silence_safety_minutes > 0:
+        nets.append(f"Nachfrage nach {fmt_minutes(a.silence_safety_minutes * 60)} nur Stille")
+    net_text = ("Sicherheitsnetz: " + ", ".join(nets) + ".") if nets else "Kein Sicherheitsnetz (Höchstdauer aus)."
+    if not a.enabled:
+        return CheckItem("autostop", title, WARN,
+                         "Aus: Eine Aufnahme endet nur, wenn Sie sie beenden – eine vergessene Aufnahme nimmt weiter "
+                         f"auf, was im Raum gesagt oder abgespielt wird. {net_text}", required=False, actions=actions)
+    signals = []
+    if a.call_app_session:
+        procs = ", ".join(cfg.detection.teams_processes) or "–"
+        signals.append(f"Teams nutzt das Mikrofon nicht mehr ({procs}; nur unter Windows)" if win else
+                       "Teams-Sitzung (nur unter Windows prüfbar)")
+    signals.append(f"{fmt_minutes(a.silence_minutes * 60)} Stille auf beiden Spuren (nach Terminende "
+                   f"{int(a.silence_after_event_end_s)} s)")
+    return CheckItem("autostop", title, OK,
+                     "An. Gesprächsende wird erkannt an: " + "; ".join(signals) + f". Dann erscheint ein Countdown von "
+                     f"{a.countdown_s} s mit „Weiter aufnehmen“ / „Jetzt beenden“; ohne Reaktion wird die Aufnahme "
+                     f"normal beendet und verarbeitet. {net_text}", required=False, actions=actions)
+
+
+def check_autostart(status: Any) -> CheckItem:
+    """``status``: callrec.autostart.AutostartStatus."""
+    title = "Mit Windows starten"
+    state = getattr(status, "state", "unavailable")
+    detail = str(getattr(status, "detail", ""))
+    if state == "on":
+        return CheckItem("autostart", title, OK, detail, required=False,
+                         actions=[("Nicht mehr mit Windows starten", A_AUTOSTART_OFF)])
+    if state == "stale":
+        return CheckItem("autostart", title, WARN, detail, required=False,
+                         actions=[("Jetzt korrigieren", A_AUTOSTART_ON), ("Entfernen", A_AUTOSTART_OFF)])
+    if state == "off":
+        return CheckItem("autostart", title, OPTIONAL, detail + " Empfohlen, damit Erinnerung, Tastenkürzel und "
+                         "das automatische Aufnahme-Ende immer bereit sind.", required=False,
+                         actions=[("Mit Windows starten", A_AUTOSTART_ON)])
+    return CheckItem("autostart", title, UNKNOWN, detail or "Nur unter Windows verfügbar.", required=False)
 
 
 def summary_line(items: list[CheckItem]) -> tuple[bool, str]:
@@ -217,6 +296,15 @@ def real_key_present() -> bool:
     return bool(apikey.load_key()[0])
 
 
+def real_calendar_preview(cfg: Config) -> Callable[[], str]:
+    def preview() -> str:
+        from callrec.factory import build_calendar_service
+
+        return build_calendar_service(cfg).preview()[1]
+
+    return preview
+
+
 def real_signed_in(cfg: Config) -> Callable[[], str | None]:
     def who() -> str | None:
         from callrec.factory import graph_auth
@@ -227,7 +315,8 @@ def real_signed_in(cfg: Config) -> Callable[[], str | None]:
 
 
 def run_all(cfg: Config, summary_test: tuple[str, bool] | None = None, *, resolve: Any = "real",
-            selected: Any = None, find: Any = None, key_present: Any = None, signed_in: Any = None) -> list[CheckItem]:
+            selected: Any = None, find: Any = None, key_present: Any = None, signed_in: Any = None,
+            preview: Any = "real", autostart: Any = None) -> list[CheckItem]:
     """All checks with the real probes (each probe replaceable for tests). Runs on a worker thread."""
     items = []
 
@@ -244,8 +333,12 @@ def run_all(cfg: Config, summary_test: tuple[str, bool] | None = None, *, resolv
                       "whisper", "Whisper-Modell"))
     t, ok = summary_test if summary_test else (None, None)
     items.append(safe(lambda: check_summary(cfg, key_present or real_key_present, t, ok), "summary", "Zusammenfassung"))
-    items.append(safe(lambda: check_microsoft(cfg, signed_in or real_signed_in(cfg)), "microsoft", "Microsoft"))
+    pv = real_calendar_preview(cfg) if preview == "real" else preview
+    items.append(safe(lambda: check_microsoft(cfg, signed_in or real_signed_in(cfg), pv), "microsoft", "Microsoft"))
     items.append(safe(lambda: check_sharepoint(cfg), "sharepoint", "SharePoint"))
+    items.append(safe(lambda: check_autostop(cfg), "autostop", "Aufnahme-Ende"))
+    if autostart is not None:
+        items.append(safe(lambda: check_autostart(autostart.status()), "autostart", "Autostart"))
     return items
 
 

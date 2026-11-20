@@ -214,7 +214,10 @@ def review_speakers(
     rerender: Callable[[], object],
     resummarize: Callable[[], object],
     handoff: Callable[[], object] | None = None,
+    in_chain: bool = False,
 ) -> bool:
+    """``in_chain``: part of the guided processing - "Überspringen" instead of "Abbrechen", and
+    no re-summary checkbox (the chain creates the summary next, with the names)."""
     from callrec.audio.finalize import find_audio, write_clip
 
     overview = speaker_overview(rec)
@@ -269,10 +272,14 @@ def review_speakers(
         ttk.Checkbutton(win, variable=keep_var).grid(row=i, column=4, sticky="n", **PAD)
         rows.append((ov.id, name_var, keep_var))
 
-    resum_var = tk.BooleanVar(value=True)
+    resum_var = tk.BooleanVar(value=not in_chain)
     bottom = ttk.Frame(win)
     bottom.grid(row=len(overview) + 2, column=0, columnspan=5, sticky="we", **PAD)
-    ttk.Checkbutton(bottom, text="Zusammenfassung danach neu erstellen", variable=resum_var).pack(side="left")
+    if in_chain:
+        ttk.Label(bottom, text="Danach wird die Zusammenfassung mit diesen Namen erstellt.", foreground="#555").pack(
+            side="left")
+    else:
+        ttk.Checkbutton(bottom, text="Zusammenfassung danach neu erstellen", variable=resum_var).pack(side="left")
     applied = {"value": False}
 
     def apply() -> None:
@@ -292,9 +299,9 @@ def review_speakers(
         win.destroy()
 
     ttk.Button(bottom, text="Übernehmen", command=apply).pack(side="right", padx=4)
-    if handoff is not None:
+    if handoff is not None and not in_chain:
         ttk.Button(bottom, text="Zusammenfassung an SharePoint übergeben \u2026", command=handoff).pack(side="left", padx=8)
-    ttk.Button(bottom, text="Abbrechen", command=win.destroy).pack(side="right", padx=4)
+    ttk.Button(bottom, text="Überspringen" if in_chain else "Abbrechen", command=win.destroy).pack(side="right", padx=4)
     win.protocol("WM_DELETE_WINDOW", win.destroy)
     _modal(win)
     root.wait_window(win)
@@ -487,5 +494,126 @@ def ask_retranscribe(root: tk.Misc, rec: Recording, presets: list[str]) -> tuple
     _modal(win)
     if first is not None:
         first.focus_set()
+    root.wait_window(win)
+    return result["v"]
+
+
+# ---------------------------------------------------------------------------
+# Assign a calendar event to an existing recording
+# ---------------------------------------------------------------------------
+def ask_event_for_recording(root: tk.Misc, rec: Recording, events: list[Any]) -> tuple[Any, bool] | None:
+    """(chosen event, take its subject as title) or None. ``events`` best first."""
+    win = tk.Toplevel(root)
+    win.title(f"Termin zuordnen – {rec.title()}")
+    result: dict[str, tuple[Any, bool] | None] = {"v": None}
+    ttk.Label(win, text="Termine im Zeitraum der Aufnahme (der wahrscheinlichste zuerst). Die Teilnehmenden des "
+              "Termins werden bei der Sprechererkennung bevorzugt und in der Sprecherzuordnung vorgeschlagen.",
+              wraplength=520).grid(row=0, column=0, columnspan=2, sticky="w", **PAD)
+    choice = tk.IntVar(value=0)
+    box = ttk.Frame(win)
+    box.grid(row=1, column=0, columnspan=2, sticky="we", **PAD)
+    for i, ev in enumerate(events):
+        people = ", ".join(p.display for p in ev.participants()[:5])
+        text = (f"{ev.subject} ({ev.start.astimezone():%d.%m. %H:%M}–{ev.end.astimezone():%H:%M})"
+                + (" – Teams" if ev.is_online else "") + (f"\n    {people}" if people else ""))
+        ttk.Radiobutton(box, text=text, value=i, variable=choice).pack(anchor="w", pady=2)
+    take = tk.BooleanVar(value=True)
+    ttk.Checkbutton(win, text="Betreff als Titel übernehmen", variable=take).grid(row=2, column=0, sticky="w", **PAD)
+    bar = ttk.Frame(win)
+    bar.grid(row=3, column=0, columnspan=2, sticky="e", **PAD)
+
+    def ok() -> None:
+        result["v"] = (events[choice.get()], bool(take.get()))
+        win.destroy()
+
+    ttk.Button(bar, text="Zuordnen", command=ok).pack(side="right", padx=4)
+    ttk.Button(bar, text="Abbrechen", command=win.destroy).pack(side="right", padx=4)
+    win.bind("<Escape>", lambda e: win.destroy())
+    _modal(win)
+    root.wait_window(win)
+    return result["v"]
+
+
+# ---------------------------------------------------------------------------
+# After a recording: process fully / later / discard
+# ---------------------------------------------------------------------------
+AFTER_FULL, AFTER_LATER, AFTER_DISCARD = "full", "later", "discard"
+
+
+def ask_after_recording(root: tk.Misc, rec: Recording, plan: Any, handoff_problem: str = "",
+                        summary_problem: str = "") -> tuple[str, Any]:
+    """("full", Plan) | ("later", None) | ("discard", None). Closing the window = "Später".
+
+    ``handoff_problem``: why a hand-over could not run now (no SharePoint folder ...) - the box is
+    then shown but the chain will skip it with that message."""
+    from callrec.postcall import Plan
+
+    win = tk.Toplevel(root)
+    win.title("Aufnahme beendet")
+    win.resizable(False, False)
+    result: dict[str, tuple[str, Any]] = {"v": (AFTER_LATER, None)}
+    try:
+        title = rec.title()
+    except (OSError, ValueError):
+        title = rec.folder.name
+    ttk.Label(win, text="Aufnahme beendet – jetzt vollständig verarbeiten?", font=("Segoe UI", 12, "bold")).grid(
+        row=0, column=0, columnspan=2, sticky="w", **PAD)
+    ttk.Label(win, text=title, foreground="#444").grid(row=1, column=0, columnspan=2, sticky="w", padx=8)
+    box = ttk.LabelFrame(win, text="Was passiert (nacheinander, im Hintergrund)")
+    box.grid(row=2, column=0, columnspan=2, sticky="we", padx=8, pady=8)
+    v_tr = tk.BooleanVar(value=plan.transcript)
+    v_sp = tk.BooleanVar(value=plan.speakers)
+    v_su = tk.BooleanVar(value=plan.summary)
+    v_ho = tk.BooleanVar(value=plan.handoff)
+    rows = [
+        (v_tr, "Transkript (lokal mit Whisper)"),
+        (v_sp, "Sprecherzuordnung – erkennt Stimmen; sind Stimmen offen, öffnet sich der Zuordnungsdialog"),
+        (v_su, "Zusammenfassung" + (f" ({summary_problem})" if summary_problem else "")),
+        (v_ho, "Übergabe der Zusammenfassung an SharePoint (für den Claude-Assistenten) – nur die "
+               "Zusammenfassung, ohne weitere Vorschau"),
+    ]
+    checks = []
+    for i, (var, text) in enumerate(rows):
+        cb = ttk.Checkbutton(box, text=text, variable=var)
+        cb.grid(row=i, column=0, sticky="w", padx=8, pady=2)
+        checks.append(cb)
+    if handoff_problem:
+        ttk.Label(box, text=f"Hinweis zur Übergabe: {handoff_problem}", foreground="#b00020", wraplength=480).grid(
+            row=len(rows), column=0, sticky="w", padx=24, pady=(0, 4))
+
+    def sync(*_a: Any) -> None:
+        for cb in checks[1:]:
+            cb.state(["!disabled"] if v_tr.get() else ["disabled"])
+        checks[3].state(["!disabled"] if v_tr.get() and v_su.get() else ["disabled"])
+
+    v_tr.trace_add("write", sync)
+    v_su.trace_add("write", sync)
+    sync()
+    bar = ttk.Frame(win)
+    bar.grid(row=3, column=0, columnspan=2, sticky="e", **PAD)
+
+    def full() -> None:
+        result["v"] = (AFTER_FULL, Plan(bool(v_tr.get()), bool(v_sp.get()), bool(v_su.get()), bool(v_ho.get())))
+        win.destroy()
+
+    def later() -> None:
+        result["v"] = (AFTER_LATER, None)
+        win.destroy()
+
+    def discard() -> None:
+        if messagebox.askyesno("Aufnahme verwerfen", f"„{title}“ in den Papierkorb verschieben?\n\nAudio und alle "
+                               "Daten dieser Aufnahme werden gelöscht (aus dem Papierkorb wiederherstellbar).",
+                               icon="warning", parent=win):
+            result["v"] = (AFTER_DISCARD, None)
+            win.destroy()
+
+    full_btn = ttk.Button(bar, text="Vollständig verarbeiten", command=full)
+    full_btn.pack(side="right", padx=4)
+    ttk.Button(bar, text="Später", command=later).pack(side="right", padx=4)
+    ttk.Button(bar, text="Verwerfen …", command=discard).pack(side="right", padx=4)
+    win.protocol("WM_DELETE_WINDOW", later)
+    win.bind("<Escape>", lambda e: later())
+    _modal(win)
+    full_btn.focus_set()
     root.wait_window(win)
     return result["v"]

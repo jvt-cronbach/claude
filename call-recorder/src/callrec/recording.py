@@ -252,6 +252,8 @@ def find_unprocessed(root: Path) -> list[Recording]:
             continue
         status = (meta.get("recording") or {}).get("status")
         pstatus = (meta.get("processing") or {}).get("status")
+        # "deferred" ("Später" after the recording) waits for "Jetzt verarbeiten"; an active guided
+        # chain (processing.chain) is resumed by the app itself
         if status in ("stopped", "recovered") and pstatus in (None, "running"):
             out.append(rec)
     return out

@@ -90,6 +90,25 @@ class AppActions:
         self.on_config_changed: list[Callable[[], None]] = []
         self.quit_handler: Callable[[], None] = lambda: None
         self.show_window_handler: Callable[[], None] = lambda: None
+        self.autostop: Any = None  # AutoStopRunner (countdown banner in the main window), set by the app
+        from callrec.autostart import Autostart
+        from callrec.postcall import ProcessingChain
+
+        self.autostart = Autostart.for_this_pc()
+
+        # guided processing after a recording (question -> transcript -> speakers -> summary -> hand-over)
+        self.chain = ProcessingChain(
+            submit=lambda rec, steps, on_done: self.queue.submit(rec, steps, on_done=on_done),
+            post=self.ui.post,
+            review=self.review_in_chain,
+            handoff=lambda rec, note: perform_handoff(self.cfg, rec, None, note),
+            handoff_ready=self.handoff_ready,
+            notify=self.ui.notify,
+            changed=lambda rec: self.ui.post(lambda: self._changed(rec)),
+            shutting_down=lambda: bool(getattr(self.queue, "_shutting_down", False)),
+        )
+        if hasattr(self.queue, "add_listener"):
+            self.queue.add_listener(self.chain.on_queue_event)
 
     @property
     def root(self) -> Any:
@@ -113,6 +132,73 @@ class AppActions:
     def stop_recording(self) -> None:
         if self.controller.stop() is not None:
             self._changed(None)
+
+    # -- after a recording ----------------------------------------------
+    def after_recording(self, rec: Recording, reason: str = "manual") -> None:
+        """Controller hook after every stop (manual or automatic): ask once, or process right away
+        in mode "full". At the app exit nothing is asked - the question comes at the next start."""
+        from callrec.postcall import default_plan
+
+        if reason == "app_quit":
+            log.info("Aufnahme beim Beenden gestoppt - Rückfrage zur Verarbeitung beim nächsten Start")
+            return
+        pc = self.cfg.processing
+        if pc.after_recording == "full":
+            plan = default_plan(self.cfg)
+            plan.handoff = bool(pc.handoff_without_asking)  # only this explicit setting, never a preset
+            self.chain.start(rec, plan, "setting")
+            self._changed(rec)
+            return
+        self.ui.post(lambda: self.ask_after_recording(rec))
+
+    def ask_after_recording(self, rec: Recording) -> str:
+        from callrec.postcall import default_plan, mark_deferred
+
+        if not rec.meta_path.exists():
+            return ""
+        ready, why = self.handoff_ready()
+        summary_problem = "" if self.cfg.summary.enabled else "in den Einstellungen ausgeschaltet"
+        choice, plan = dialogs.ask_after_recording(self.root, rec, default_plan(self.cfg), "" if ready else why,
+                                                   summary_problem)
+        if choice == dialogs.AFTER_FULL:
+            if not self.cloud_ok(rec, STEP_PRESETS["all"] if plan.summary else frozenset()):
+                plan.summary = False
+            self.chain.start(rec, plan, "dialog")
+        elif choice == dialogs.AFTER_DISCARD:
+            try:
+                where = self.controller.delete(rec)
+                self.ui.notify("Aufnahme verworfen", where)
+            except Exception as exc:
+                self.ui.notify("Verwerfen fehlgeschlagen", str(exc))
+                mark_deferred(rec)
+        else:
+            mark_deferred(rec)
+            self.ui.notify("Aufnahme gespeichert", f"{rec.folder.name}: noch nicht verarbeitet – im Hauptfenster "
+                           "„Jetzt verarbeiten“.")
+        self._changed(rec)
+        return str(choice)
+
+    def process_now(self, rec: Recording | None = None) -> bool:
+        """One click for a deferred/unprocessed recording: the chain with the default steps - but never
+        the hand-over (that needs the choice in the question after the recording)."""
+        from callrec.postcall import default_plan
+
+        rec = self._resolve(rec)
+        if rec is None or self.controller.is_busy(rec):
+            return False
+        plan = default_plan(self.cfg)
+        plan.handoff = False
+        if not self.cloud_ok(rec, STEP_PRESETS["all"] if plan.summary else frozenset()):
+            plan.summary = False
+        self.chain.start(rec, plan, "button")
+        self.ui.notify("Verarbeitung gestartet", rec.folder.name)
+        self._changed(rec)
+        return True
+
+    def review_in_chain(self, rec: Recording) -> bool:
+        pipeline = build_pipeline(self.cfg, self.profiles)
+        return bool(dialogs.review_speakers(self.root, rec, self.profiles, rerender=lambda: pipeline.run(rec, {"render"}),
+                                            resummarize=lambda: None, in_chain=True))
 
     # -- helpers ------------------------------------------------------
     def last_recording(self) -> Recording | None:
@@ -222,6 +308,62 @@ class AppActions:
         self._changed(rec)
         return done
 
+    # -- calendar afterwards ------------------------------------------
+    def assign_event(self, rec: Recording | None = None, done: Callable[[], None] | None = None) -> None:
+        """"Termin zuordnen": look up the events in the recording's time window (worker thread),
+        let the user pick one, attach it (participants for the speaker matching / assignment)."""
+        from datetime import timedelta
+
+        rec = self._resolve(rec)
+        if rec is None:
+            return
+        calendar = self.controller.calendar
+        if calendar.source is None:
+            self.ui.notify("Kein Kalender verbunden", "Termin zuordnen braucht die Microsoft-Anmeldung: im Reiter "
+                           "„Einrichtung“ Client-ID eintragen und „Bei Microsoft anmelden …“ klicken.")
+            return
+        start = rec.started_at()
+        if start is None:
+            self.ui.notify("Termin zuordnen", "Für diese Aufnahme ist keine Startzeit bekannt.")
+            return
+        end = start + timedelta(seconds=max(rec.duration(), 60.0))
+
+        def worker() -> None:
+            try:
+                events = calendar.events_for_recording(start, end)
+            except Exception as exc:
+                self.ui.notify("Termin zuordnen", f"Kalender nicht abrufbar: {exc}")
+                return
+            self.ui.post(lambda: self._choose_event(rec, events, done))
+
+        threading.Thread(target=worker, name="assign-event", daemon=True).start()
+
+    def _choose_event(self, rec: Recording, events: list[Any], done: Callable[[], None] | None) -> None:
+        from callrec.library import LibraryError, assign_event
+
+        if not events:
+            self.ui.notify("Termin zuordnen", f"Im Kalender gibt es keinen Termin zur Zeit von {rec.folder.name}.")
+            return
+        choice = dialogs.ask_event_for_recording(self.root, rec, events)
+        if choice is None:
+            return
+        if self.controller.is_busy(rec):
+            self.ui.notify("Wird noch verarbeitet", "Termin zuordnen ist nach der laufenden Verarbeitung möglich.")
+            return
+        try:
+            msgs = assign_event(rec, choice[0], take_title=choice[1])
+        except (LibraryError, OSError, ValueError) as exc:
+            self.ui.notify("Termin zuordnen fehlgeschlagen", str(exc))
+            return
+        if rec.speakers_path.exists():
+            # recognise voices again with the invitees as preferred candidates (manual assignments stay)
+            self.controller.process(rec, frozenset({"identify", "render"}))
+            msgs.append("Sprechererkennung läuft erneut mit den Eingeladenen.")
+        self.ui.notify("Termin zugeordnet", " ".join(msgs))
+        self._changed(rec)
+        if done is not None:
+            done()
+
     def ask_retranscribe(self, rec: Recording | None = None) -> bool:
         from callrec.config import list_presets
 
@@ -250,7 +392,7 @@ class AppActions:
         from callrec.ui.settings import edit_settings
 
         base = load_config(preset="")  # edit config.toml itself, not the preset overlay
-        if not edit_settings(self.root, base, mics, outs, save_config, initial_tab=tab):
+        if not edit_settings(self.root, base, mics, outs, save_config, initial_tab=tab, autostart=self.autostart):
             return False
         try:
             reload_config_in_place(self.cfg)
@@ -262,6 +404,17 @@ class AppActions:
         for fn in list(self.on_config_changed):
             fn()
         return True
+
+    def set_autostart(self, on: bool) -> str:
+        try:
+            st = self.autostart.enable() if on else self.autostart.disable()
+        except OSError as exc:
+            self.ui.notify("Autostart", f"Nicht möglich: {exc}")
+            return str(exc)
+        self.ui.notify("Autostart", st.detail)
+        for fn in list(self.on_config_changed):
+            fn()
+        return st.detail
 
     def login(self, done: Callable[[str], None] | None = None) -> None:
         if not self.cfg.calendar.client_id.strip():

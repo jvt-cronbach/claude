@@ -23,16 +23,25 @@ T = TypeVar("T")
 
 
 class RecordingOverlay:
-    """Small always-on-top red bar: '● AUFNAHME 00:12:34 – Titel  [Stopp]'."""
+    """Small always-on-top red bar: '● AUFNAHME 00:12:34 – Titel  [Stopp]'.
 
-    def __init__(self, root: tk.Tk, on_stop: Callable[[], None]) -> None:
+    With an automatic end pending, a second row shows the countdown with
+    "Weiter aufnehmen" / "Jetzt beenden" (read from ``autostop``, an AutoStopRunner)."""
+
+    def __init__(self, root: tk.Tk, on_stop: Callable[[], None], autostop: Any = None) -> None:
         self.root = root
         self.on_stop = on_stop
+        self.autostop = autostop
         self.win: tk.Toplevel | None = None
         self._t0 = 0.0
         self._title = ""
         self._label: tk.Label | None = None
         self._drag = (0, 0)
+        self._prompt: tk.Frame | None = None
+        self._prompt_label: tk.Label | None = None
+        self._keep_btn: tk.Button | None = None
+        self._stop_btn: tk.Button | None = None
+        self._prompt_shown = False
 
     def show(self, title: str) -> None:
         self.hide()
@@ -42,12 +51,24 @@ class RecordingOverlay:
         win.overrideredirect(True)
         win.attributes("-topmost", True)
         win.configure(bg="#c62828")
-        self._label = tk.Label(win, text="", fg="white", bg="#c62828", font=("Segoe UI", 10, "bold"), padx=10, pady=4)
+        row = tk.Frame(win, bg="#c62828")
+        row.pack(side="top", fill="x")
+        self._label = tk.Label(row, text="", fg="white", bg="#c62828", font=("Segoe UI", 10, "bold"), padx=10, pady=4)
         self._label.pack(side="left")
-        tk.Button(win, text="Stopp", command=self.on_stop, relief="flat", bg="#ffffff", fg="#c62828", padx=8).pack(
+        tk.Button(row, text="Stopp", command=self.on_stop, relief="flat", bg="#ffffff", fg="#c62828", padx=8).pack(
             side="left", padx=6, pady=4
         )
-        for w in (win, self._label):
+        prompt = tk.Frame(win, bg="#ffb300")
+        self._prompt_label = tk.Label(prompt, text="", fg="black", bg="#ffb300", font=("Segoe UI", 10, "bold"),
+                                      padx=10, pady=4, justify="left")
+        self._prompt_label.pack(side="left")
+        self._keep_btn = tk.Button(prompt, text="Weiter aufnehmen", command=self._keep, relief="flat", padx=8)
+        self._keep_btn.pack(side="left", padx=4, pady=4)
+        self._stop_btn = tk.Button(prompt, text="Jetzt beenden", command=self._stop_now, relief="flat", padx=8)
+        self._stop_btn.pack(side="left", padx=(0, 6), pady=4)
+        self._prompt = prompt
+        self._prompt_shown = False
+        for w in (win, row, self._label):
             w.bind("<ButtonPress-1>", self._start_drag)
             w.bind("<B1-Motion>", self._do_drag)
         win.update_idletasks()
@@ -68,7 +89,40 @@ class RecordingOverlay:
         s = int(time.monotonic() - self._t0)
         title = self._title if len(self._title) <= 40 else self._title[:39] + "…"
         self._label.configure(text=f"● AUFNAHME  {s // 3600:02d}:{s % 3600 // 60:02d}:{s % 60:02d}  –  {title}")
-        self.win.after(1000, self._tick)
+        self._update_prompt()
+        self.win.after(500, self._tick)
+
+    def _update_prompt(self) -> None:
+        if self._prompt is None or self._prompt_label is None:
+            return
+        view = None
+        if self.autostop is not None:
+            try:
+                view = self.autostop.view()
+            except Exception:
+                log.debug("Countdown nicht lesbar", exc_info=True)
+        if view is None:
+            if self._prompt_shown:
+                self._prompt.pack_forget()
+                self._prompt_shown = False
+            return
+        self._prompt_label.configure(text=view.headline)
+        if self._keep_btn is not None:
+            self._keep_btn.configure(text=view.keep_label)
+        if not self._prompt_shown:
+            self._prompt.pack(side="top", fill="x")
+            self._prompt_shown = True
+            if self.win is not None:
+                self.win.lift()
+
+    def _keep(self) -> None:
+        if self.autostop is not None:
+            self.autostop.keep_recording()
+        self._update_prompt()
+
+    def _stop_now(self) -> None:
+        if self.autostop is not None:
+            self.autostop.stop_now()
 
     def hide(self) -> None:
         if self.win is not None:
@@ -89,6 +143,7 @@ class TkUi:
         self.overlay: RecordingOverlay | None = None
         self.show_overlay = show_overlay
         self.tray: Any = None  # set by the app (TrayIcon)
+        self.autostop: Any = None  # AutoStopRunner (countdown in the overlay), set by the app
         self.on_stop_clicked: Callable[[], None] = lambda: None
         self.review_handler: Callable[[Recording], None] = lambda rec: None
         # provider that will receive the transcript (decides the consent text), set by the app
@@ -168,7 +223,7 @@ class TkUi:
                 return
             if recording:
                 if self.overlay is None:
-                    self.overlay = RecordingOverlay(self.root, self.on_stop_clicked)
+                    self.overlay = RecordingOverlay(self.root, self.on_stop_clicked, self.autostop)
                 self.overlay.show(title)
             elif self.overlay is not None:
                 self.overlay.hide()

@@ -75,8 +75,10 @@ class SettingsDialog:
         gpu_status_fn: Callable[[bool], Any] | None = None,
         anthropic_factory: Callable[[Config, str], Any] | None = None,
         initial_tab: str = "",
+        autostart: Any = None,
     ) -> None:
         self.root = root
+        self.autostart = autostart  # callrec.autostart.Autostart (registry entry, not config.toml)
         self.gpu_status_fn = gpu_status_fn
         self.anthropic_factory = anthropic_factory
         self.cfg = copy.deepcopy(cfg)
@@ -91,6 +93,7 @@ class SettingsDialog:
         self.nb = ttk.Notebook(self.win)
         self.nb.pack(fill="both", expand=True, padx=6, pady=6)
         self._general(mic_names, render_names)
+        self._autostop()
         self._transcription()
         self._language_quality()
         self._speakers()
@@ -198,6 +201,52 @@ class SettingsDialog:
         self.field(t, 7, "Beim Start nur im Infobereich (ohne Fenster):", "ui", "start_minimized")
         self.field(t, 8, "Roten Aufnahme-Balken anzeigen:", "ui", "show_overlay")
         self.field(t, 9, "Sprecher-Zuordnung nach der Verarbeitung öffnen:", "ui", "open_review_after_processing")
+        ttk.Label(t, text="Mit Windows starten (im Infobereich):").grid(row=10, column=0, sticky="w", **PAD)
+        st = self.autostart.status() if self.autostart is not None else None
+        self.autostart_var = tk.BooleanVar(value=st is not None and st.state in ("on", "stale"))
+        self._autostart_initial = bool(self.autostart_var.get()) and st is not None and st.state == "on"
+        cb = ttk.Checkbutton(t, variable=self.autostart_var)
+        cb.grid(row=10, column=1, sticky="w", **PAD)
+        if st is None or st.state == "unavailable":
+            cb.state(["disabled"])
+        ttk.Label(t, text=st.detail if st is not None else "Nur unter Windows verfügbar.", wraplength=520,
+                  foreground="#555").grid(row=11, column=0, columnspan=3, sticky="w", **PAD)
+        self.field(t, 12, "Nach einer Aufnahme (ask = fragen, full = ohne Rückfrage verarbeiten):", "processing",
+                   "after_recording", ["ask", "full"])
+        self.field(t, 13, "… Vorauswahl Sprecherzuordnung:", "processing", "default_speakers")
+        self.field(t, 14, "… Vorauswahl Zusammenfassung:", "processing", "default_summary")
+        self.field(t, 15, "… Vorauswahl Übergabe an SharePoint:", "processing", "default_handoff")
+        self.field(t, 16, "… bei „full“: Zusammenfassung ohne Rückfrage an SharePoint übergeben:", "processing",
+                   "handoff_without_asking")
+
+    def _autostop(self) -> None:
+        t = self._tab("Aufnahme-Ende")
+        ttk.Label(t, text="Eine Aufnahme startet immer nur auf Ihren Klick. Ist das Gespräch vorbei, erscheint im "
+                  "Fenster und im roten Balken „Call scheint beendet – Aufnahme endet in … s“ mit „Weiter aufnehmen“ "
+                  "und „Jetzt beenden“. Ohne Reaktion wird die Aufnahme normal beendet und verarbeitet; vom Ton wird "
+                  "nichts abgeschnitten.", wraplength=520).grid(row=0, column=0, columnspan=3, sticky="w", **PAD)
+        rows = [
+            ("Gesprächsende automatisch erkennen:", "enabled"),
+            ("… über die Mikrofon-Sitzung der Anruf-App (Teams):", "call_app_session"),
+            ("… Anruf-App weg und Gegenseite still seit (s):", "session_gone_s"),
+            ("… Anruf-App weg seit (s), auch wenn etwas abgespielt wird:", "session_gone_max_s"),
+            ("… beide Spuren still seit (min):", "silence_minutes"),
+            ("… nach Terminende genügt Stille von (s):", "silence_after_event_end_s"),
+            ("Stille = Pegel unter (dBFS):", "silence_dbfs"),
+            ("Countdown vor dem Beenden (s):", "countdown_s"),
+            ("„Weiter aufnehmen“: keine Nachfrage für (min):", "snooze_minutes"),
+            ("Sicherheitsnetz – Höchstdauer (min, 0 = aus):", "max_duration_minutes"),
+            ("… Vorwarnung (min vorher):", "max_duration_warning_minutes"),
+            ("… „Weiter aufnehmen“ verlängert um (min):", "max_duration_extend_minutes"),
+            ("Sicherheitsnetz – Nachfrage nach nur Stille (min, 0 = aus):", "silence_safety_minutes"),
+        ]
+        for i, (label, key) in enumerate(rows, start=1):
+            self.field(t, i, label, "autostop", key)
+        self.field(t, len(rows) + 1, "Prozessnamen der Anruf-App (Kommas):", "detection", "teams_processes")
+        ttk.Label(t, text="Die Sicherheitsnetze gelten auch, wenn die Erkennung ausgeschaltet ist. Ohne Teams (andere "
+                  "App, Softphone) erkennt CallRecorder das Ende über die Stille. Welche Anruf-App erkannt wurde, steht "
+                  "während der Aufnahme im Hauptfenster und im Protokoll.", wraplength=520, foreground="#555").grid(
+            row=len(rows) + 2, column=0, columnspan=3, sticky="w", **PAD)
 
     def _microsoft(self) -> None:
         t = self._tab("Microsoft-Konto")
@@ -636,12 +685,39 @@ class SettingsDialog:
             return
         if not self.confirm_cloud(cfg):
             return
+        if not self.confirm_auto_handoff(cfg):
+            return
         self.save_fn(cfg)
+        self.apply_autostart()
         self.cfg = cfg
         self.saved = True
         messagebox.showinfo("Gespeichert", "Einstellungen gespeichert. Sie gelten für neue Verarbeitungen; "
                             "das Tastenkürzel nach einem Neustart des Programms.", parent=self.win)
         self.win.destroy()
+
+    def apply_autostart(self) -> None:
+        if self.autostart is None:
+            return
+        want = bool(self.autostart_var.get())
+        if want == self._autostart_initial:
+            return
+        try:
+            self.autostart.enable() if want else self.autostart.disable()
+        except OSError as exc:
+            messagebox.showerror("Autostart", f"Autostart konnte nicht geändert werden: {exc}", parent=self.win)
+
+    def confirm_auto_handoff(self, cfg: Config) -> bool:
+        """Handing over without asking is an explicit choice: confirm it once when it is switched on."""
+        p = cfg.processing
+        if not (p.after_recording == "full" and p.handoff_without_asking):
+            return True
+        if self.cfg.processing.after_recording == "full" and self.cfg.processing.handoff_without_asking:
+            return True
+        return bool(messagebox.askyesno(
+            "Ohne Rückfrage übergeben?",
+            "Nach jeder Aufnahme wird dann ohne Rückfrage und ohne Vorschau die Zusammenfassung (nur sie) an den "
+            "SharePoint-Ordner übergeben. Das gilt für alle künftigen Aufnahmen. Einschalten?",
+            icon="warning", parent=self.win))
 
     def confirm_cloud(self, cfg: Config) -> bool:
         """Selecting Claude (Anthropic) needs an explicit confirmation; switching away revokes it."""
@@ -668,8 +744,9 @@ class SettingsDialog:
 
 def edit_settings(root: tk.Misc, cfg: Config, mic_names: list[str], render_names: list[str],
                   save: Callable[[Config], None], provider_factory: Callable[[Config], Any] | None = None,
-                  initial_tab: str = "") -> bool:
-    return SettingsDialog(root, cfg, mic_names, render_names, save, provider_factory, initial_tab=initial_tab).run()
+                  initial_tab: str = "", autostart: Any = None) -> bool:
+    return SettingsDialog(root, cfg, mic_names, render_names, save, provider_factory, initial_tab=initial_tab,
+                          autostart=autostart).run()
 
 
 __all__ = ["SettingsDialog", "edit_settings", "edit_text_file"]

@@ -266,7 +266,8 @@ def hand_over(doc: SummaryDocument, target: HandoffTarget) -> dict[str, Any]:
 
 
 def handoff_summary(
-    rec: Recording, target: HandoffTarget, include_emails: bool = False, expected_sha256: str | None = None
+    rec: Recording, target: HandoffTarget, include_emails: bool = False, expected_sha256: str | None = None,
+    note: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Hand over the summary. With ``expected_sha256`` (the document the user was shown),
     nothing is sent if summary.md or the header changed in the meantime (e.g. a
@@ -277,6 +278,8 @@ def handoff_summary(
             "Die Zusammenfassung hat sich seit der Vorschau geändert - bitte die Übergabe erneut öffnen und prüfen."
         )
     entry = hand_over(doc, target)
+    if note:
+        entry.update({k: v for k, v in note.items() if k not in entry})
     history = list(rec.load_meta().get("handoffs") or [])
     history.append(entry)
     rec.update_meta(["handoffs"], history)

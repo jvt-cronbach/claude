@@ -104,7 +104,7 @@ def graph_auth(cfg: Config):  # type: ignore[no-untyped-def]
     return GraphAuth(cfg.calendar.client_id.strip(), cfg.calendar.tenant_id.strip(), paths.token_cache_file())
 
 
-def perform_handoff(cfg: Config, rec, expected_sha256: str | None = None):  # type: ignore[no-untyped-def]
+def perform_handoff(cfg: Config, rec, expected_sha256: str | None = None, note=None):  # type: ignore[no-untyped-def]
     """Hand over the summary of ``rec`` with the configured backend (explicit user action only)."""
     from callrec.handoff import build_target, handoff_summary
 
@@ -118,7 +118,7 @@ def perform_handoff(cfg: Config, rec, expected_sha256: str | None = None):  # ty
 
         token_provider = _token
     return handoff_summary(
-        rec, build_target(cfg, token_provider), cfg.handoff.include_participant_emails, expected_sha256
+        rec, build_target(cfg, token_provider), cfg.handoff.include_participant_emails, expected_sha256, note
     )
 
 

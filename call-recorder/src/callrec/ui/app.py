@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import sys
@@ -18,7 +19,6 @@ from callrec.hotkey import GlobalHotkey, HotkeyError, parse_hotkey
 from callrec.jobs import ProcessingQueue
 from callrec.logging_setup import setup_logging
 from callrec.models import Person
-from callrec.recording import recordings_to_resume
 
 log = logging.getLogger(__name__)
 _MUTEX_HANDLE: Any = None
@@ -105,7 +105,7 @@ def detection_loop(cfg: Config, controller: Controller, ui: Any, stop: threading
                 ui.post(lambda p=prompt: controller.on_reminder(p))
 
 
-def run_tray_app(cfg: Config | None = None) -> int:
+def run_tray_app(cfg: Config | None = None, start_minimized: bool = False) -> int:
     log_file = setup_logging(console=sys.stderr is not None)
     if not acquire_single_instance():
         log.error("CallRecorder läuft bereits")
@@ -141,12 +141,33 @@ def run_tray_app(cfg: Config | None = None) -> int:
     ui.notify_listeners.append(window.notify)
     actions.show_window_handler = window.show
 
+    # automatic end of a recording (its own thread; stops go through controller.stop on the Tk thread)
+    from callrec import autostop as autostop_mod
+
+    probe = autostop_mod.windows_probe(lambda: cfg.detection.teams_processes) if sys.platform == "win32" else None
+    autostop = autostop_mod.AutoStopRunner(
+        lambda: cfg.autostop, controller, ui.post, ui.notify, probe=probe,
+        thread_context=autostop_mod.windows_thread_context if sys.platform == "win32" else autostop_mod._no_context,
+    )
+
+    def autostop_attention() -> None:
+        # the overlay shows the countdown; without it, bring up the window (without taking the focus)
+        if not ui.show_overlay:
+            ui.post(lambda: window.show(activate=False))
+
+    autostop.attention = autostop_attention
+    controller.stop_info = autostop.info
+    ui.autostop = autostop
+    actions.autostop = autostop
+    autostop.start()
+
     stop_event = threading.Event()
     hotkey: GlobalHotkey | None = None
 
     def quit_app() -> None:
+        autostop.shutdown()  # no new automatic stop while exiting
         if controller.is_recording:
-            controller.stop()
+            controller.stop("app_quit")
         # do not leave a Whisper worker / download running after exit; the interrupted job is
         # resumed at the next start
         queue.shutdown()
@@ -183,13 +204,29 @@ def run_tray_app(cfg: Config | None = None) -> int:
     for w in cfg.warnings:
         ui.notify("Konfiguration", w)
 
-    # crash recovery: finish recordings that were interrupted
-    for rec, interrupted in recordings_to_resume(cfg.recordings_path()):
-        if interrupted:
-            ui.notify("Unterbrochene Aufnahme", f"{rec.folder.name} wird wiederhergestellt und verarbeitet.")
+    # "Mit Windows starten": repair an entry that points at a moved/old installation
+    try:
+        msg = actions.autostart.repair_if_stale()
+        if msg:
+            ui.notify("Autostart", msg)
+    except Exception:
+        log.exception("Autostart-Eintrag nicht prüfbar")
+
+    # after a stop: the question "jetzt vollständig verarbeiten?" (or mode "full")
+    controller.after_stop = actions.after_recording
+    # crash recovery / restart: continue chains, ask for undecided recordings, finish old processing
+    from callrec.postcall import startup_work
+
+    for rec, kind in startup_work(cfg.recordings_path()):
+        if kind == "resume":
+            log.info("Setze Verarbeitungskette fort: %s", rec.folder.name)
+            actions.chain.resume(rec)
+        elif kind == "ask":
+            ui.notify("Aufnahme noch nicht verarbeitet", rec.folder.name)
+            ui.post(functools.partial(actions.ask_after_recording, rec))
         else:
             log.info("Setze Verarbeitung fort: %s", rec.folder.name)
-        controller.process(rec)
+            controller.process(rec)
 
     if cfg.detection.enabled and sys.platform == "win32":
         threading.Thread(target=detection_loop, args=(cfg, controller, ui, stop_event), name="detect", daemon=True).start()
@@ -199,7 +236,7 @@ def run_tray_app(cfg: Config | None = None) -> int:
         ui.root.after(2000, health)
 
     ui.root.after(2000, health)
-    if cfg.ui.start_minimized:
+    if cfg.ui.start_minimized or start_minimized:
         ui.notify("CallRecorder bereit", f"Fenster: Klick auf das Symbol. Start/Stopp: {cfg.hotkey.toggle}")
     else:
         ui.root.after(50, window.show)

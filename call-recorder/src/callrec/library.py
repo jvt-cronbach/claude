@@ -60,6 +60,8 @@ class RecordingInfo:
     handoff: dict[str, Any] | None = None  # last hand-over entry from meta.json
     summary_sha256: str = ""  # of the document that would be handed over now
     error: str = ""  # meta.json unreadable etc.
+    chain_stage: str = ""  # guided processing after the recording (processing.chain.stage)
+    handoff_skipped: str = ""  # why the chain did not hand over
 
     @property
     def id(self) -> str:
@@ -73,6 +75,17 @@ class RecordingInfo:
     @property
     def busy(self) -> bool:
         return self.processing_status == "running"
+
+    @property
+    def chain_active(self) -> bool:
+        return self.chain_stage in ("process", "review", "summary", "handoff")
+
+    @property
+    def needs_processing(self) -> bool:
+        """Stopped, never (successfully) processed and nothing running: offer "Jetzt verarbeiten"."""
+        return (self.recording_status in ("stopped", "recovered") and not self.has_transcript and not self.busy
+                and not self.chain_active and (self.processing_status in ("", "deferred", "cancelled")
+                                               or self.processing_status.startswith("error")))
 
     def transcript_state(self) -> str:
         if self.has_transcript:
@@ -158,6 +171,10 @@ def read_info(folder: Path) -> RecordingInfo:
         summary_versions=len(versions.get("summary") or []),
         has_summary=rec.summary_path.exists(),
     )
+    raw_chain = proc.get("chain")
+    chain: dict[str, Any] = raw_chain if isinstance(raw_chain, dict) else {}
+    info.chain_stage = str(chain.get("stage") or "")
+    info.handoff_skipped = str(chain.get("handoff_skipped") or "")
     smeta = proc.get("summary") or {}
     if not info.has_summary and smeta.get("skipped"):
         info.summary_problem = str(smeta["skipped"])
@@ -329,7 +346,19 @@ def status_description(info: RecordingInfo) -> str:
     if info.recording_status == "failed":
         return "Die Aufnahme konnte nicht gestartet werden (Audiogeräte?)."
     ps = info.processing_status
-    if ps == "running":
+    stage_text = {"process": "Transkript und Sprecher", "review": "wartet auf die Sprecherzuordnung",
+                  "summary": "Zusammenfassung", "handoff": "Übergabe an SharePoint"}
+    if info.chain_active:
+        parts.append(f"Verarbeitung nach der Aufnahme läuft: {stage_text.get(info.chain_stage, info.chain_stage)} "
+                     "(wird nach einem Neustart fortgesetzt).")
+    elif ps == "deferred":
+        parts.append("Noch nicht verarbeitet („Später“ gewählt) – „Jetzt verarbeiten“ startet Transkript, "
+                     "Sprecher und Zusammenfassung.")
+    if info.handoff_skipped and not info.handoff:
+        parts.append(f"Übergabe an SharePoint übersprungen: {info.handoff_skipped}")
+    if info.chain_active or ps == "deferred":
+        pass
+    elif ps == "running":
         parts.append("Verarbeitung läuft (oder wurde unterbrochen und wird beim nächsten Start fortgesetzt).")
     elif ps == "cancelled":
         parts.append("Die letzte Verarbeitung wurde abgebrochen.")
@@ -364,6 +393,31 @@ def rename_recording(rec: Recording, new_title: str) -> str:
     history.append({"from": old, "to": title, "at": datetime.now().astimezone().isoformat(timespec="seconds")})
     rec.update_meta(["title_history"], history)
     return title
+
+
+def assign_event(rec: Recording, event: Any, take_title: bool = True) -> list[str]:
+    """Attach a calendar event to an existing recording ("Termin zuordnen").
+
+    Its participants become the recording's participants (the prioritised candidates for voice
+    matching and the names offered in the speaker assignment); people entered by hand before are
+    kept. The folder name stays (stable ``recording_id``). Returns German messages."""
+    from callrec.models import Person
+
+    old: list[Person] = rec.participants()
+    merged: list[Person] = list(event.participants())
+    keys = {p.key() for p in merged}
+    for p in old:
+        if p.key() not in keys:
+            merged.append(p)
+            keys.add(p.key())
+    rec.update_meta(["event"], event.to_dict())
+    rec.update_meta(["participants"], [p.to_dict() for p in merged])
+    rec.update_meta(["event_assigned"], {"at": datetime.now().astimezone().isoformat(timespec="seconds"),
+                                         "event_id": event.id, "by": "user"})
+    msgs = [f"Termin „{event.subject}“ zugeordnet: {len(merged)} Teilnehmende stehen für die Sprecherzuordnung bereit."]
+    if take_title and event.subject.strip() and event.subject.strip() != rec.title():
+        msgs.append(f"Titel geändert in „{rename_recording(rec, event.subject)}“.")
+    return msgs
 
 
 def _check_deletable(rec: Recording, root: Path) -> Path:

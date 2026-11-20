@@ -179,7 +179,7 @@ def test_settings_dialog_all_tabs_and_llm(root, tmp_path: Path):
     dlg = st.SettingsDialog(root, cfg, ["Headset Mikrofon (Jabra)"], ["Kopfhörer (Jabra)"],
                             lambda c: save_config(c, path), provider_factory=lambda c: FakeProvider())
     tabs = [dlg.nb.tab(t, "text") for t in dlg.nb.tabs()]
-    assert tabs == ["Allgemein", "Transkription", "Sprache & Qualität", "Sprecher", "Darstellung", "Zusammenfassung",
+    assert tabs == ["Allgemein", "Aufnahme-Ende", "Transkription", "Sprache & Qualität", "Sprecher", "Darstellung", "Zusammenfassung",
                     "Microsoft-Konto", "SharePoint"]
     assert dlg.vars[("transcription", "language_candidates")].get() == "de, en"
     dlg.vars[("transcription", "language_candidates")].set("de, en; fr")
@@ -351,3 +351,109 @@ def test_settings_anthropic_needs_confirmation_and_shows_effective_device(root, 
     root.after(100, lambda: find(dlg2.win, ttk.Button, "Speichern").invoke())
     assert dlg2.run() is True
     assert not load_config(path).summary.anthropic_transcripts_leave_this_computer_confirmed
+
+
+def test_overlay_shows_autostop_countdown(root):
+    from callrec.autostop import AutoStopView
+    from callrec.ui.tkui import RecordingOverlay
+
+    class FakeRunner:
+        def __init__(self):
+            self.v = None
+            self.kept = 0
+            self.stopped = 0
+
+        def view(self):
+            return self.v
+
+        def keep_recording(self):
+            self.kept += 1
+            self.v = None
+
+        def stop_now(self):
+            self.stopped += 1
+
+    r = FakeRunner()
+    ov = RecordingOverlay(root, lambda: None, r)
+    ov.show("Test")
+    root.update()
+    assert not ov._prompt_shown
+    r.v = AutoStopView("countdown", "silence", "Call scheint beendet – Aufnahme endet in 30 s", "", 30)
+    ov._update_prompt()
+    root.update()
+    assert ov._prompt_shown and "endet in 30 s" in ov._prompt_label.cget("text")  # type: ignore[union-attr]
+    ov._stop_btn.invoke()  # type: ignore[union-attr]
+    ov._keep_btn.invoke()  # type: ignore[union-attr]
+    assert r.stopped == 1 and r.kept == 1 and not ov._prompt_shown
+    ov.hide()
+
+
+def test_after_recording_dialog_full_later_discard(root, tmp_path: Path, monkeypatch):
+    from callrec.postcall import Plan
+    from tests.conftest import make_recording
+
+    rec = make_recording(tmp_path / "recs", with_parts=False)
+
+    def drive_full():
+        win = toplevel(root)
+        texts = [str(w.cget("text")) for w in walk(win) if isinstance(w, ttk.Label)]
+        assert "Aufnahme beendet – jetzt vollständig verarbeiten?" in texts
+        assert any("kein Übergabeordner" in t for t in texts)
+        boxes = [w for w in walk(win) if isinstance(w, ttk.Checkbutton)]
+        assert len(boxes) == 4 and "SharePoint" in str(boxes[3].cget("text"))
+        boxes[3].invoke()  # tick the hand-over
+        find(win, ttk.Button, "Vollständig verarbeiten").invoke()
+
+    root.after(200, drive_full)
+    choice, plan = dialogs.ask_after_recording(root, rec, Plan(), "kein Übergabeordner eingestellt")
+    assert choice == "full" and plan == Plan(True, True, True, True)
+
+    root.after(200, lambda: find(toplevel(root), ttk.Button, "Später").invoke())
+    assert dialogs.ask_after_recording(root, rec, Plan()) == ("later", None)
+
+    asked = []
+    monkeypatch.setattr(dialogs.messagebox, "askyesno", lambda *a, **k: asked.append(a) or True)
+    root.after(200, lambda: find(toplevel(root), ttk.Button, "Verwerfen").invoke())
+    assert dialogs.ask_after_recording(root, rec, Plan()) == ("discard", None) and asked  # confirmed first
+
+
+def test_settings_autostart_checkbox_and_handoff_without_asking(root, tmp_path: Path, monkeypatch):
+    from callrec.autostart import Autostart
+    from callrec.config import Config, load_config, save_config
+    from callrec.ui import settings as st
+
+    exe = tmp_path / "v" / "pythonw.exe"
+    exe.parent.mkdir()
+    exe.write_text("")
+
+    class Reg:
+        value = None
+
+        def read(self):
+            return self.value
+
+        def write(self, c):
+            self.value = c
+
+        def delete(self):
+            self.value = None
+
+    reg = Reg()
+    auto = Autostart(reg, str(exe), startup_dir=tmp_path / "startup")
+    path = tmp_path / "config.toml"
+    monkeypatch.setattr(st.messagebox, "showinfo", lambda *a, **k: None)
+    asked = []
+    monkeypatch.setattr(st.messagebox, "askyesno", lambda *a, **k: asked.append(a[0]) or False)
+    dlg = st.SettingsDialog(root, Config(), [], [], lambda c: save_config(c, path), autostart=auto)
+    assert dlg.autostart_var.get() is False
+    dlg.autostart_var.set(True)
+    dlg.vars[("processing", "after_recording")].set("full")
+    dlg.vars[("processing", "handoff_without_asking")].set(True)
+    dlg.do_save()  # the hand-over without asking needs an explicit "Ja" -> declined: nothing saved
+    assert asked == ["Ohne Rückfrage übergeben?"] and not path.exists() and reg.value is None
+    dlg.vars[("processing", "handoff_without_asking")].set(False)
+    dlg.vars[("autostop", "countdown_s")].set("45")
+    dlg.do_save()
+    assert reg.value is not None and "--minimized" in reg.value
+    cfg = load_config(path)
+    assert cfg.processing.after_recording == "full" and cfg.autostop.countdown_s == 45

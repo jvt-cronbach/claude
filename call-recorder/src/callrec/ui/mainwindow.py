@@ -54,6 +54,7 @@ from callrec.ui.viewmodel import (
     parse_geometry,
     version_choices,
 )
+from callrec.ui.viewmodel import next_action as compact_next_action
 
 log = logging.getLogger(__name__)
 
@@ -235,6 +236,9 @@ class MainWindow:
         # accent only (the state is always spelled out in text as well)
         style.configure("Rec.TLabel", font=self.f_big, foreground="#c62828")
         style.configure("State.TLabel", font=self.f_big)
+        style.configure("Prompt.TFrame", background="#ffe082")
+        style.configure("Prompt.TLabel", background="#ffe082", font=self.f_big)
+        style.configure("PromptDetail.TLabel", background="#ffe082")
         line = tkfont.nametofont("TkDefaultFont").metrics("linespace")
         style.configure("Treeview", rowheight=int(line * 1.45))
 
@@ -263,6 +267,7 @@ class MainWindow:
         self.menus = {"Datei": datei, "Extras": extras, "Hilfe": hilfe}
 
     def open_setup(self) -> None:
+        self.set_compact(False)
         self.nb.select(self.tab_setup)
         self.run_checks(force_audio=True)
 
@@ -274,12 +279,15 @@ class MainWindow:
         self._build_record(w).grid(row=0, column=0, sticky="we", padx=self.px(8), pady=(self.px(8), self.px(4)))
         self.nb = ttk.Notebook(w)
         self.nb.grid(row=1, column=0, sticky="nsew", padx=self.px(8))
+        self.compact_frame = self._build_compact(w)
+        self.compact_frame.grid(row=1, column=0, sticky="nsew", padx=self.px(8))
         self.nb.enable_traversal()  # Ctrl+Tab / Ctrl+Shift+Tab
         self.tab_recordings = self._build_recordings(self.nb)
         self.tab_setup = self._build_setup(self.nb)
         self.nb.add(self.tab_recordings, text="Aufnahmen", underline=0)
         self.nb.add(self.tab_setup, text="Einrichtung", underline=0)
         self._build_status(w).grid(row=2, column=0, sticky="we", padx=self.px(8), pady=(self.px(4), self.px(8)))
+        self.set_compact(self.state.compact)
         w.bind("<Control-f>", lambda e: self.focus_search())
         w.bind("<F5>", lambda e: self.refresh_all())
         w.bind("<Escape>", lambda e: self.hide())
@@ -310,17 +318,189 @@ class MainWindow:
         self.event_combo.grid(row=0, column=1, sticky="we", padx=self.px(4))
         self.event_btn = ttk.Button(ev, text="Termine aktualisieren", command=lambda: self.refresh_calendar(force=True))
         self.event_btn.grid(row=0, column=2, sticky="e")
+        self.view_btn = ttk.Button(ev, text="Mehr …", command=lambda: self.set_compact(not self.compact))
+        self.view_btn.grid(row=0, column=3, sticky="e", padx=(self.px(4), 0))
         self.event_info = tk.StringVar(value="Termine werden geladen … Vor dem Start kommt immer die Einwilligungsabfrage.")
         self.event_info_lbl = ttk.Label(ev, textvariable=self.event_info, wraplength=self.px(520))
         self.event_info_lbl.grid(row=1, column=0, columnspan=3, sticky="w", pady=(self.px(2), 0))
         ev.bind("<Configure>", lambda e: self._rewrap(ev, e.width))
+        # automatic end: what will happen (always) and the countdown with its two buttons (when pending)
+        self.autostop_info = tk.StringVar(value="")
+        ttk.Label(f, textvariable=self.autostop_info, foreground="#555").grid(
+            row=2, column=0, columnspan=3, sticky="w", padx=self.px(8))
+        self.autostop_frame = ttk.Frame(f, style="Prompt.TFrame", padding=self.px(6))
+        self.autostop_frame.grid(row=3, column=0, columnspan=3, sticky="we", padx=self.px(8), pady=(self.px(4), self.px(6)))
+        self.autostop_frame.columnconfigure(0, weight=1)
+        self.autostop_head = tk.StringVar(value="")
+        self.autostop_detail = tk.StringVar(value="")
+        ttk.Label(self.autostop_frame, textvariable=self.autostop_head, style="Prompt.TLabel").grid(
+            row=0, column=0, sticky="w")
+        ttk.Label(self.autostop_frame, textvariable=self.autostop_detail, style="PromptDetail.TLabel").grid(
+            row=1, column=0, sticky="w")
+        self.autostop_keep_btn = ttk.Button(self.autostop_frame, text="Weiter aufnehmen", command=self.autostop_keep)
+        self.autostop_keep_btn.grid(row=0, column=1, rowspan=2, padx=self.px(4))
+        self.autostop_stop_btn = ttk.Button(self.autostop_frame, text="Jetzt beenden", command=self.autostop_stop)
+        self.autostop_stop_btn.grid(row=0, column=2, rowspan=2, padx=self.px(4))
+        self.autostop_close_btn = ttk.Button(self.autostop_frame, text="Ausblenden", command=self.autostop_dismiss)
+        self.autostop_close_btn.grid(row=0, column=3, rowspan=2, padx=self.px(4))
+        self.autostop_frame.grid_remove()
+        self._autostop_kind = ""
         return f
+
+    # -- automatic end ----------------------------------------------------
+    @property
+    def autostop(self) -> Any:
+        return getattr(self.app, "autostop", None)
+
+    def autostop_keep(self) -> None:
+        if self.autostop is not None:
+            self.autostop.keep_recording()
+        self._update_autostop()
+
+    def autostop_stop(self) -> None:
+        if self.autostop is not None:
+            self.autostop.stop_now()
+            self.app._changed(None)
+        self._update_record_panel()
+
+    def autostop_dismiss(self) -> None:
+        if self.autostop is not None:
+            self.autostop.dismiss_message()
+        self._update_autostop()
+
+    def _update_autostop(self) -> None:
+        a = self.autostop
+        if a is None:
+            self.autostop_info.set("")
+            self.autostop_frame.grid_remove()
+            return
+        self.autostop_info.set(a.status_text())
+        view = a.view() if self.controller.is_recording else None
+        message = a.message() if view is None else ""
+        if view is None and not message:
+            self.autostop_frame.grid_remove()
+            self._autostop_kind = ""
+            return
+        if view is not None:
+            self.autostop_head.set(view.headline)
+            self.autostop_detail.set(view.detail)
+            self.autostop_keep_btn.configure(text=view.keep_label)
+            self.autostop_keep_btn.grid()
+            self.autostop_stop_btn.grid()
+            self.autostop_close_btn.grid_remove()
+            kind = view.kind
+        else:
+            self.autostop_head.set(message)
+            self.autostop_detail.set("")
+            self.autostop_keep_btn.grid_remove()
+            self.autostop_stop_btn.grid_remove()
+            self.autostop_close_btn.grid()
+            kind = "message"
+        self.autostop_frame.grid()
+        self._autostop_kind = kind
 
     @staticmethod
     def _rewrap(frame: tk.Misc, width: int) -> None:
         for child in frame.winfo_children():
             if isinstance(child, ttk.Label) and str(child.cget("wraplength")) not in ("", "0"):
                 child.configure(wraplength=max(200, width - 8))
+
+    # -- compact view -------------------------------------------------------
+    COMPACT_ROWS = 5
+
+    def _build_compact(self, parent: tk.Misc) -> ttk.Frame:
+        f = ttk.Frame(parent)
+        f.columnconfigure(0, weight=1)
+        self.compact_setup = tk.StringVar(value="")
+        self.compact_setup_row = ttk.Frame(f)
+        self.compact_setup_row.grid(row=0, column=0, sticky="we", pady=(0, self.px(4)))
+        self.compact_setup_row.columnconfigure(0, weight=1)
+        ttk.Label(self.compact_setup_row, textvariable=self.compact_setup, wraplength=self.px(560)).grid(
+            row=0, column=0, sticky="w")
+        ttk.Button(self.compact_setup_row, text="Einrichtung öffnen", command=self.open_setup).grid(row=0, column=1)
+        self.compact_setup_row.grid_remove()
+        box = ttk.LabelFrame(f, text="Letzte Aufnahmen")
+        box.grid(row=1, column=0, sticky="nsew")
+        box.columnconfigure(0, weight=1)
+        self.compact_rows = ttk.Frame(box)
+        self.compact_rows.grid(row=0, column=0, sticky="nsew", padx=self.px(8), pady=self.px(4))
+        self.compact_rows.columnconfigure(0, weight=1)
+        bar = ttk.Frame(box)
+        bar.grid(row=1, column=0, sticky="e", padx=self.px(8), pady=(0, self.px(6)))
+        ttk.Button(bar, text="Alle Aufnahmen …", command=lambda: self.set_compact(False)).pack(side="right")
+        self.compact_items: list[tuple[str, str, str]] = []  # (folder name, status, action key) as shown
+        return f
+
+    @property
+    def compact(self) -> bool:
+        return bool(self.state.compact)
+
+    def set_compact(self, compact: bool) -> None:
+        """Compact default view <-> full view (list with details, setup tab)."""
+        self.state.compact = compact
+        if compact:
+            self.nb.grid_remove()
+            self.compact_frame.grid()
+            self.view_btn.configure(text="Mehr …")
+            self._fill_compact()
+        else:
+            self.compact_frame.grid_remove()
+            self.nb.grid()
+            self.view_btn.configure(text="Kompakt")
+
+    def _compact_command(self, key: str, folder: Path) -> Callable[[], None]:
+        rec = Recording(folder)
+        app = self.app
+        actions: dict[str, Callable[[], object]] = {
+            "process_now": lambda: app.process_now(rec), "review": lambda: app.review(rec),
+            "resummarize": lambda: app.resummarize(rec), "handoff": lambda: app.handoff(rec),
+        }
+        fn = actions.get(key)
+
+        def run() -> None:
+            if fn is not None:
+                fn()
+            self.refresh_list(rec)
+
+        return run
+
+    def _open_in_full_view(self, folder_name: str) -> None:
+        self.set_compact(False)
+        self.nb.select(self.tab_recordings)
+        self.select(folder_name)
+
+    def _fill_compact(self) -> None:
+        if not self.compact:
+            return
+        infos = [i for i in self.infos if not i.error][: self.COMPACT_ROWS]
+        cur = self.controller.current
+        shown: list[tuple[str, str, str]] = []
+        rows: list[tuple[RecordingInfo, str, str, str]] = []
+        for info in infos:
+            recording_now = cur is not None and cur.folder == info.folder
+            busy = self.queue.is_busy_with(info.folder)
+            status, label, key = compact_next_action(info, busy=busy, recording_now=recording_now)
+            shown.append((info.id, status, key))
+            rows.append((info, status, label, key))
+        if shown == self.compact_items and self.compact_rows.winfo_children():
+            return
+        self.compact_items = shown
+        for child in self.compact_rows.winfo_children():
+            child.destroy()
+        if not rows:
+            ttk.Label(self.compact_rows, text="Noch keine Aufnahmen.").grid(row=0, column=0, sticky="w")
+            return
+        for r, (info, status, label, key) in enumerate(rows):
+            when = f"{info.started_at:%d.%m. %H:%M}" if info.started_at else ""
+            title = info.title if len(info.title) <= 48 else info.title[:47] + "…"
+            ttk.Label(self.compact_rows, text=f"{when}  {title}").grid(row=r, column=0, sticky="w", pady=1)
+            ttk.Label(self.compact_rows, text=status, foreground="#555").grid(row=r, column=1, sticky="w",
+                                                                           padx=self.px(8))
+            if label:
+                ttk.Button(self.compact_rows, text=label, command=self._compact_command(key, info.folder)).grid(
+                    row=r, column=2, sticky="e", padx=self.px(2))
+            ttk.Button(self.compact_rows, text="Öffnen", command=functools.partial(self._open_in_full_view, info.id)
+                       ).grid(row=r, column=3, sticky="e", padx=self.px(2))
 
     # -- recordings tab -------------------------------------------------
     def _build_recordings(self, parent: tk.Misc) -> ttk.Frame:
@@ -405,12 +585,15 @@ class MainWindow:
             "play": self._a(self.app.play),
             "folder": self._a(self.app.open_folder),
             "retranscribe": self._a(self.app.ask_retranscribe),
+            "assign_event": self._a(self.app.assign_event),
+            "process_now": self._a(self.app.process_now),
             "reprocess": self.reprocess_selected,
             "rename": self.rename_selected,
             "delete": self.delete_selected,
         }
         self.buttons: dict[str, ttk.Button] = {}
         for key, text in (
+            ("process_now", "Jetzt verarbeiten"),
             ("handoff", "An SharePoint übergeben …"),
             ("review", "Sprecher zuordnen …"),
             ("resummarize", "Zusammenfassung neu erstellen"),
@@ -424,6 +607,7 @@ class MainWindow:
         self.more_menu = tk.Menu(self.more_btn, tearoff=False)
         self.menu_items = (
             ("folder", "Ordner öffnen"),
+            ("assign_event", "Termin zuordnen …"),
             ("retranscribe", "Neu transkribieren …"),
             ("reprocess", "Komplett neu verarbeiten …"),
             ("rename", "Umbenennen …"),
@@ -583,7 +767,9 @@ class MainWindow:
         if tab is not None:
             self.nb.select(tab)
 
-    def show(self) -> None:
+    def show(self, activate: bool = True) -> None:
+        """``activate=False``: show without taking the keyboard focus (e.g. the auto-end countdown
+        during a call - typing must not end up in this window)."""
         first = not self.visible and self._last_list_refresh == 0.0
         self.win.deiconify()
         if self.state.zoomed:
@@ -597,7 +783,8 @@ class MainWindow:
             self.win.after(300, lambda: self.win.attributes("-topmost", False))
         except tk.TclError:
             pass
-        self.win.focus_force()
+        if activate:
+            self.win.focus_force()
         self.visible = True
         self.win.after(50, self._restore_sash)
         if first:
@@ -649,6 +836,7 @@ class MainWindow:
         return "break"
 
     def focus_search(self) -> None:
+        self.set_compact(False)
         self.nb.select(self.tab_recordings)
         self.search.focus_set()
         self.search.select_range(0, "end")
@@ -685,6 +873,8 @@ class MainWindow:
         try:
             self._update_record_panel()
             self._update_jobs()
+            if self.visible and self.compact:
+                self._fill_compact()  # cheap; rebuilds only when a status changed
             now = time.monotonic()
             if self.visible and now - self._last_list_refresh > self.LIST_REFRESH_S:
                 self.refresh_list()
@@ -713,6 +903,7 @@ class MainWindow:
                 bar.configure(value=0.0)
             self.event_combo.state(["!disabled", "readonly"])
             self.event_btn.state(["!disabled"])
+        self._update_autostop()
 
     def _update_jobs(self) -> None:
         snap = self.queue.snapshot()
@@ -927,6 +1118,7 @@ class MainWindow:
         self.infos = infos
         self.by_id = {i.id: i for i in infos}
         self.apply_filter(final=final)
+        self._fill_compact()
         if self.selected is not None:
             fresh = self.by_id.get(self.selected.id)
             if fresh is not None and final:
@@ -1043,12 +1235,14 @@ class MainWindow:
         recording_now = self.controller.current is not None and self.controller.current.folder == info.folder
         busy = self.controller.is_busy(rec)
         enabled = {
+            "process_now": info.needs_processing and not busy and not recording_now,
             "handoff": info.has_summary,
             "review": info.speakers_unassigned is not None and not busy,
             "resummarize": info.has_transcript and not recording_now,
             "retranscribe": info.recording_status in ("stopped", "recovered") and not recording_now,
             "reprocess": info.recording_status in ("stopped", "recovered", "recording") and not recording_now,
             "rename": not busy,
+            "assign_event": not busy and not recording_now and self.controller.calendar.source is not None,
             "folder": True,
             "play": not recording_now and (info.folder / "audio").is_dir(),
             "delete": not busy,
@@ -1258,7 +1452,7 @@ class MainWindow:
             resolve = None  # keep the previous result; never open devices while recording
 
         def work() -> list[setupcheck.CheckItem]:
-            items = setupcheck.run_all(cfg, summary_test, resolve=resolve)
+            items = setupcheck.run_all(cfg, summary_test, resolve=resolve, autostart=getattr(self.app, "autostart", None))
             if resolve is None:
                 items[0] = previous_audio or setupcheck.CheckItem(
                     "audio", "Audiogeräte (Mikrofon und Gegenseite)", setupcheck.UNKNOWN,
@@ -1305,6 +1499,11 @@ class MainWindow:
         ready, sentence = setupcheck.summary_line(items)
         self.setup_summary.set(sentence)
         self.nb.tab(self.tab_setup, text="Einrichtung" if ready else "Einrichtung (!)")
+        self.compact_setup.set("" if ready else sentence)
+        if ready:
+            self.compact_setup_row.grid_remove()
+        else:
+            self.compact_setup_row.grid()
         if not ready and not self.state.tab:
             self.nb.select(self.tab_setup)
 
@@ -1317,6 +1516,11 @@ class MainWindow:
             self.app.login(done=lambda text: self.post(lambda: self.run_checks()))
         elif key == setupcheck.A_README:
             self.app.open_readme()
+        elif key == setupcheck.A_RECHECK:
+            self.run_checks(force_audio=True)
+        elif key in (setupcheck.A_AUTOSTART_ON, setupcheck.A_AUTOSTART_OFF):
+            self.app.set_autostart(key == setupcheck.A_AUTOSTART_ON)
+            self.run_checks()
         elif key.startswith("settings:"):
             self.app.settings(key.split(":", 1)[1])
 

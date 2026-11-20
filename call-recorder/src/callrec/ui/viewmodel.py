@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from callrec import paths
+from callrec.library import OPEN, RecordingInfo
 
 log = logging.getLogger(__name__)
 
@@ -193,6 +194,7 @@ class WindowState:
     sash: int = 0  # width of the recording list (pixels)
     tab: str = ""
     filter: str = "all"
+    compact: bool = True  # compact default view (record, current call, last recordings, processing)
 
     @staticmethod
     def file() -> Path:
@@ -205,7 +207,8 @@ class WindowState:
         except (OSError, ValueError):
             return cls()
         return cls(geometry=str(d.get("geometry") or ""), zoomed=bool(d.get("zoomed")), sash=int(d.get("sash") or 0),
-                   tab=str(d.get("tab") or ""), filter=str(d.get("filter") or "all"))
+                   tab=str(d.get("tab") or ""), filter=str(d.get("filter") or "all"),
+                   compact=bool(d.get("compact", True)))
 
     def save(self, path: Path | None = None) -> None:
         p = path or self.file()
@@ -266,3 +269,31 @@ MANUAL_EVENT = "Ohne Termin – Titel und Teilnehmende selbst eingeben"
 def fmt_clock(seconds: float) -> str:
     s = max(0, int(seconds))
     return f"{s // 3600:02d}:{s % 3600 // 60:02d}:{s % 60:02d}"
+
+
+# ---------------------------------------------------------------------------
+# compact view: the single most relevant next action per recording
+# ---------------------------------------------------------------------------
+def next_action(info: RecordingInfo, busy: bool = False, recording_now: bool = False) -> tuple[str, str, str]:
+    """(short status, button label, action key) - label/key empty when nothing is to do."""
+    if info.error:
+        return "Fehler", "", ""
+    if recording_now:
+        return "Aufnahme läuft", "", ""
+    if busy or info.busy or info.chain_active:
+        if info.chain_stage == "review":
+            return "wartet auf Zuordnung", "Sprecher zuordnen", "review"
+        return "wird verarbeitet …", "", ""
+    if info.needs_processing:
+        return "nicht verarbeitet", "Jetzt verarbeiten", "process_now"
+    if info.speakers_state() == OPEN:
+        return f"{info.speakers_unassigned} Stimme(n) offen", "Sprecher zuordnen", "review"
+    if info.has_transcript and not info.has_summary:
+        return "ohne Zusammenfassung", "Zusammenfassung erstellen", "resummarize"
+    if info.has_summary and not info.handoff:
+        return "fertig, nicht übergeben", "Übergeben", "handoff"
+    if info.has_summary and info.handoff and not info.handoff_current:
+        return "seit Übergabe geändert", "Erneut übergeben", "handoff"
+    if info.has_summary:
+        return "fertig und übergeben", "", ""
+    return "–", "", ""

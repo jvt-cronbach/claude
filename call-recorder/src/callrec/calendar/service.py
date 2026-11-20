@@ -11,7 +11,12 @@ from pathlib import Path
 from typing import Protocol
 
 from callrec.calendar.ics import load_ics_file
-from callrec.calendar.selection import candidate_events, nearest_event, select_current_event
+from callrec.calendar.selection import (
+    candidate_events,
+    events_for_recording,
+    nearest_event,
+    select_current_event,
+)
 from callrec.models import CalendarEvent, Person
 
 log = logging.getLogger(__name__)
@@ -124,3 +129,29 @@ class CalendarService:
         except Exception:
             events = self._load_cache()
         return [e for e in events if e.is_online and not e.is_cancelled and not e.declined]
+
+    def events_for_recording(self, start: datetime, end: datetime) -> list[CalendarEvent]:
+        """Events around an (earlier) recording, best first - for "Termin zuordnen" (raises if offline)."""
+        if self.source is None:
+            raise RuntimeError("Kein Microsoft-Kalender verbunden – erst unter „Einrichtung“ anmelden.")
+        margin = timedelta(minutes=15)
+        events = self.source.calendar_view(start - timedelta(hours=1), end + timedelta(hours=1))
+        return events_for_recording(events, start, end, margin)
+
+    def preview(self) -> tuple[CalendarEvent | None, str]:
+        """(current or next event within 12 h, German one-line description) for the setup checklist."""
+        events = self.fetch_window(hours_back=0.5, hours_ahead=12)
+        now = self.clock()
+        ev = select_current_event(events, now, self.tol_before, self.tol_after)
+        label = "Aktueller Termin"
+        if ev is None:
+            future = sorted((e for e in events if e.start > now and not e.is_cancelled and not e.is_all_day
+                             and not e.declined), key=lambda e: e.start)
+            ev = future[0] if future else None
+            label = "Nächster Termin"
+        if ev is None:
+            return None, "Verbindung zum Kalender klappt – in den nächsten 12 Stunden steht kein Termin an."
+        people = [p.display for p in ev.participants()]
+        shown = ", ".join(people[:6]) + (f" und {len(people) - 6} weitere" if len(people) > 6 else "")
+        return ev, (f"{label}: {ev.subject} ({ev.start.astimezone():%d.%m. %H:%M}–{ev.end.astimezone():%H:%M})"
+                    + (" – Teams" if ev.is_online else "") + f"\nTeilnehmende: {shown or '–'}")

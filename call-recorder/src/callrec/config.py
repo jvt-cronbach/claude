@@ -176,6 +176,23 @@ class DetectionConfig:
 
 
 @dataclass
+class ProcessingConfig:
+    """What happens after a recording ends (never settable by a preset).
+
+    ``after_recording = "ask"``: one question "jetzt vollständig verarbeiten?" with the steps as
+    checkboxes (pre-set from the ``default_*`` values below). ``"full"``: process right away
+    without asking. The SharePoint hand-over of the summary only runs for a recording when the
+    user ticked it in that question - or, in mode "full", when ``handoff_without_asking`` is
+    explicitly true."""
+
+    after_recording: str = "ask"  # ask | full
+    default_speakers: bool = True  # speaker separation/recognition + assignment dialog
+    default_summary: bool = True
+    default_handoff: bool = False  # pre-ticks the hand-over box in the question (still the user's click)
+    handoff_without_asking: bool = False  # only with after_recording = "full"
+
+
+@dataclass
 class AutoStopConfig:
     """Ending a recording when the call is over (starting always stays manual, behind the consent).
 
@@ -228,6 +245,7 @@ class Config:
     handoff: HandoffConfig = field(default_factory=HandoffConfig)
     detection: DetectionConfig = field(default_factory=DetectionConfig)
     autostop: AutoStopConfig = field(default_factory=AutoStopConfig)
+    processing: ProcessingConfig = field(default_factory=ProcessingConfig)
     hotkey: HotkeyConfig = field(default_factory=HotkeyConfig)
     ui: UiConfig = field(default_factory=UiConfig)
 
@@ -280,6 +298,8 @@ class Config:
         s = self.summary
         if min(s.anthropic_connect_timeout_s, s.anthropic_read_timeout_s, s.anthropic_retry_budget_s) <= 0:
             raise ConfigError("summary.anthropic_*_timeout_s / anthropic_retry_budget_s müssen > 0 sein")
+        if self.processing.after_recording not in AFTER_RECORDING_MODES:
+            raise ConfigError("processing.after_recording muss 'ask' oder 'full' sein")
         a = self.autostop
         if not 10 <= a.countdown_s <= 600:
             raise ConfigError("autostop.countdown_s muss zwischen 10 und 600 Sekunden liegen")
@@ -301,6 +321,7 @@ class Config:
 
 _LANG_RE = re.compile(r"[a-z]{2,3}")
 TIMESTAMP_FORMATS = ("hh:mm:ss", "mm:ss", "none")
+AFTER_RECORDING_MODES = ("ask", "full")
 SUMMARY_PROVIDERS = ("ollama", "openai", "anthropic")
 CLOUD_PROVIDERS = ("anthropic",)  # providers that send the transcript to a third party by design
 ANTHROPIC_EFFORTS = ("low", "medium", "high", "xhigh", "max", "")
@@ -319,6 +340,7 @@ _SECTION_TYPES: dict[str, type] = {
     "handoff": HandoffConfig,
     "detection": DetectionConfig,
     "autostop": AutoStopConfig,
+    "processing": ProcessingConfig,
     "hotkey": HotkeyConfig,
     "ui": UiConfig,
 }
@@ -732,6 +754,18 @@ max_duration_warning_minutes = 10.0
 max_duration_extend_minutes = 60.0
 # ... und Nachfrage, wenn so lange nur Stille aufgenommen wurde
 silence_safety_minutes = 15.0
+
+[processing]
+# Nach dem Ende einer Aufnahme: "ask" = einmal fragen ("jetzt vollständig verarbeiten?"),
+# "full" = ohne Rückfrage vollständig verarbeiten
+after_recording = "ask"
+# Vorauswahl der Schritte in der Rückfrage
+default_speakers = true
+default_summary = true
+# Häkchen "an SharePoint übergeben" vorbelegen (übergeben wird trotzdem nur nach Ihrem Klick)
+default_handoff = false
+# nur bei after_recording = "full": Zusammenfassung ohne Rückfrage an SharePoint übergeben
+handoff_without_asking = false
 
 [hotkey]
 toggle = "ctrl+alt+shift+r"

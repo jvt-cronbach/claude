@@ -162,10 +162,15 @@ $lnk.Save()
 Write-Host "  $lnkPath"
 
 if ($Autostart) {
-    $startup = [Environment]::GetFolderPath("Startup")
-    $auto = Join-Path $startup "CallRecorder.lnk"
-    Copy-Item $lnkPath $auto -Force
-    Write-Host "  Autostart: $auto"
+    # Same per-user entry as "Mit Windows starten" in CallRecorder (Einstellungen / Einrichtung);
+    # CallRecorder repairs it by itself if this folder is moved later.
+    $runKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
+    $autoCmd = "`"$VenvPythonW`" -m callrec tray --minimized"
+    New-ItemProperty -Path $runKey -Name "CallRecorder" -Value $autoCmd -PropertyType String -Force | Out-Null
+    Write-Host "  Autostart: $autoCmd"
+    # autostart shortcut of earlier versions: would start CallRecorder a second time
+    $oldAuto = Join-Path ([Environment]::GetFolderPath("Startup")) "CallRecorder.lnk"
+    if (Test-Path $oldAuto) { Remove-Item $oldAuto -Force }
 }
 
 Write-Step "Fertig"

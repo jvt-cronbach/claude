@@ -400,7 +400,7 @@ def test_setup_checks_fresh_install_is_usable_without_microsoft_and_sharepoint()
                                signed_in=lambda: None)
     states = {i.key: i.state for i in items}
     assert states == {"audio": "ok", "whisper": "ok", "summary": "unknown", "microsoft": "optional",
-                      "sharepoint": "optional"}
+                      "sharepoint": "optional", "autostop": "ok"}
     ready, text = setupcheck.summary_line(items)
     assert ready and "Optional noch offen" in text and "Microsoft" in text
     ms = next(i for i in items if i.key == "microsoft")
@@ -422,7 +422,7 @@ def test_setup_checks_errors_and_fix_actions(tmp_path: Path):
     assert by["audio"].state == "error" and "kein Mikrofon" in by["audio"].detail
     assert by["whisper"].state == "warn" and ("Jetzt herunterladen", setupcheck.A_DOWNLOAD_WHISPER) in by["whisper"].actions
     assert by["summary"].state == "error" and "nicht bestätigt" in by["summary"].detail
-    assert by["microsoft"].state == "warn" and ("Anmelden …", setupcheck.A_LOGIN) in by["microsoft"].actions
+    assert by["microsoft"].state == "warn" and ("Bei Microsoft anmelden …", setupcheck.A_LOGIN) in by["microsoft"].actions
     assert by["sharepoint"].state == "error" and "nicht erreichbar" in by["sharepoint"].detail
     ready, text = setupcheck.summary_line(items)
     assert not ready and "Audiogeräte" in text

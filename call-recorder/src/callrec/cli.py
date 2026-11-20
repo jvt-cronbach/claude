@@ -711,7 +711,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-v", "--verbose", action="store_true")
     sub = p.add_subparsers(dest="cmd")
 
-    sub.add_parser("tray", help="Tray-Anwendung starten (Standard)")
+    t = sub.add_parser("tray", help="Tray-Anwendung starten (Standard)")
+    t.add_argument("--minimized", action="store_true", help="nur im Infobereich starten (Autostart mit Windows)")
 
     r = sub.add_parser("record", help="Aufnahme in der Konsole (Test)")
     r.add_argument("--title")
@@ -834,7 +835,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.cmd in (None, "tray"):
-        return main_tray()
+        return main_tray(minimized=bool(getattr(args, "minimized", False)))
     from callrec.logging_setup import setup_logging
 
     setup_logging(logging.DEBUG if args.verbose else logging.INFO, console=args.verbose)
@@ -845,7 +846,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
 
-def main_tray() -> int:
+def main_tray(minimized: bool = False) -> int:
     from callrec.ui.app import run_tray_app
 
-    return run_tray_app()
+    return run_tray_app(start_minimized=minimized)
