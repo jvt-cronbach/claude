@@ -13,17 +13,11 @@ from typing import Any
 
 from callrec import __version__, paths
 from callrec.config import ConfigError, load_config, write_default_config
-from callrec.pipeline import ALL_STEPS, STEPS
+from callrec.pipeline import ALL_STEPS, STEP_PRESETS, STEPS
 
 log = logging.getLogger(__name__)
 
-PRESETS = {
-    "all": set(STEPS),
-    "retranscribe": {"transcribe", "identify", "render", "summarize"},
-    "rediarize": {"diarize", "identify", "render", "summarize"},
-    "resummarize": {"summarize"},
-    "render": {"render"},
-}
+PRESETS = STEP_PRESETS
 
 
 def _steps(value: str) -> set[str]:
@@ -446,7 +440,10 @@ def cmd_record(args: argparse.Namespace) -> int:
     except (KeyboardInterrupt, EOFError):
         pass
     if args.no_process:
-        ctl.process = lambda rec, steps=ALL_STEPS, language=None: None  # type: ignore[method-assign]
+        def no_processing(*_a: Any, **_k: Any) -> None:
+            return None
+
+        ctl.process = no_processing  # type: ignore[method-assign]
     rec = ctl.stop()
     if rec is not None and not args.no_process:
         queue.stop()
@@ -470,7 +467,11 @@ def run_whisper_download(model: str, download_root: Path, out: Callable[[str], N
     cmd = [*(command_prefix or [console_python(), "-m", "callrec.asr.worker"]),
            "--download-only", "--model", model, "--download-root", str(download_root)]
     env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1")
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True, encoding="utf-8", errors="replace", env=env)  # noqa: S603
+    from callrec.asr.transcriber import CREATE_NO_WINDOW
+
+    # no console window flashing up when started from the main window (pythonw.exe)
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True, encoding="utf-8", errors="replace", env=env,  # noqa: S603
+                            creationflags=CREATE_NO_WINDOW if sys.platform == "win32" else 0)
     assert proc.stdout is not None
     display = DownloadDisplay()
     failure = ""
@@ -662,14 +663,11 @@ def cmd_anthropic(args: argparse.Namespace) -> int:
 
 
 def cmd_list(args: argparse.Namespace) -> int:
-    from callrec.recording import list_recordings
+    from callrec.library import RecordingIndex, info_lines
 
     cfg = load_config()
-    for rec in list_recordings(cfg.recordings_path()):
-        meta = rec.load_meta()
-        st = (meta.get("recording") or {}).get("status", "?")
-        ps = (meta.get("processing") or {}).get("status", "-")
-        print(f"{rec.folder.name:<60} Aufnahme: {st:<10} Verarbeitung: {ps}")
+    for info in RecordingIndex(cfg.recordings_path()).scan():  # same data as the main window's list
+        print(info_lines(info))
     return 0
 
 

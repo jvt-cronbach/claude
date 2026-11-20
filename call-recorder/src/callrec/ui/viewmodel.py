@@ -1,0 +1,268 @@
+"""Toolkit-independent helpers of the main window (no tkinter import - testable anywhere).
+
+- :func:`markdown_spans`: the small Markdown subset of transcript.md / summary.md as
+  (text, tags) runs for a read-only Tk ``Text`` widget,
+- window geometry: parsing, clamping onto the visible screen, persisting,
+- version choices for the transcript/summary selector.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import re
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from callrec import paths
+
+log = logging.getLogger(__name__)
+
+Span = tuple[str, tuple[str, ...]]
+
+_INLINE = re.compile(r"(\*\*[^*\n]+?\*\*|`[^`\n]+`|(?<![\w*])\*[^*\s][^*\n]*?\*(?![\w*])|(?<![\w])_[^_\s][^_\n]*?_(?![\w]))")
+_TABLE_SEP = re.compile(r"^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$")
+
+
+def inline_spans(text: str, base: tuple[str, ...] = ()) -> list[Span]:
+    out: list[Span] = []
+    pos = 0
+    for m in _INLINE.finditer(text):
+        if m.start() > pos:
+            out.append((text[pos:m.start()], base))
+        tok = m.group(0)
+        if tok.startswith("**"):
+            out.append((tok[2:-2], (*base, "bold")))
+        elif tok.startswith("`"):
+            out.append((tok[1:-1], (*base, "code")))
+        else:
+            out.append((tok[1:-1], (*base, "italic")))
+        pos = m.end()
+    if pos < len(text):
+        out.append((text[pos:], base))
+    return out
+
+
+def _table_rows(lines: list[str]) -> list[list[str]]:
+    rows = []
+    for line in lines:
+        if _TABLE_SEP.match(line):
+            continue
+        cells = line.strip().strip("|").split("|")
+        rows.append([re.sub(r"\*\*(.+?)\*\*", r"\1", c.strip()) for c in cells])
+    return rows
+
+
+def _table_spans(lines: list[str]) -> list[Span]:
+    rows = _table_rows(lines)
+    if not rows:
+        return []
+    ncol = max(len(r) for r in rows)
+    rows = [r + [""] * (ncol - len(r)) for r in rows]
+    widths = [min(40, max(len(r[c]) for r in rows)) for c in range(ncol)]
+    out: list[Span] = []
+    for i, r in enumerate(rows):
+        cells = []
+        for c, cell in enumerate(r):
+            cell = cell if len(cell) <= widths[c] else cell[: widths[c] - 1] + "…"
+            cells.append(cell.ljust(widths[c]))
+        out.append(("  ".join(cells).rstrip() + "\n", ("table", "bold") if i == 0 else ("table",)))
+    return out
+
+
+def _is_plain(line: str) -> bool:
+    s = line.strip()
+    return bool(s) and not (s.startswith(("#", "|", ">", "-", "*", "+", "_ _", "---")) or re.match(r"^\d+[.)]\s", s))
+
+
+def markdown_spans(md: str) -> list[Span]:
+    """Readable rendering of headings, lists, tables, rules, quotes and **bold**/*italic*/`code`."""
+    lines = md.replace("\r\n", "\n").split("\n")
+    out: list[Span] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+        if stripped.startswith("|") and stripped.count("|") >= 2:
+            block = []
+            while i < len(lines) and lines[i].strip().startswith("|"):
+                block.append(lines[i])
+                i += 1
+            out.extend(_table_spans(block))
+            continue
+        m = re.match(r"^(#{1,6})\s+(.*)$", line)
+        if m:
+            level = min(len(m.group(1)), 3)
+            out.extend(inline_spans(m.group(2).strip(), (f"h{level}",)))
+            out.append(("\n", (f"h{level}",)))
+        elif re.match(r"^\s*([-*_])(\s*\1){2,}\s*$", line):
+            out.append(("─" * 40 + "\n", ("rule",)))
+        elif re.match(r"^\s*[-*+]\s+", line):
+            indent = len(line) - len(line.lstrip())
+            body = re.sub(r"^\s*[-*+]\s+", "", line)
+            tag = "bullet2" if indent >= 2 else "bullet"
+            out.append(("• ", (tag,)))
+            out.extend(inline_spans(body, (tag,)))
+            out.append(("\n", (tag,)))
+        elif re.match(r"^\s*\d+[.)]\s+", line):
+            out.extend(inline_spans(line.strip(), ("bullet",)))
+            out.append(("\n", ("bullet",)))
+        elif stripped.startswith(">"):
+            out.extend(inline_spans(stripped.lstrip("> ").rstrip(), ("quote",)))
+            out.append(("\n", ("quote",)))
+        elif stripped:
+            # a paragraph: soft line breaks inside it are joined (the Text widget wraps itself)
+            para = [stripped]
+            while i + 1 < len(lines) and _is_plain(lines[i + 1]):
+                i += 1
+                para.append(lines[i].strip())
+            out.extend(inline_spans(" ".join(para)))
+            out.append(("\n", ()))
+        else:
+            out.append(("\n", ()))
+        i += 1
+    # collapse runs of more than one empty line
+    merged: list[Span] = []
+    blank = 0
+    for text, tags in out:
+        if text == "\n" and not tags:
+            blank += 1
+            if blank > 1:
+                continue
+        else:
+            blank = 0
+        merged.append((text, tags))
+    return merged
+
+
+def plain_text(spans: list[Span]) -> str:
+    return "".join(t for t, _ in spans)
+
+
+# ---------------------------------------------------------------------------
+# geometry
+# ---------------------------------------------------------------------------
+_GEOM = re.compile(r"^(\d+)x(\d+)([+-]-?\d+)([+-]-?\d+)$")
+
+
+def parse_geometry(text: str) -> tuple[int, int, int, int] | None:
+    m = _GEOM.match((text or "").strip())
+    if not m:
+        return None
+    # Tk writes "+-5" for x = -5 on a monitor left of the primary one
+    return int(m.group(1)), int(m.group(2)), int(m.group(3).lstrip("+")), int(m.group(4).lstrip("+"))
+
+
+# Tk's geometry is the client area: title bar (~31 px), menu bar (~20 px) and the taskbar
+# (~48 px at 100 %) come on top of it on Windows.
+FRAME_RESERVE = 160
+
+
+def default_geometry(screen_w: int, screen_h: int, scale: float = 1.0) -> tuple[int, int, int, int]:
+    """1120x700 logical pixels, but never larger than the screen minus taskbar, title and menu bar."""
+    w = min(int(1120 * scale), screen_w - 40)
+    h = min(int(700 * scale), screen_h - int(FRAME_RESERVE * scale))
+    return w, h, max(0, (screen_w - w) // 2), max(0, (screen_h - h - int(130 * scale)) // 2)
+
+
+def clamp_geometry(geom: tuple[int, int, int, int], screen_w: int, screen_h: int,
+                   min_w: int, min_h: int) -> tuple[int, int, int, int]:
+    """Keep a remembered window on the (current, possibly smaller) screen: no larger than the
+    screen, title bar reachable. Multi-monitor setups with negative coordinates are reduced to
+    the primary screen - Tk only reports that one."""
+    w, h, x, y = geom
+    usable_h = screen_h - FRAME_RESERVE
+    w = max(min(w, screen_w), min(min_w, screen_w))
+    h = max(min(h, usable_h), min(min_h, usable_h))
+    x = min(max(0, x), max(0, screen_w - w))
+    y = min(max(0, y), max(0, usable_h - h))
+    return w, h, x, y
+
+
+def format_geometry(geom: tuple[int, int, int, int]) -> str:
+    w, h, x, y = geom
+    return f"{w}x{h}+{x}+{y}"
+
+
+@dataclass
+class WindowState:
+    geometry: str = ""
+    zoomed: bool = False
+    sash: int = 0  # width of the recording list (pixels)
+    tab: str = ""
+    filter: str = "all"
+
+    @staticmethod
+    def file() -> Path:
+        return paths.data_dir() / "window.json"
+
+    @classmethod
+    def load(cls, path: Path | None = None) -> WindowState:
+        try:
+            d: dict[str, Any] = json.loads((path or cls.file()).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return cls()
+        return cls(geometry=str(d.get("geometry") or ""), zoomed=bool(d.get("zoomed")), sash=int(d.get("sash") or 0),
+                   tab=str(d.get("tab") or ""), filter=str(d.get("filter") or "all"))
+
+    def save(self, path: Path | None = None) -> None:
+        p = path or self.file()
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(json.dumps(self.__dict__, ensure_ascii=False), encoding="utf-8")
+        except OSError:
+            log.debug("Fensterzustand nicht gespeichert", exc_info=True)
+
+
+# ---------------------------------------------------------------------------
+# versions
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class VersionChoice:
+    label: str
+    path: Path
+
+
+def version_choices(folder: Path, kind: str, versions: list[dict[str, Any]]) -> list[VersionChoice]:
+    """Newest first. Without recorded versions the plain ``kind.md`` (if present) is the only choice."""
+    out: list[VersionChoice] = []
+    for v in sorted(versions, key=lambda v: int(v.get("version") or 0), reverse=True):
+        n = int(v.get("version") or 0)
+        p = folder / str(v.get("file") or f"{kind}.v{n}.md")
+        if not p.exists():
+            continue
+        when = ""
+        try:
+            when = f" – {datetime.fromisoformat(str(v.get('updated') or v.get('created'))):%d.%m.%Y %H:%M}"
+        except (TypeError, ValueError):
+            pass
+        extra = ""
+        st = v.get("settings") or {}
+        if kind == "transcript":
+            preset = ((st.get("transcription") or {}).get("preset")) or st.get("preset")
+            extra = f", Preset {preset}" if preset else ""
+        elif kind == "summary":
+            llm = st.get("llm") or {}
+            model = llm.get("served_model") or llm.get("model")
+            extra = f", {model}" if model else ""
+        newest = " (neueste)" if not out else ""
+        out.append(VersionChoice(f"Version {n}{newest}{when}{extra}", p))
+    if not out and (folder / f"{kind}.md").exists():
+        out.append(VersionChoice("aktuelle Fassung", folder / f"{kind}.md"))
+    return out
+
+
+def event_label(ev: Any) -> str:
+    start, end = ev.start.astimezone(), ev.end.astimezone()
+    online = " (Teams)" if getattr(ev, "is_online", False) else ""
+    return f"{start:%H:%M}–{end:%H:%M}  {ev.subject}{online}"
+
+
+MANUAL_EVENT = "Ohne Termin – Titel und Teilnehmende selbst eingeben"
+
+
+def fmt_clock(seconds: float) -> str:
+    s = max(0, int(seconds))
+    return f"{s // 3600:02d}:{s % 3600 // 60:02d}:{s % 60:02d}"

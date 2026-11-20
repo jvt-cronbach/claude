@@ -184,6 +184,7 @@ class HotkeyConfig:
 class UiConfig:
     show_overlay: bool = True
     open_review_after_processing: bool = True
+    start_minimized: bool = False  # True = start only in the tray, without opening the main window
 
 
 @dataclass
@@ -662,6 +663,8 @@ toggle = "ctrl+alt+shift+r"
 [ui]
 show_overlay = true
 open_review_after_processing = true
+# true = beim Start nur das Tray-Symbol, ohne Hauptfenster
+start_minimized = false
 """
 
 

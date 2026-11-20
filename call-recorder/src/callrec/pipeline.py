@@ -35,6 +35,21 @@ log = logging.getLogger(__name__)
 
 STEPS = ("finalize", "transcribe", "diarize", "identify", "render", "summarize")
 ALL_STEPS = frozenset(STEPS)
+# Named step sets, shared by the CLI, the tray and the main window (one source of truth).
+STEP_PRESETS: dict[str, frozenset[str]] = {
+    "all": ALL_STEPS,
+    "retranscribe": frozenset({"transcribe", "identify", "render", "summarize"}),
+    "rediarize": frozenset({"diarize", "identify", "render", "summarize"}),
+    "resummarize": frozenset({"summarize"}),
+    "render": frozenset({"render"}),
+}
+
+
+class ProcessingCancelled(RuntimeError):
+    """The user cancelled a queued/running job; raised between two steps."""
+
+    def __init__(self, message: str = "Verarbeitung abgebrochen") -> None:
+        super().__init__(message)
 
 ProgressFn = Callable[[str, float, str], None]  # (step, fraction 0..1, message)
 AudioLoader = Callable[[Any, int], tuple[np.ndarray, int]]
@@ -67,9 +82,15 @@ class ProcessResult:
     transcript_warnings: list[str] = field(default_factory=list)
 
 
+def is_cancellation(exc: BaseException) -> bool:
+    from callrec.asr.transcriber import TranscriptionCancelled
+
+    return isinstance(exc, ProcessingCancelled | TranscriptionCancelled)
+
+
 def summary_retry_hint(rec: Recording) -> str:
-    return ("Das Transkript ist fertig (transcript.md). Zusammenfassung später nachholen: Tray-Menü "
-            f"„Letzte Aufnahme: Zusammenfassung neu erstellen“ oder callrec summarize \"{rec.folder}\"")
+    return ("Das Transkript ist fertig (transcript.md). Zusammenfassung später nachholen: im Hauptfenster "
+            f"„Zusammenfassung neu erstellen“ oder callrec summarize \"{rec.folder}\"")
 
 
 def _accepts(fn: Any, name: str) -> bool:
@@ -143,8 +164,12 @@ class Pipeline:
         steps: Iterable[str] = ALL_STEPS,
         progress: ProgressFn = lambda s, f, m: None,
         language: str | None = None,
+        should_cancel: Callable[[], bool] | None = None,
     ) -> ProcessResult:
-        """``language`` overrides transcription.language for this run ("auto" = detect again)."""
+        """``language`` overrides transcription.language for this run ("auto" = detect again).
+
+        ``should_cancel`` is checked before every step; a running step is not interrupted here
+        (the Whisper worker is stopped separately via ``cancel_running_workers``)."""
         self._language = language or None
         wanted = set(steps)
         unknown = wanted - ALL_STEPS
@@ -156,12 +181,14 @@ class Pipeline:
             for step in STEPS:
                 if step not in wanted:
                     continue
+                if should_cancel is not None and should_cancel():
+                    raise ProcessingCancelled()
                 progress(step, 0.0, "")
                 getattr(self, f"_step_{step}")(rec, result, lambda f, m="", s=step: progress(s, f, m))
                 progress(step, 1.0, "")
                 result.steps_done.append(step)
         except Exception as exc:
-            rec.update_meta(["processing", "status"], f"error: {exc}")
+            rec.update_meta(["processing", "status"], "cancelled" if is_cancellation(exc) else f"error: {exc}")
             raise
         rec.update_meta(["processing", "status"], "done")
         rec.update_meta(["processing", "last_run"], _now_iso())
@@ -437,8 +464,11 @@ class Pipeline:
             ts_format=tc.timestamp_format, join_gap=join_gap, version_note=f"v{n}{preset}",
             language_note=lang_note, warnings=warnings,
         )
-        _spoken, unassigned, _silent = speaker_lists(utterances, speakers)
+        spoken, unassigned, _silent = speaker_lists(utterances, speakers)
         result.unassigned_speakers = len(unassigned)
+        # for the recording list of the main window (cheap to read, no utterances needed)
+        rec.update_meta(["processing", "speakers"], {"spoken": len(spoken), "unassigned": len(unassigned),
+                                                     "at": _now_iso()})
         n2, new = write_version(rec, "transcript", md, fp, settings)
         if new and n2 > 1:
             result.messages.append(f"Neue Transkript-Version v{n2} erstellt (vorherige bleibt als transcript.v{n2 - 1}.md erhalten).")
@@ -463,7 +493,7 @@ class Pipeline:
         if not cloud_summary_covered(rec.load_meta(), provider_name):
             result.summary_skipped = (
                 "Die Einwilligung dieser Aufnahme erwähnt die Übertragung an Anthropic nicht - Zusammenfassung "
-                "nicht erstellt. Nachholen mit Bestätigung: Tray „Zusammenfassung neu erstellen“ oder "
+                "nicht erstellt. Nachholen mit Bestätigung: im Hauptfenster „Zusammenfassung neu erstellen“ oder "
                 "'callrec summarize <Ordner> --confirm-anthropic'."
             )
             result.messages.append(result.summary_skipped)

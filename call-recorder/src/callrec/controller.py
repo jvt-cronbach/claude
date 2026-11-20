@@ -18,7 +18,7 @@ from callrec.jobs import ProcessingQueue
 from callrec.models import CalendarEvent, Person
 from callrec.naming import create_recording_folder
 from callrec.paths import cloud_sync_root_for
-from callrec.pipeline import ALL_STEPS, ProcessResult
+from callrec.pipeline import ALL_STEPS, STEP_PRESETS, ProcessResult, is_cancellation
 from callrec.recording import Recording, new_meta
 
 log = logging.getLogger(__name__)
@@ -76,6 +76,27 @@ class Controller:
     @property
     def is_recording(self) -> bool:
         return self.recorder is not None and self.recorder.is_recording
+
+    # -- live state for the main window (cheap reads, any thread) -------
+    def elapsed(self) -> float:
+        r = self.recorder
+        return r.elapsed if r is not None else 0.0
+
+    def levels(self) -> dict[str, float]:
+        r = self.recorder
+        return r.levels() if r is not None else {"mic": 0.0, "remote": 0.0}
+
+    def current_title(self) -> str:
+        rec = self.current
+        try:
+            return rec.title() if rec is not None else ""
+        except (OSError, ValueError):
+            return rec.folder.name if rec is not None else ""
+
+    def is_busy(self, rec: Recording) -> bool:
+        """Being recorded right now or waiting/running in the processing queue."""
+        cur = self.current
+        return (cur is not None and cur.folder == rec.folder) or self.queue.is_busy_with(rec.folder)
 
     def toggle(self) -> None:
         if self.is_recording:
@@ -182,23 +203,56 @@ class Controller:
         self.process(rec)
         return rec
 
-    def process(self, rec: Recording, steps: frozenset[str] = ALL_STEPS, language: str | None = None) -> None:
+    def process(self, rec: Recording, steps: frozenset[str] = ALL_STEPS, language: str | None = None,
+                preset: str | None = None) -> None:
+        kwargs: dict[str, Any] = {}
         if language:
-            self.queue.submit(rec, steps, on_done=self._on_processed, language=language)
-        else:
-            self.queue.submit(rec, steps, on_done=self._on_processed)
+            kwargs["language"] = language
+        if preset:
+            kwargs["preset"] = preset
+        self.queue.submit(rec, steps, on_done=self._on_processed, **kwargs)
+
+    # Named operations used by tray, main window and CLI alike
+    def resummarize(self, rec: Recording) -> None:
+        self.process(rec, STEP_PRESETS["resummarize"])
+
+    def retranscribe(self, rec: Recording, language: str | None = None, preset: str | None = None) -> None:
+        self.process(rec, STEP_PRESETS["retranscribe"], language=language, preset=preset)
+
+    def reprocess(self, rec: Recording) -> None:
+        self.process(rec, ALL_STEPS)
+
+    def rename(self, rec: Recording, title: str) -> str:
+        from callrec.library import LibraryError, rename_recording
+
+        if self.is_busy(rec):
+            raise LibraryError("Die Aufnahme wird gerade aufgenommen oder verarbeitet - bitte danach umbenennen.")
+        title = rename_recording(rec, title)
+        if rec.utterances_path.exists():
+            self.process(rec, STEP_PRESETS["render"])  # new title in the transcript header (same version)
+        return title
+
+    def delete(self, rec: Recording, permanent: bool = False) -> str:
+        from callrec.library import LibraryError, delete_recording
+
+        if self.is_busy(rec):
+            raise LibraryError("Die Aufnahme wird gerade aufgenommen oder verarbeitet - Löschen ist erst danach möglich.")
+        return delete_recording(rec, self.cfg.recordings_path(), permanent=permanent)
 
     def _on_processed(self, job: Any, result: ProcessResult | None, error: BaseException | None) -> None:
         rec: Recording = job.recording
         if error is not None:
-            self.ui.notify("Verarbeitung fehlgeschlagen", f"{rec.folder.name}: {error}")
+            if is_cancellation(error) or getattr(job, "cancel_requested", False):
+                self.ui.notify("Verarbeitung abgebrochen", rec.folder.name)
+            else:
+                self.ui.notify("Verarbeitung fehlgeschlagen", f"{rec.folder.name}: {error}")
             return
         assert result is not None
         msg = "Transkript erstellt."
         if result.summary_skipped:
             msg += f" Zusammenfassung übersprungen: {result.summary_skipped}"
             if result.summary_failed:
-                msg += " Später nachholen: „Letzte Aufnahme: Zusammenfassung neu erstellen“."
+                msg += " Später nachholen: im Hauptfenster „Zusammenfassung neu erstellen“."
         elif "summarize" in result.steps_done:
             msg += " Zusammenfassung erstellt."
         self.ui.notify(f"Fertig: {rec.title()}", msg)

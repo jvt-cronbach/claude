@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import logging
 import queue
 import threading
@@ -92,6 +93,8 @@ class TkUi:
         self.review_handler: Callable[[Recording], None] = lambda rec: None
         # provider that will receive the transcript (decides the consent text), set by the app
         self.summary_provider: Callable[[], str] = lambda: ""
+        # main window hook: called on the Tk thread with (title, message) of every notification
+        self.notify_listeners: list[Callable[[str, str], None]] = []
         self.root.after(100, self._pump)
 
     # -- threading helpers ---------------------------------------------
@@ -154,6 +157,8 @@ class TkUi:
         log.info("Hinweis: %s - %s", title, message)
         if self.tray is not None:
             self.tray.notify(title, message)
+        for fn in list(self.notify_listeners):
+            self.post(functools.partial(fn, title, message))
 
     def set_recording_state(self, recording: bool, title: str) -> None:
         def apply() -> None:

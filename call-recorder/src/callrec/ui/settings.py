@@ -74,6 +74,7 @@ class SettingsDialog:
         provider_factory: Callable[[Config], Any] | None = None,
         gpu_status_fn: Callable[[bool], Any] | None = None,
         anthropic_factory: Callable[[Config, str], Any] | None = None,
+        initial_tab: str = "",
     ) -> None:
         self.root = root
         self.gpu_status_fn = gpu_status_fn
@@ -95,7 +96,11 @@ class SettingsDialog:
         self._speakers()
         self._rendering()
         self._summary()
+        self._microsoft()
         self._handoff()
+        for tab in self.nb.tabs():
+            if initial_tab and self.nb.tab(tab, "text") == initial_tab:
+                self.nb.select(tab)
         bar = ttk.Frame(self.win)
         bar.pack(fill="x", padx=6, pady=6)
         ttk.Button(bar, text="Als Preset speichern …", command=self.save_as_preset).pack(side="left")
@@ -190,6 +195,20 @@ class SettingsDialog:
         ttk.Label(t, text="Presets enthalten nur Transkriptions-, Sprecher-, Darstellungs- und Zusammenfassungs-"
                   "Einstellungen und liegen als TOML-Dateien in " + str(paths.presets_dir()),
                   wraplength=520, foreground="#555").grid(row=6, column=0, columnspan=3, sticky="w", **PAD)
+        self.field(t, 7, "Beim Start nur im Infobereich (ohne Fenster):", "ui", "start_minimized")
+        self.field(t, 8, "Roten Aufnahme-Balken anzeigen:", "ui", "show_overlay")
+        self.field(t, 9, "Sprecher-Zuordnung nach der Verarbeitung öffnen:", "ui", "open_review_after_processing")
+
+    def _microsoft(self) -> None:
+        t = self._tab("Microsoft-Konto")
+        ttk.Label(t, text="Optional: Für den Outlook-Kalender (Titel und Teilnehmende automatisch) und den direkten "
+                  "SharePoint-Upload. Dafür ist eine Entra-App-Registrierung nötig (README Abschnitt 5). Ohne sie "
+                  "funktioniert alles andere; Titel und Teilnehmende tippen Sie dann beim Start ein.",
+                  wraplength=520).grid(row=0, column=0, columnspan=3, sticky="w", **PAD)
+        self.field(t, 1, "Anwendungs-ID (Client):", "calendar", "client_id")
+        self.field(t, 2, "Verzeichnis-ID (Mandant):", "calendar", "tenant_id")
+        ttk.Label(t, text="Nach dem Speichern im Hauptfenster unter „Einrichtung“ auf „Anmelden …“ klicken.",
+                  wraplength=520).grid(row=3, column=0, columnspan=3, sticky="w", **PAD)
 
     def _browse(self, var: tk.Variable) -> None:
         d = filedialog.askdirectory(parent=self.win)
@@ -621,7 +640,7 @@ class SettingsDialog:
         self.cfg = cfg
         self.saved = True
         messagebox.showinfo("Gespeichert", "Einstellungen gespeichert. Sie gelten für neue Verarbeitungen; "
-                            "Tastenkürzel und Geräte nach einem Neustart des Programms.", parent=self.win)
+                            "das Tastenkürzel nach einem Neustart des Programms.", parent=self.win)
         self.win.destroy()
 
     def confirm_cloud(self, cfg: Config) -> bool:
@@ -648,8 +667,9 @@ class SettingsDialog:
 
 
 def edit_settings(root: tk.Misc, cfg: Config, mic_names: list[str], render_names: list[str],
-                  save: Callable[[Config], None], provider_factory: Callable[[Config], Any] | None = None) -> bool:
-    return SettingsDialog(root, cfg, mic_names, render_names, save, provider_factory).run()
+                  save: Callable[[Config], None], provider_factory: Callable[[Config], Any] | None = None,
+                  initial_tab: str = "") -> bool:
+    return SettingsDialog(root, cfg, mic_names, render_names, save, provider_factory, initial_tab=initial_tab).run()
 
 
 __all__ = ["SettingsDialog", "edit_settings", "edit_text_file"]

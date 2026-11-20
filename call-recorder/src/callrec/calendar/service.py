@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Protocol
 
 from callrec.calendar.ics import load_ics_file
-from callrec.calendar.selection import nearest_event, select_current_event
+from callrec.calendar.selection import candidate_events, nearest_event, select_current_event
 from callrec.models import CalendarEvent, Person
 
 log = logging.getLogger(__name__)
@@ -91,6 +91,23 @@ class CalendarService:
             if ev:
                 return Suggestion(ev, ev.participants(), message + "Termin aus dem Zwischenspeicher.", "cache")
         return Suggestion(None, [], (message + "Bitte Titel und Teilnehmende eingeben oder .ics importieren.").strip())
+
+    def candidates(self) -> tuple[list[CalendarEvent], str, str]:
+        """(current meetings best first, info text, source) for the event picker of the main window.
+
+        Same rules and tolerances as :meth:`suggest`; falls back to the cache when offline."""
+        now = self.clock()
+        if self.source is None:
+            return [], "Kein Microsoft-Kalender verbunden (optional) – Titel und Teilnehmende beim Start eingeben.", "manual"
+        try:
+            events = self.fetch_window()
+            found = candidate_events(events, now, self.tol_before, self.tol_after)
+            return found, "" if found else "Kein laufender Termin im Kalender gefunden.", "graph"
+        except Exception as exc:  # offline, not signed in, ...
+            log.info("Kalender nicht verfügbar: %s", exc)
+            found = candidate_events(self._load_cache(), now, self.tol_before, self.tol_after)
+            return found, f"Kalender nicht verfügbar ({exc})." + (" Termine aus dem Zwischenspeicher." if found else ""), \
+                "cache"
 
     def suggest_from_ics(self, path: Path) -> Suggestion:
         now = self.clock()

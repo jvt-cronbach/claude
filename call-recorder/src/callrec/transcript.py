@@ -111,7 +111,7 @@ def render_markdown(
     if unassigned:
         parts.append(
             "- **Hinweis:** " + ", ".join(s.label for s in unassigned)
-            + " noch nicht zugeordnet (Tray-Menü: „Sprecher zuordnen“)."
+            + " noch nicht zugeordnet (Hauptfenster: „Sprecher zuordnen“)."
         )
     if silent:
         parts.append("- **Ohne Text:** " + ", ".join(s.display for s in silent)
@@ -120,7 +120,7 @@ def render_markdown(
         parts.append(f"- **Sprache:** {language_note}")
     for w in warnings or []:
         parts.append(f"- **Warnung:** {w}. Bitte die Stelle anhören und ggf. neu transkribieren "
-                     "(Tray: „Letzte Aufnahme: neu transkribieren“ bzw. callrec retranscribe <Ordner> --language …).")
+                     "(Hauptfenster: „Neu transkribieren …“ bzw. callrec retranscribe <Ordner> --language …).")
     if model_note:
         parts.append(f"- **Erstellt lokal mit:** {model_note}")
     if version_note:

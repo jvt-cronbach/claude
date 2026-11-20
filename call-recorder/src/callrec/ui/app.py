@@ -4,29 +4,21 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import sys
 import threading
 from datetime import UTC, datetime
 from typing import Any
 
 from callrec import paths
-from callrec.config import Config, load_config, save_config
+from callrec.config import Config, load_config
 from callrec.controller import Controller
 from callrec.detect import CallDetector
-from callrec.factory import (
-    build_calendar_service,
-    build_pipeline,
-    graph_auth,
-    perform_handoff,
-    profile_store,
-    reload_config_in_place,
-)
+from callrec.factory import build_calendar_service, build_pipeline, graph_auth, profile_store
 from callrec.hotkey import GlobalHotkey, HotkeyError, parse_hotkey
 from callrec.jobs import ProcessingQueue
 from callrec.logging_setup import setup_logging
 from callrec.models import Person
-from callrec.recording import Recording, list_recordings, recordings_to_resume
+from callrec.recording import recordings_to_resume
 
 log = logging.getLogger(__name__)
 _MUTEX_HANDLE: Any = None
@@ -46,13 +38,6 @@ def acquire_single_instance() -> bool:
     kernel32.CreateMutexW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.LPCWSTR]
     _MUTEX_HANDLE = kernel32.CreateMutexW(None, False, "Local\\CallRecorderSingleInstance")
     return ctypes.get_last_error() != 183  # type: ignore[attr-defined]  # ERROR_ALREADY_EXISTS
-
-
-def open_path(path: Any) -> None:
-    if sys.platform == "win32":
-        os.startfile(str(path))  # type: ignore[attr-defined]  # noqa: S606
-    else:
-        log.info("Öffnen: %s", path)
 
 
 class MeProvider:
@@ -120,19 +105,6 @@ def detection_loop(cfg: Config, controller: Controller, ui: Any, stop: threading
                 ui.post(lambda p=prompt: controller.on_reminder(p))
 
 
-def language_label(code: str) -> str:
-    from callrec.asr.language import language_name
-
-    return "Sprache automatisch erkennen" if code == "auto" else language_name(code)
-
-
-def retranscribe_language_items(candidates: list[str]) -> list[tuple[str, str]]:
-    """Tray submenu "neu transkribieren in Sprache": one entry per candidate plus "automatisch"."""
-    codes = list(dict.fromkeys([*candidates, "de", "en"]))
-    return [(language_label(c), f"retranscribe_lang:{c}") for c in codes] + \
-        [(language_label("auto"), "retranscribe_lang:auto")]
-
-
 def run_tray_app(cfg: Config | None = None) -> int:
     log_file = setup_logging(console=sys.stderr is not None)
     if not acquire_single_instance():
@@ -140,130 +112,34 @@ def run_tray_app(cfg: Config | None = None) -> int:
         return 1
     cfg = cfg or load_config()
     from callrec.audio.wasapi import WasapiBackend
-    from callrec.ui import dialogs
+    from callrec.ui.actions import AppActions
+    from callrec.ui.mainwindow import MainWindow
     from callrec.ui.tkui import TkUi
     from callrec.ui.tray import TrayIcon
 
-    if sys.platform == "win32":
-        try:
-            import ctypes
-
-            ctypes.windll.shcore.SetProcessDpiAwareness(1)  # type: ignore[attr-defined]
-        except Exception:
-            pass
-
+    enable_dpi_awareness()
     profiles = profile_store()
     calendar = build_calendar_service(cfg)
     me_provider = MeProvider(cfg)
     ui = TkUi(calendar, show_overlay=cfg.ui.show_overlay)
-    queue = ProcessingQueue(lambda: build_pipeline(cfg, profiles), status=ui.set_status)
+
+    def pipeline_for(preset: str | None = None) -> Any:
+        # one-off preset (re-transcription from the main window): overlay it on config.toml
+        return build_pipeline(load_config(preset=preset) if preset else cfg, profiles)
+
+    queue = ProcessingQueue(pipeline_for, status=ui.set_status)
     controller = Controller(
         cfg, ui, lambda: WasapiBackend(cfg.detection.teams_processes), calendar, queue, me_provider
     )
     ui.on_stop_clicked = lambda: ui.post(controller.stop)
-    from callrec.consent import active_summary_provider, cloud_summary_covered
+    from callrec.consent import active_summary_provider
 
     ui.summary_provider = lambda: active_summary_provider(cfg.summary)
-
-    def cloud_ok(rec: Recording, steps: frozenset[str]) -> bool:
-        """Older recording + Anthropic active: ask (Tk thread) before its transcript is sent."""
-        if "summarize" not in steps or cloud_summary_covered(rec.load_meta(), active_summary_provider(cfg.summary)):
-            return True
-        return dialogs.confirm_cloud_summary(ui.root, rec, me_provider())
-
-    def process_confirmed(rec: Recording, steps: frozenset[str]) -> None:
-        if cloud_ok(rec, steps):
-            controller.process(rec, steps)
-        else:
-            ui.notify("Keine Übertragung", "Ohne Bestätigung wird die Zusammenfassung nicht von Claude erstellt.")
-
-    def last_recording() -> Recording | None:
-        """Most recent recording that is not currently being recorded."""
-        current = controller.current.folder if controller.current is not None else None
-        recs = [r for r in list_recordings(cfg.recordings_path()) if r.folder != current]
-        return recs[0] if recs else None
-
-    def review(rec: Recording | None = None) -> None:
-        rec = rec or last_recording()
-        if rec is None:
-            ui.notify("Keine Aufnahme", "Es gibt noch keine abgeschlossene Aufnahme.")
-            return
-        if not rec.speakers_path.exists():
-            ui.notify("Noch nicht verarbeitet", "Die Aufnahme wird noch verarbeitet.")
-            return
-        pipeline = build_pipeline(cfg, profiles)
-        dialogs.review_speakers(
-            ui.root, rec, profiles,
-            rerender=lambda: pipeline.run(rec, {"render"}),
-            resummarize=lambda: process_confirmed(rec, frozenset({"summarize"})),
-            handoff=lambda: handoff(rec),
-        )
-
-    ui.review_handler = review
-
-    def handoff(rec: Recording | None = None) -> None:
-        """Explicit user action: preview + confirm, then hand over the summary only."""
-        rec = rec or last_recording()
-        if rec is None:
-            ui.notify("Keine Aufnahme", "Keine abgeschlossene Aufnahme gefunden.")
-            return
-        dialogs.ask_handoff(ui.root, rec, cfg, lambda sha: perform_handoff(cfg, rec, sha))
-
-    def with_last(steps: frozenset[str], language: str | None = None) -> None:
-        rec = last_recording()
-        if rec is None:
-            ui.notify("Keine Aufnahme", "Keine abgeschlossene Aufnahme gefunden.")
-            return
-        if not cloud_ok(rec, steps):
-            ui.notify("Keine Übertragung", "Ohne Bestätigung wird die Zusammenfassung nicht von Claude erstellt.")
-            return
-        if language:
-            controller.process(rec, steps, language=language)
-            ui.notify("Neu-Transkription gestartet", f"{rec.folder.name}: {language_label(language)}")
-        else:
-            controller.process(rec, steps)
-            ui.notify("Verarbeitung gestartet", rec.folder.name)
-
-    def cancel_processing() -> None:
-        if queue.cancel_current():
-            ui.notify("Verarbeitung abgebrochen", "Die laufende Transkription bzw. der Modell-Download wurde beendet. "
-                      "Ein erneuter Start setzt den Download fort.")
-        else:
-            ui.notify("Nichts abzubrechen", "Gerade läuft keine Transkription.")
-
-    def settings() -> None:
-        mics: list[str] = []
-        outs: list[str] = []
-        try:
-            b = WasapiBackend()
-            mics = [d.name for d in b.capture_devices()]
-            outs = b.render_device_names()
-            b.close()
-        except Exception:
-            log.exception("Geräteliste nicht verfügbar")
-        from callrec.ui.settings import edit_settings
-
-        base = load_config(preset="")  # edit config.toml itself, not the preset overlay
-        if edit_settings(ui.root, base, mics, outs, save_config):
-            try:
-                reload_config_in_place(cfg)
-            except Exception as exc:
-                ui.notify("Konfiguration", str(exc))
-
-    def login() -> None:
-        if not cfg.calendar.client_id.strip():
-            ui.notify("Keine Client-ID", f"Bitte calendar.client_id in {paths.config_file()} eintragen (siehe README).")
-            return
-
-        def worker() -> None:
-            try:
-                graph_auth(cfg).login_interactive()
-                me = me_provider.refresh()
-                ui.notify("Angemeldet", f"Angemeldet als {me.display if me else 'unbekannt'}.")
-            except Exception as exc:
-                ui.notify("Anmeldung fehlgeschlagen", str(exc))
-
-        threading.Thread(target=worker, name="login", daemon=True).start()
+    actions = AppActions(cfg, ui, controller, queue, profiles, me_provider, log_file)
+    ui.review_handler = actions.review
+    window = MainWindow(ui.root, actions)
+    ui.notify_listeners.append(window.notify)
+    actions.show_window_handler = window.show
 
     stop_event = threading.Event()
     hotkey: GlobalHotkey | None = None
@@ -277,30 +153,20 @@ def run_tray_app(cfg: Config | None = None) -> int:
         stop_event.set()
         if hotkey:
             hotkey.stop()
+        window.save_state()
         tray.stop()
         ui.root.quit()
 
-    retranscribe = frozenset({"transcribe", "identify", "render", "summarize"})
-    actions: dict[str, Any] = {
-        "toggle": controller.toggle,
-        "review_last": lambda: review(None),
-        "resummarize_last": lambda: with_last(frozenset({"summarize"})),
-        "retranscribe_last": lambda: with_last(retranscribe),
-        "handoff_last": lambda: handoff(None),
-        "reprocess_last": lambda: with_last(frozenset({"finalize", "transcribe", "diarize", "identify", "render", "summarize"})),
-        "open_folder": lambda: open_path(cfg.recordings_path()),
-        "cancel_processing": cancel_processing,
-        "profiles": lambda: dialogs.manage_profiles(ui.root, profiles),
-        "settings": settings,
-        "login": login,
-        "open_log": lambda: open_path(log_file),
+    actions.quit_handler = quit_app
+    tray_actions: dict[str, Any] = {
+        "show_window": window.show,
+        "toggle": actions.toggle,
+        "handoff_last": lambda: actions.handoff(None),
+        "cancel_processing": lambda: actions.cancel_processing(None),
+        "settings": actions.settings,
         "quit": quit_app,
     }
-    lang_items = retranscribe_language_items(cfg.transcription.language_candidates)
-    for _text, name in lang_items:
-        code = name.split(":", 1)[1]
-        actions[name] = lambda code=code: with_last(retranscribe, language=code)
-    tray = TrayIcon(actions, ui.post, retranscribe_languages=lang_items)
+    tray = TrayIcon(tray_actions, ui.post)
     ui.tray = tray
     tray.start()
 
@@ -330,7 +196,29 @@ def run_tray_app(cfg: Config | None = None) -> int:
         ui.root.after(2000, health)
 
     ui.root.after(2000, health)
-    ui.notify("CallRecorder bereit", f"Start/Stopp: {cfg.hotkey.toggle}")
+    if cfg.ui.start_minimized:
+        ui.notify("CallRecorder bereit", f"Fenster: Klick auf das Symbol. Start/Stopp: {cfg.hotkey.toggle}")
+    else:
+        ui.root.after(50, window.show)
     ui.mainloop()
     queue.stop()
     return 0
+
+
+def enable_dpi_awareness() -> None:
+    """Sharp text at 125-150 % scaling. Must run before the first Tk window exists.
+
+    Per-monitor v2 would need Tk to rescale on WM_DPICHANGED, which Tk 8.6 does not do; the
+    system-aware mode makes Windows scale the whole window bitmap only when it is moved to a
+    monitor with another scaling."""
+    if sys.platform != "win32":
+        return
+    import ctypes
+
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)  # type: ignore[attr-defined]  # PROCESS_SYSTEM_DPI_AWARE
+    except Exception:
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()  # type: ignore[attr-defined]
+        except Exception:
+            log.debug("DPI-Awareness nicht setzbar", exc_info=True)

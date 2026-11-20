@@ -442,3 +442,50 @@ def confirm_cloud_summary(root: tk.Misc, rec: Recording, me: Person) -> bool:
         return False
     record_later_confirmation(rec, later_confirmation(me.display or "Benutzer", "dialog", True))
     return True
+
+
+# ---------------------------------------------------------------------------
+# Re-transcription options (main window)
+# ---------------------------------------------------------------------------
+RETRANSCRIBE_LANGUAGES = (("auto", "Automatisch erkennen"), ("de", "Deutsch"), ("en", "Englisch"))
+CURRENT_SETTINGS = "(aktuelle Einstellungen)"
+
+
+def ask_retranscribe(root: tk.Misc, rec: Recording, presets: list[str]) -> tuple[str, str | None] | None:
+    """Language ("auto"/"de"/"en") and optional preset for a new transcript version, or None."""
+    win = tk.Toplevel(root)
+    win.title(f"Neu transkribieren – {rec.title()}")
+    win.resizable(False, False)
+    result: dict[str, tuple[str, str | None] | None] = {"v": None}
+    ttk.Label(win, text="Es entsteht eine neue Transkript-Version; die bisherige bleibt erhalten. Danach wird auch die "
+              "Zusammenfassung neu erstellt. Manuelle Sprecherzuordnungen bleiben gültig.",
+              wraplength=440).grid(row=0, column=0, columnspan=2, sticky="w", **PAD)
+    lang = tk.StringVar(value="auto")
+    box = ttk.LabelFrame(win, text="Sprache des Gesprächs")
+    box.grid(row=1, column=0, columnspan=2, sticky="we", padx=8, pady=4)
+    first: ttk.Radiobutton | None = None
+    for code, label in RETRANSCRIBE_LANGUAGES:
+        rb = ttk.Radiobutton(box, text=label, value=code, variable=lang)
+        rb.pack(anchor="w", padx=8, pady=2)
+        first = first or rb
+    ttk.Label(win, text="Preset (optional):").grid(row=2, column=0, sticky="w", **PAD)
+    preset = tk.StringVar(value=CURRENT_SETTINGS)
+    ttk.Combobox(win, textvariable=preset, values=[CURRENT_SETTINGS, *presets], state="readonly",
+                 width=30).grid(row=2, column=1, sticky="we", **PAD)
+    bar = ttk.Frame(win)
+    bar.grid(row=3, column=0, columnspan=2, sticky="e", **PAD)
+
+    def ok() -> None:
+        p = preset.get()
+        result["v"] = (lang.get(), None if p == CURRENT_SETTINGS else p)
+        win.destroy()
+
+    ttk.Button(bar, text="Neu transkribieren", command=ok).pack(side="right", padx=4)
+    ttk.Button(bar, text="Abbrechen", command=win.destroy).pack(side="right", padx=4)
+    win.bind("<Return>", lambda e: ok())
+    win.bind("<Escape>", lambda e: win.destroy())
+    _modal(win)
+    if first is not None:
+        first.focus_set()
+    root.wait_window(win)
+    return result["v"]

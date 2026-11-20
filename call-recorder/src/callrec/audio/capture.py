@@ -69,6 +69,13 @@ def downmix_int16(data: bytes, channels: int) -> np.ndarray:
     return (multi.sum(axis=1) // channels).astype(np.int16)
 
 
+def peak_level(mono: np.ndarray) -> float:
+    """Peak of an int16 block as 0..1 (cheap: one pass over a block that is written anyway)."""
+    if mono.size == 0:
+        return 0.0
+    return min(1.0, float(np.max(np.abs(mono.astype(np.int32)))) / 32768.0)
+
+
 @dataclass
 class TrackStats:
     frames: int = 0
@@ -96,6 +103,7 @@ class TrackWriter:
         self.writer = StreamingWavWriter(path, device.sample_rate, 1, checkpoint_interval_s)
         self.stats = TrackStats()
         self.last_data_t: float | None = None  # timestamp of the last chunk delivered by the device
+        self.level = 0.0  # peak of the last written chunk, 0..1 (for the level meter; read from the UI)
         self._queue: queue.Queue[tuple[bytes, float] | None] = queue.Queue()
         self._thread = threading.Thread(target=self._run, name=f"writer-{device.kind}", daemon=True)
         self._lock = threading.Lock()
@@ -124,6 +132,7 @@ class TrackWriter:
         n = int(mono.size)
         if n == 0:
             return
+        self.level = peak_level(mono)
         rate = self.device.sample_rate
         with self._lock:
             expected_start = (t - self.t0) - n / rate
@@ -217,6 +226,20 @@ class DualTrackRecorder:
             self.stop()
             raise
         log.info("Aufnahme gestartet: Mikrofon=%s, Loopback=%s", self.mic.name, self.loopback.name)
+
+    LEVEL_HOLD_S = 0.5
+
+    def levels(self) -> dict[str, float]:
+        """Current peak level per track (0..1); 0 when a track delivered nothing recently
+        (the loopback delivers no packets at all while nothing is played)."""
+        out = {"mic": 0.0, "remote": 0.0}
+        if self.t0 is None:
+            return out
+        now = self.clock()
+        for key, w in self._writers.items():
+            if w.last_data_t is not None and now - w.last_data_t <= self.LEVEL_HOLD_S:
+                out[key] = w.level
+        return out
 
     # A microphone delivers packets continuously (also during silence); the loopback
     # legitimately delivers nothing while nothing is played, so only the mic is watched.

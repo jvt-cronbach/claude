@@ -59,6 +59,26 @@ def select_current_event(
     return min(candidates, key=lambda e: _rank(e, now))
 
 
+def candidate_events(
+    events: Iterable[CalendarEvent],
+    now: datetime,
+    tolerance_before: timedelta = timedelta(minutes=10),
+    tolerance_after: timedelta = timedelta(minutes=10),
+) -> list[CalendarEvent]:
+    """All plausible current meetings, best first (the first is what select_current_event picks)."""
+    if now.tzinfo is None:
+        raise ValueError("now must be timezone-aware")
+    seen: set[str] = set()
+    out = []
+    for e in sorted((e for e in events if is_candidate(e, now, tolerance_before, tolerance_after)),
+                    key=lambda e: _rank(e, now)):
+        if e.id in seen:
+            continue
+        seen.add(e.id)
+        out.append(e)
+    return out
+
+
 def nearest_event(events: Iterable[CalendarEvent], now: datetime) -> CalendarEvent | None:
     """Fallback for .ics imports: the event whose start is closest to now."""
     usable = [e for e in events if not e.is_cancelled]

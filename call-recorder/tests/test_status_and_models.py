@@ -336,15 +336,10 @@ def test_verify_snapshot_and_failed_download_is_not_fertig(tmp_path: Path, capsy
 
 
 # -- tray / queue ------------------------------------------------------------------------------
-def test_tray_language_items_and_queue_passes_language(tmp_path: Path, profiles):  # noqa: F811
+def test_queue_passes_language(tmp_path: Path, profiles):  # noqa: F811
     import threading
 
     from callrec.jobs import ProcessingQueue
-    from callrec.ui.app import retranscribe_language_items
-
-    items = retranscribe_language_items(["de", "en"])
-    assert items == [("Deutsch", "retranscribe_lang:de"), ("Englisch", "retranscribe_lang:en"),
-                     ("Sprache automatisch erkennen", "retranscribe_lang:auto")]
 
     rec = recording_with_voices(tmp_path / "r", 330, 550)
     seen: dict[str, Any] = {}

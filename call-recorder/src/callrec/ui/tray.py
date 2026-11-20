@@ -1,4 +1,8 @@
-"""System tray icon (pystray). Menu callbacks run on pystray's thread and are posted to Tk."""
+"""System tray icon (pystray). Menu callbacks run on pystray's thread and are posted to Tk.
+
+pystray runs its own message loop on a separate thread (``run_detached``); nothing here touches
+Tk directly - every menu action is handed to the Tk thread with ``post``.
+"""
 
 from __future__ import annotations
 
@@ -31,9 +35,8 @@ def make_icon(color: str, recording: bool = False, size: int = 64) -> Image.Imag
 
 class TrayIcon:
     READY_TIMEOUT_S = 5.0
-    def __init__(self, actions: dict[str, Callable[[], None]], post: Callable[[Callable[[], None]], None],
-                 retranscribe_languages: list[tuple[str, str]] | None = None) -> None:
-        """``retranscribe_languages``: (menu text, action name) for "neu transkribieren in Sprache …"."""
+
+    def __init__(self, actions: dict[str, Callable[[], None]], post: Callable[[Callable[[], None]], None]) -> None:
         import pystray
 
         self._pystray = pystray
@@ -49,32 +52,20 @@ class TrayIcon:
             return lambda icon, item: self.post(self.actions[name])
 
         item = pystray.MenuItem
-        self.icon = pystray.Icon(
-            "CallRecorder",
-            make_icon(IDLE),
-            "CallRecorder – bereit",
-            menu=pystray.Menu(
-                item(lambda i: "Aufnahme beenden" if self.recording else "Aufnahme starten …", act("toggle"), default=False),
-                pystray.Menu.SEPARATOR,
-                item("Letzte Aufnahme: Sprecher zuordnen …", act("review_last")),
-                item("Letzte Aufnahme: Zusammenfassung neu erstellen", act("resummarize_last")),
-                item("Letzte Aufnahme: mit aktuellen Einstellungen neu transkribieren", act("retranscribe_last")),
-                *([item("Letzte Aufnahme: neu transkribieren in Sprache", pystray.Menu(
-                    *[item(text, act(name)) for text, name in retranscribe_languages]))]
-                  if retranscribe_languages else []),
-                item("Letzte Aufnahme: Zusammenfassung an SharePoint übergeben \u2026", act("handoff_last")),
-                item("Letzte Aufnahme: komplett neu verarbeiten", act("reprocess_last")),
-                item("Laufende Verarbeitung abbrechen", act("cancel_processing")),
-                item("Aufnahmeordner öffnen", act("open_folder")),
-                pystray.Menu.SEPARATOR,
-                item("Stimmprofile verwalten …", act("profiles")),
-                item("Einstellungen …", act("settings")),
-                item("Bei Microsoft anmelden …", act("login")),
-                item("Protokolldatei öffnen", act("open_log")),
-                pystray.Menu.SEPARATOR,
-                item("Beenden", act("quit")),
-            ),
-        )
+        # Short menu now that the main window exists. Left click (and double click) on the icon
+        # runs the default item = open the main window.
+        entries = [
+            item("CallRecorder öffnen", act("show_window"), default=True),
+            item(lambda i: "Aufnahme beenden" if self.recording else "Aufnahme starten …", act("toggle")),
+            pystray.Menu.SEPARATOR,
+            item("Letzte Aufnahme: Zusammenfassung an SharePoint übergeben \u2026", act("handoff_last")),
+            item("Laufende Verarbeitung abbrechen", act("cancel_processing"),
+                 visible=lambda i: bool(self.status) and not self.recording),
+            pystray.Menu.SEPARATOR,
+            item("Einstellungen …", act("settings")),
+            item("Beenden", act("quit")),
+        ]
+        self.icon = pystray.Icon("CallRecorder", make_icon(IDLE), "CallRecorder – bereit", menu=pystray.Menu(*entries))
 
     def start(self) -> None:
         # On Windows run_detached() starts pystray's own message-loop thread; the setup

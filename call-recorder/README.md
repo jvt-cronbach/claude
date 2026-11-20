@@ -1,6 +1,6 @@
 # CallRecorder – lokale Aufnahme, Transkription und Zusammenfassung von Teams-Gesprächen
 
-CallRecorder ist ein kleines Windows-11-Programm im Infobereich (Tray). Es nimmt Gespräche
+CallRecorder ist ein Windows-11-Programm mit Hauptfenster und Symbol im Infobereich (Tray). Es nimmt Gespräche
 – typischerweise Microsoft-Teams-Anrufe über ein Headset – **mit Einwilligung aller
 Teilnehmenden** auf, ohne die Aufzeichnungsfunktion von Teams zu nutzen, und erstellt
 anschließend **lokal** (die Zusammenfassung wahlweise auch mit Claude über die Anthropic-API,
@@ -33,6 +33,7 @@ geschieht nie automatisch.
 6. [Sprachmodell für die Zusammenfassung](#6-sprachmodell-für-die-zusammenfassung)
    (6a. [Claude über die Anthropic-API](#6a-claude-über-die-anthropic-api-cloud))
 7. [Erster Start und Bedienung](#7-erster-start-und-bedienung)
+   (7a. [Das Hauptfenster](#7a-das-hauptfenster))
 8. [Sprecher zuordnen und Stimmprofile](#8-sprecher-zuordnen-und-stimmprofile)
 9. [Transkript schrittweise verbessern](#9-transkript-schrittweise-verbessern)
 10. [Zusammenfassung an SharePoint übergeben](#10-zusammenfassung-an-sharepoint-übergeben)
@@ -80,8 +81,8 @@ Diese Profile
   Windows-Konto auf diesem Rechner kann sie lesen),
 - werden nur angelegt, wenn Sie eine Stimme ausdrücklich einer Person zuordnen
   (Häkchen „Stimme merken“),
-- lassen sich jederzeit einzeln oder komplett löschen (Tray-Menü „Stimmprofile verwalten“
-  oder `callrec profiles delete "Name"`).
+- lassen sich jederzeit einzeln oder komplett löschen (Hauptfenster: *Extras → Stimmprofile
+  verwalten …* oder `callrec profiles delete "Name"`).
 
 Holen Sie für das Anlegen eines Stimmprofils am besten eine gesonderte Einwilligung der
 Person ein. Zusätzlich liegen in jedem Aufnahmeordner unter `data\speaker_embeddings.npz`
@@ -92,7 +93,8 @@ die Embeddings der Sprecher dieses Gesprächs (für die spätere Zuordnung); lö
 
 ## 2. So funktioniert es
 
-1. **Start** per Tastenkürzel (Standard **Strg+Alt+Umschalt+R**) oder Tray-Menü.
+1. **Start** im Hauptfenster („Aufnahme starten …“), per Tastenkürzel (Standard
+   **Strg+Alt+Umschalt+R**) oder im Tray-Menü.
    Wenn Teams das Mikrofon öffnet oder ein Online-Termin beginnt, fragt CallRecorder
    zusätzlich nach, ob aufgenommen werden soll – es startet **nie** von selbst.
 2. **Kalender:** Der aktuell laufende Termin wird aus Outlook (Microsoft Graph) gesucht.
@@ -106,7 +108,7 @@ die Embeddings der Sprecher dieses Gesprächs (für die spätere Zuordnung); lö
    - ein Loopback-Mitschnitt des Ausgabegeräts (Headset) = die Gegenseite.
    Beide Spuren werden fortlaufend auf die Festplatte geschrieben (absturzsicher; bei einem
    Absturz geht höchstens die letzte ~2 Sekunden verloren).
-5. **Nach dem Stopp** (im Hintergrund, Fortschritt im Tray-Tooltip):
+5. **Nach dem Stopp** (im Hintergrund, Fortschritt im Hauptfenster und im Tray-Tooltip):
    FLAC/Opus erzeugen → Transkription mit faster-whisper (NVIDIA-GPU, sonst direkt CPU) →
    Sprechertrennung der Gegenseite (sherpa-onnx) → Abgleich mit gespeicherten Stimmprofilen →
    `transcript.md` → Zusammenfassung lokal über Ollama/OpenAI-kompatiblen Server **oder** – nur
@@ -227,7 +229,8 @@ nur lesend). Es wird **kein** geheimer Schlüssel benötigt („öffentlicher Cl
    .venv\Scripts\python -m callrec event     # zeigt, welcher Termin jetzt gewählt würde
    ```
 
-   Alternativ Tray-Menü → **Bei Microsoft anmelden …**
+   Einfacher: Anwendungs-ID und Verzeichnis-ID im Hauptfenster unter *Extras → Einstellungen →
+   Microsoft-Konto* eintragen, dann im Reiter **Einrichtung** auf **„Anmelden …“** klicken.
 
 ### Optional: Berechtigung für den direkten SharePoint-Upload
 
@@ -320,8 +323,8 @@ Alternative – mit den genannten Folgen für den Datenschutz.
    ```
 
 Läuft der Server nicht oder fehlt das Modell, wird die Zusammenfassung **übersprungen** (mit
-Hinweis im Tray und Vermerk in `meta.json`). Später nachholen: Tray-Menü
-**„Letzte Aufnahme: Zusammenfassung neu erstellen“** oder `callrec summarize <Ordner>`.
+Hinweis im Hauptfenster und Vermerk in `meta.json`). Später nachholen: im Hauptfenster die Aufnahme
+wählen → **„Zusammenfassung neu erstellen“** oder `callrec summarize <Ordner>`.
 
 **Nur lokal (Ollama/OpenAI-kompatibel):** CallRecorder akzeptiert für diese beiden Anbieter nur Adressen auf diesem Rechner (`localhost`,
 `127.x.x.x`, `::1`) und ignoriert dafür Proxy-Einstellungen. Weiterleitungen (HTTP 3xx)
@@ -335,7 +338,7 @@ Gesprächsinhalte diesen Rechner**; das Protokoll und die Einstellungen weisen d
 **Anweisungen anpassen:** Die Texte, die das Modell bekommt, liegen als bearbeitbare Dateien in
 `%APPDATA%\CallRecorder\prompts\` (siehe Abschnitt 9).
 
-**Fortschritt:** Während das Modell arbeitet, zeigen Tray-Tooltip und Konsole die verstrichene
+**Fortschritt:** Während das Modell arbeitet, zeigen Hauptfenster, Tray-Tooltip und Konsole die verstrichene
 Zeit („Protokoll: warte auf ollama (gemma3:12b) – 95 s“), bei Claude zusätzlich die bereits
 empfangenen Zeichen.
 
@@ -391,17 +394,22 @@ empfangenen Zeichen.
    trotzdem fertig**, die Aufnahme gilt nicht als fehlgeschlagen, und die Meldung nennt, wie die
    Zusammenfassung später nachgeholt wird. Sehr lange Transkripte werden automatisch in Teile zerlegt
    (`anthropic_max_chunk_chars`). Fehlermeldungen (Schlüssel ungültig, kein Guthaben,
-   Ausgabenlimit, keine Verbindung) erscheinen auf Deutsch im Tray und in `meta.json`.
+   Ausgabenlimit, keine Verbindung) erscheinen auf Deutsch im Hauptfenster (mit nächstem Schritt), im
+   Tray und in `meta.json`.
 6. **Ältere Aufnahmen** (Einwilligung ohne Anthropic-Hinweis) werden erst nach einer gesonderten
-   Bestätigung übertragen: Tray „Zusammenfassung neu erstellen“ fragt nach, auf der Konsole
+   Bestätigung übertragen: „Zusammenfassung neu erstellen“ im Hauptfenster fragt nach, auf der Konsole
    `callrec summarize <Ordner> --confirm-anthropic`.
 
 ---
 
 ## 7. Erster Start und Bedienung
 
-Start über **Startmenü → CallRecorder**. Das Symbol erscheint im Infobereich (ggf. über
-„^“ einblenden und in die Taskleiste ziehen).
+Start über **Startmenü → CallRecorder**. Es öffnet sich das **Hauptfenster** (Abschnitt 7a); das
+Symbol erscheint zusätzlich im Infobereich (ggf. über „^“ einblenden und in die Taskleiste ziehen).
+**Schließen des Fensters beendet CallRecorder nicht** – es läuft im Infobereich weiter (Aufnahme per
+Tastenkürzel, Erinnerungen, Verarbeitung). Ein Klick auf das Symbol öffnet das Fenster wieder.
+Wer CallRecorder lieber nur im Infobereich starten möchte: *Einstellungen → Allgemein → Beim Start
+nur im Infobereich* (`[ui] start_minimized = true`).
 
 | Symbol | Bedeutung |
 |---|---|
@@ -412,19 +420,13 @@ Start über **Startmenü → CallRecorder**. Das Symbol erscheint im Infobereich
 **Tastenkürzel:** **Strg+Alt+Umschalt+R** startet bzw. beendet die Aufnahme
 (änderbar unter *Einstellungen* oder `[hotkey] toggle`).
 
-**Tray-Menü:**
+**Tray-Menü** (kurz gehalten – alles Weitere im Hauptfenster):
 
+- *CallRecorder öffnen* (auch: Klick auf das Symbol)
 - *Aufnahme starten … / Aufnahme beenden*
-- *Letzte Aufnahme: Sprecher zuordnen …*
-- *Letzte Aufnahme: Zusammenfassung neu erstellen*
-- *Letzte Aufnahme: neu transkribieren in Sprache* → *Deutsch* / *Englisch* / *Sprache automatisch erkennen*
-  (ein Klick; erzeugt eine neue Transkript-Version, Abschnitt 9)
-- *Letzte Aufnahme: komplett neu verarbeiten*
-- *Laufende Verarbeitung abbrechen* (Transkription bzw. Modell-Download)
-- *Aufnahmeordner öffnen*
-- *Stimmprofile verwalten …*
-- *Einstellungen …* (Mikrofon, Ausgabegerät, Name, Ordner, Sprache, Modelle, Tastenkürzel)
-- *Bei Microsoft anmelden …*, *Protokolldatei öffnen*, *Beenden*
+- *Letzte Aufnahme: Zusammenfassung an SharePoint übergeben …*
+- *Laufende Verarbeitung abbrechen* (nur sichtbar, während etwas läuft)
+- *Einstellungen …*, *Beenden*
 
 **Aufnahmedialog:** Titel und Teilnehmende sind aus dem Kalender vorausgefüllt und können
 geändert werden (eine Person pro Zeile, optional `Name <mail@firma.de>`). Mit
@@ -439,6 +441,87 @@ Einwilligungsabfrage; nach „Nein“ ist 10 Minuten Ruhe.
 
 **Absturz / Stromausfall:** Beim nächsten Start werden unterbrochene Aufnahmen automatisch
 repariert und verarbeitet (oder `callrec repair <Ordner>`).
+
+### 7a. Das Hauptfenster
+
+Das Fenster hat oben den Bereich **Aufnahme**, in der Mitte die Reiter **Aufnahmen** und
+**Einrichtung** und unten den Bereich **Verarbeitung**.
+
+**Aufnahme (oben)**
+
+- Große Schaltfläche **„● Aufnahme starten …“** bzw. **„■ Aufnahme beenden“**. Während der Aufnahme
+  stehen daneben „Aufnahme läuft“, die Laufzeit, der Titel und zwei Pegelanzeigen (*Ich* =
+  Mikrofon, *Gegenseite* = Headset-Wiedergabe). Bleibt die Anzeige *Ich* beim Sprechen leer, nimmt
+  das Mikrofon nichts auf.
+- **Termin:** die gerade laufenden Termine aus dem Outlook-Kalender, der wahrscheinlichste ist
+  vorausgewählt. Laufen mehrere, lässt sich hier ein anderer wählen. **„Ohne Termin …“** startet
+  mit leerem Titel. Ohne Microsoft-Anmeldung gibt es nur diesen Eintrag.
+- Gestartet wird **immer über die Einwilligungsabfrage** (Abschnitt 1): Dort stehen Titel und
+  Teilnehmende des gewählten Termins und lassen sich ändern oder von Hand eintippen.
+
+**Reiter „Aufnahmen“**
+
+- Links die Liste aller Aufnahmen, neueste zuerst: Datum, Titel, Dauer, Sprache (bei schmaler Liste
+  ausgeblendet, sie stehen auch rechts) und je Schritt der
+  Stand – *Transkript*, *Sprecher* (✓ = alle zugeordnet, „2 offen“), *Zusammenf.* (✓, „–“ = fehlt,
+  „Fehler“), *SharePoint* (✓ mit Datum, „geändert“ = seit der Übergabe neu erstellt, „–“ = noch
+  nicht übergeben). „…“ = wird gerade verarbeitet.
+- **Suchen** findet Titel, Ordnernamen und Teilnehmende. Der **Filter** daneben zeigt z. B. nur
+  Aufnahmen „Ohne Zusammenfassung“, „Sprecher noch zuordnen“, „Noch nicht an SharePoint übergeben“,
+  „Seit der Übergabe geändert“ oder „Mit Fehlern“.
+- Rechts die gewählte Aufnahme: Datum, Dauer, Sprache, Teilnehmende, Hinweise (z. B. warum eine
+  Zusammenfassung fehlt) und **wann und wohin sie zuletzt an SharePoint übergeben wurde** und ob sich
+  die Zusammenfassung seitdem geändert hat.
+- Darunter **Zusammenfassung** und **Transkript** lesbar formatiert (Überschriften, Listen, Tabellen).
+  Gibt es mehrere Versionen (Abschnitt 9), wählt **„Version“** eine ältere aus.
+- **„Groß anzeigen“** öffnet Zusammenfassung bzw. Transkript in einem eigenen, großen Fenster (praktisch
+  auf kleinen Bildschirmen; **Esc** schließt es).
+- Schaltflächen: **An SharePoint übergeben …** (übergibt nur die Zusammenfassung, mit Vorschau und
+  Rückfrage wie bisher; steht „Erneut an SharePoint übergeben …“ da, hat sich die Zusammenfassung seit
+  der letzten Übergabe geändert), **Sprecher zuordnen …**, **Zusammenfassung neu erstellen**,
+  **Anhören** (Audio im Standard-Player). Unter **„Weitere …“**: **Ordner öffnen**, **Neu transkribieren …** (Sprache automatisch /
+  Deutsch / Englisch, optional ein Preset; neue Version, die alte bleibt), **Komplett neu
+  verarbeiten …**, **Umbenennen …** und **Löschen …**.
+- **Umbenennen** ändert nur den angezeigten Titel. Der Ordnername bleibt, weil SharePoint und der
+  Assistent die Aufnahme daran wiedererkennen (`recording_id`).
+- **Löschen** verschiebt den ganzen Aufnahmeordner (Audio, Transkript, Zusammenfassung,
+  Stimm-Embeddings) nach einer Rückfrage in den **Windows-Papierkorb**. Hat das Laufwerk keinen
+  Papierkorb, fragt Windows vorher, ob endgültig gelöscht werden soll. Klappt der Papierkorb nicht,
+  bietet CallRecorder ausdrücklich das **endgültige** Löschen an. Bereits an SharePoint übergebene
+  Zusammenfassungen bleiben in SharePoint. Während eine Aufnahme läuft oder verarbeitet wird, sind
+  Löschen und Umbenennen gesperrt.
+- Tastatur: **Strg+F** springt in die Suche, **Pfeil runter** in die Liste, **Eingabe** in den
+  Text, **Entf** löscht (mit Rückfrage), **F5** aktualisiert, **Strg+Tab** wechselt den Reiter,
+  **Alt** bzw. **F10** öffnet das Menü, **Esc** schließt das Fenster in den Infobereich.
+
+**Reiter „Einrichtung“** – was eingerichtet ist und was fehlt, je mit einer Schaltfläche zur Lösung:
+
+| Punkt | Geprüft wird | Schaltfläche |
+|---|---|---|
+| Audiogeräte | Mikrofon und Ausgabegerät gefunden (nicht während einer Aufnahme) | *Geräte einstellen …* |
+| Whisper-Modell | gewähltes Modell vollständig heruntergeladen | *Jetzt herunterladen* (wie `callrec models --whisper`) |
+| Zusammenfassung | Anbieter eingerichtet; **Verbindung testen** (lokal automatisch, Claude nur auf Klick) | *Verbindung testen*, *Einstellungen …* |
+| Microsoft-Anmeldung (optional) | Client-ID eingetragen? angemeldet? | *Client-ID eintragen …*, *Anmelden …* |
+| SharePoint-Übergabe (optional) | Übergabeordner eingestellt, erreichbar, von OneDrive synchronisiert | *Einstellungen …* |
+
+Microsoft-Anmeldung und SharePoint-Ordner sind **optional**. Ohne sie funktioniert alles andere:
+Titel und Teilnehmende tippen Sie beim Start ein, die Zusammenfassung bleibt lokal, bis die Übergabe
+eingerichtet ist. Fehlt ein Pflichtpunkt, steht am Reiter „Einrichtung (!)“.
+
+**Verarbeitung (unten)** – die laufende Verarbeitung mit Schritt, Fortschritt und Aufnahme, die Zahl
+der wartenden und **„Abbrechen“**. Eine Transkription oder ein Modell-Download wird sofort beendet;
+andere Schritte (z. B. eine Zusammenfassung, die gerade bei Claude läuft) werden noch abgeschlossen,
+danach stoppt die Verarbeitung. Darunter erscheinen Meldungen in einfachem Deutsch mit dem
+**nächsten Schritt** und einer passenden Schaltfläche, z. B. bei einer Zeitüberschreitung zu Claude
+der VPN-Hinweis und „Zusammenfassung neu erstellen“.
+
+**Menü:** *Datei* (Aufnahmeordner, Protokolldatei, Beenden), *Extras* (Einstellungen, Stimmprofile
+verwalten, Bei Microsoft anmelden, Einrichtung prüfen), *Hilfe* (diese Anleitung).
+
+Fenstergröße, -position, Listenbreite, Reiter und Filter werden gemerkt
+(`%LOCALAPPDATA%\CallRecorder\window.json`); war das Fenster auf einem größeren oder inzwischen
+abgezogenen Bildschirm, wird es auf den sichtbaren Bereich verkleinert. Das Fenster passt auf
+1366×768 und ist für 125–150 % Skalierung ausgelegt (scharfe Schrift durch DPI-Awareness).
 
 ---
 
@@ -461,7 +544,7 @@ kleinen Bonus (`invitee_bonus`). Bei sicherer Erkennung (≥ `auto_update_thresh
 Profil automatisch nachgeschärft. Ihre eigene Stimme wird nie einem Sprecher der Gegenseite
 zugeordnet.
 
-Profile ansehen/löschen: Tray-Menü **„Stimmprofile verwalten …“** oder
+Profile ansehen/löschen: Hauptfenster *Extras → Stimmprofile verwalten …* oder
 
 ```powershell
 .venv\Scripts\python -m callrec profiles list
@@ -533,7 +616,7 @@ Tray). Wer immer Deutsch will, stellt danach `language = "de"` wieder ein – je
 `language_candidates` in der Datei gilt das als bewusste Wahl. Andere Werte (`"en"` …) werden nie
 umgestellt. Ältere Presets mit `language = "de"` schalten die Erkennung ebenfalls nicht mehr ab.
 
-**Falsche Sprache erwischt?** Tray *Letzte Aufnahme: neu transkribieren in Sprache → Englisch*
+**Falsche Sprache erwischt?** Hauptfenster: Aufnahme wählen → *Weitere … → Neu transkribieren …* → Englisch
 bzw. `callrec retranscribe <Ordner> --language en` (oder `--language auto` = neu erkennen). Es
 entsteht eine neue Version, die alte bleibt.
 
@@ -584,7 +667,7 @@ Claude/Anthropic samt Freigabe). Aktivieren unter *Allgemein → Aktives Preset*
 `callrec retranscribe <Ordner> --preset Genau`.
 
 **Vorher/Nachher vergleichen:** Wird eine Aufnahme mit geänderten Einstellungen neu verarbeitet
-(Tray: „Letzte Aufnahme: mit aktuellen Einstellungen neu transkribieren“ oder
+(Hauptfenster: *Weitere … → Neu transkribieren …* oder
 `callrec retranscribe <Ordner>`), entsteht eine **neue Version**: `transcript.v2.md`,
 `summary.v2.md` … Die bisherigen Versionen bleiben erhalten, `transcript.md`/`summary.md`
 zeigen immer die neueste. In `meta.json` → `versions` steht zu jeder Version, mit welchen
@@ -638,8 +721,12 @@ die die Vorschau zeigt – hat sich die Zusammenfassung inzwischen geändert (z.
 Neuerstellung fertig wurde), bricht die Übergabe ab. Achtung: Die Zusammenfassung ist ein Text
 des Sprachmodells und kann einzelne Aussagen wörtlich zitieren – deshalb die Vorschau lesen.
 
-**Auslösen:** Tray-Menü **„Letzte Aufnahme: Zusammenfassung an SharePoint übergeben …“**,
-Schaltfläche im Sprecher-Zuordnungsdialog oder `callrec handoff <Ordner>`. Es erscheint
+**Auslösen:** im Hauptfenster die Aufnahme wählen → **„An SharePoint übergeben …“**,
+Tray-Menü **„Letzte Aufnahme: Zusammenfassung an SharePoint übergeben …“**, Schaltfläche im
+Sprecher-Zuordnungsdialog oder `callrec handoff <Ordner>`. Das Hauptfenster zeigt je Aufnahme, wann und
+wohin zuletzt übergeben wurde und ob sich die Zusammenfassung seitdem geändert hat (Spalte
+*SharePoint* „geändert“, Filter „Seit der Übergabe geändert“). Ist noch kein Übergabeordner
+eingestellt, bietet CallRecorder an, die Einstellungen zu öffnen. Es erscheint
 immer eine Vorschau der Datei; erst „An SharePoint übergeben“ (bzw. Eingabe von `ja`) startet
 die Übertragung. Wurde die Zusammenfassung neu erstellt, kann sie erneut übergeben werden –
 die Datei in SharePoint wird dann ersetzt. Jede Übergabe (Zeit, Ziel, Version, Prüfsumme)
@@ -693,7 +780,7 @@ Umgebung):
 
 | Befehl | Zweck |
 |---|---|
-| `tray` (oder ohne Argument) | Tray-Anwendung starten |
+| `tray` (oder ohne Argument) | Hauptfenster und Tray-Symbol starten |
 | `record [--title T] [--participants "A <a@x>; B"] [--ics F] [--no-calendar] [--no-process]` | Aufnahme in der Konsole (Einwilligung durch Eintippen von `ja` im Konsolenfenster; umgeleitete Eingabe wird nicht akzeptiert) |
 | `process <Ordner> [--steps …] [--model M] [--device cuda\|cpu] [--language de\|en\|auto] [--preset P]` | (Neu-)Verarbeitung; Schritte: `finalize,transcribe,diarize,identify,render,summarize` oder Presets `all`, `retranscribe`, `rediarize`, `resummarize`, `render` |
 | `retranscribe <Ordner> [--preset P] [--language en\|de\|auto]` | mit aktuellen Einstellungen neu transkribieren (neue Version, alte bleibt); `--language` erzwingt die Sprache für diesen Lauf (`auto` = neu erkennen) |
@@ -716,7 +803,7 @@ Umgebung):
 | `models [download] [--whisper] [--model M]` | Modelle vorab laden; Whisper mit Fortschritt, Abbruch mit Strg+C, erneuter Aufruf setzt fort. „Fertig.“ erscheint nur, wenn das Modell danach vollständig und offline ladbar ist – sonst Fehlermeldung und Exit-Code ≠ 0 |
 | `models list` | installierte Whisper-Modelle mit Größe, Vollständigkeit und Resten abgebrochener Downloads; `*` = wird verwendet |
 | `models remove <Name> [--yes]` | ein Whisper-Modell löschen (z. B. `large-v3`, wenn nur noch `large-v3-turbo` genutzt wird) |
-| `list` | Aufnahmen und Status |
+| `list` | Aufnahmen mit Stand je Schritt (wie die Liste im Hauptfenster) |
 | `config path \| check \| files` | Konfigurationsdatei anzeigen/prüfen; `files` legt Glossar, Korrekturliste und Vorlagen an |
 
 ---
@@ -808,7 +895,7 @@ KI-Anbieter übertragen; Transkripte nur im zuvor genannten Fall.
 
 ## 15. Fehlerbehebung
 
-Zuerst ins Protokoll schauen: Tray-Menü **„Protokolldatei öffnen“**. Für die Transkription
+Zuerst ins Protokoll schauen: Hauptfenster *Datei → Protokolldatei öffnen*. Für die Transkription
 gibt es zusätzlich `data\asr_mic.log` / `data\asr_remote.log` im Aufnahmeordner.
 
 **Gegenseite ist stumm / falsches Gerät.** CallRecorder schneidet das Ausgabegerät mit, auf
@@ -837,7 +924,7 @@ und Konsole zeigen „Modell wird heruntergeladen: … MB von … GB (… %)“,
 geladen“. Meldet die Download-Bibliothek (Xet) keinen Byte-Fortschritt, steht dort ehrlich
 „Modell wird heruntergeladen … 3:20 min, bisher 900 MB auf der Festplatte (genauer Fortschritt
 nicht verfügbar)“ – gemessen am Modellordner und am Xet-Zwischenspeicher. Nach dem Download wird
-das Modell offline geprüft; nur dann erscheint „Modell vollständig heruntergeladen und geprüft“. Vorab laden: `callrec models --whisper` (Abbruch mit Strg+C, im Tray „Laufende
+das Modell offline geprüft; nur dann erscheint „Modell vollständig heruntergeladen und geprüft“. Vorab laden: `callrec models --whisper` (Abbruch mit Strg+C, im Hauptfenster „Abbrechen“, im Tray „Laufende
 Verarbeitung abbrechen“). Ein erneuter Start lädt nur fehlende Dateien; eine abgebrochene große
 Datei beginnt neu, wobei der Xet-Zwischenspeicher von Hugging Face bereits geladene Teile
 wiederverwenden kann (`%USERPROFILE%\.cache\huggingface\xet`). Die eigentliche Modelldatei
@@ -849,8 +936,8 @@ abgebrochener Downloads, `callrec models remove large-v3` löscht eines; ebenso 
 Transkription → Installierte Whisper-Modelle*.
 
 **Transkript in der falschen Sprache / Wiederholungen** („mit Ihnen, mit Ihnen …“): Im Transkriptkopf
-stehen erkannte Sprache und ggf. eine Warnung. Neu transkribieren: Tray *Letzte Aufnahme: neu
-transkribieren in Sprache → Englisch* bzw. `callrec retranscribe <Ordner> --language en`. Steht in der
+stehen erkannte Sprache und ggf. eine Warnung. Neu transkribieren: Hauptfenster *Weitere … →
+Neu transkribieren … → Englisch* bzw. `callrec retranscribe <Ordner> --language en`. Steht in der
 Konfiguration `language = "de"`, wird immer Deutsch erzwungen – für die automatische Erkennung
 `"auto"` eintragen.
 
@@ -865,7 +952,7 @@ einem neuen Schritt oder geänderten Prozenten, höchstens alle 30 s.
 **Umlaute im Protokoll falsch.** Seit dieser Version ist `callrec.log` UTF-8 mit BOM; eine ältere
 Datei ohne BOM wird beim Start einmalig zu `callrec.log.1` rotiert.
 
-**Zusammenfassung mit Claude fehlt.** Meldung in Tray/`meta.json` lesen: Schlüssel ungültig
+**Zusammenfassung mit Claude fehlt.** Meldung im Hauptfenster (Verarbeitung) bzw. `meta.json` lesen: Schlüssel ungültig
 → neu eintragen; kein Guthaben / Ausgabenlimit → in der Anthropic-Konsole aufladen bzw. Limit
 erhöhen; keine Verbindung → Internet/Proxy/Firewall (`api.anthropic.com:443`).
 
@@ -968,7 +1055,8 @@ Aufbau (`src/callrec/`):
 | `handoff.py` | Übergabe **nur** der Zusammenfassung (Ordner oder Graph) |
 | `pipeline.py`, `jobs.py` | Verarbeitungsschritte, Hintergrund-Warteschlange |
 | `controller.py` | Ablaufsteuerung der App (UI-unabhängig) |
-| `ui/` | Tk-Dialoge (inkl. Einstellungen mit Reitern, Übergabe-Vorschau), Overlay, pystray-Tray, App-Verdrahtung |
+| `library.py`, `setupcheck.py`, `hints.py` | Aufnahmeliste mit Stand je Schritt (zwischengespeichert), Umbenennen/Löschen; Einrichtungs-Checkliste; Fehlertexte → nächster Schritt (alles ohne Tk, getestet) |
+| `ui/` | Hauptfenster (`mainwindow.py`, Hilfsfunktionen ohne Tk in `viewmodel.py`), gemeinsame Aktionen für Fenster und Tray (`actions.py`), Tk-Dialoge (inkl. Einstellungen mit Reitern, Übergabe-Vorschau), Overlay, pystray-Tray, App-Verdrahtung |
 | `detect.py`, `hotkey.py` | Erinnerungslogik, globales Tastenkürzel (RegisterHotKey) |
 
 Tests (laufen auch unter Linux/macOS; Windows-spezifisches ist gekapselt):
