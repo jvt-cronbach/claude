@@ -1,0 +1,396 @@
+"""Speaker identification restricted to the participants, profile provenance, own-voice handling."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+from callrec.config import Config, apply_preset, load_config
+from callrec.models import AsrResult, AsrSegment, Person, SpeakerInfo, SpeakerTurn, Word
+from callrec.review import (
+    SELF_CHOICE,
+    Assignment,
+    apply_assignments,
+    name_choices,
+    parse_choice,
+    rebuild_profile,
+    row_choices,
+    self_overview,
+    set_participants,
+    speaker_overview,
+    suggestion_label,
+)
+from callrec.speakers import names, threads, trackcheck
+from callrec.speakers.assign import assign_remote
+from callrec.speakers.diarize import clean_intervals, speech_seconds
+from callrec.speakers.profiles import PlainFilePersistence, ProfileStore
+from tests.conftest import make_recording
+from tests.test_pipeline import make_pipeline, recording_with_voices, short_cfg
+
+DIM = 16
+
+
+def onehot(i: int, noise: float = 0.0, seed: int = 0) -> np.ndarray:
+    v = np.full(DIM, 0.01, dtype=np.float32)
+    v[i] = 1.0
+    if noise:
+        v = v + np.random.default_rng(seed).normal(scale=noise, size=DIM).astype(np.float32)
+    return v / np.linalg.norm(v)
+
+
+@pytest.fixture
+def store(tmp_path: Path) -> ProfileStore:
+    return ProfileStore(PlainFilePersistence(tmp_path / "vp.json"))
+
+
+# -- names ---------------------------------------------------------------------------------------
+@pytest.mark.parametrize("a,b", [
+    (("Müller, Anna", ""), ("Anna Mueller", "")),
+    (("Dr. Anna Müller (extern)", ""), ("anna müller", "")),
+    (("anna.mueller@firma.de", "anna.mueller@firma.de"), ("Anna Müller", "")),
+    (("Hans-Peter Schmidt", ""), ("Schmidt, Hans Peter", "")),
+    (("Prof. Dr.-Ing. José García", ""), ("Jose Garcia", "")),
+    (("Anna Müller", "ANNA@firma.de"), ("A. Müller", "anna@firma.de")),
+])
+def test_same_person_variants(a, b):
+    assert names.same_person(a[0], a[1], b[0], b[1])
+
+
+@pytest.mark.parametrize("a,b", [
+    (("Anna Müller", "anna@firma.de"), ("Anna Müller", "anna.mueller@extern.de")),  # addresses decide
+    (("Anna Müller", ""), ("Anna Meier", "")),
+    (("Anna", ""), ("Anna Müller", "")),
+    (("", ""), ("", "")),
+])
+def test_different_people(a, b):
+    assert not names.same_person(a[0], a[1], b[0], b[1])
+
+
+def test_first_name():
+    assert names.first_name("van Treeck, Joost") == "Joost"
+    assert names.first_name("Dr. Anna Müller") == "Anna"
+    assert names.first_name("joost.vantreeck@firma.de") == "Joost"
+    assert names.first_name("") == ""
+
+
+# -- matching ------------------------------------------------------------------------------------
+def test_only_participants_are_assigned_others_are_suggestions(store: ProfileStore):
+    store.add_sample("Anna Beispiel", "anna@firma.de", onehot(1), "m")
+    store.add_sample("Karl Fremd", "karl@extern.de", onehot(2), "m")
+    emb = {"S1": onehot(1, 0.05, 1), "S2": onehot(2, 0.05, 2)}
+    dec = store.decide(emb, "m", participants=[Person("Müller, Anna", "anna@firma.de")], threshold=0.55, margin=0.08)
+    assert dec["S1"].match is not None and dec["S1"].match.profile.name == "Anna Beispiel"
+    assert dec["S2"].match is None and dec["S2"].suggestion is not None
+    assert dec["S2"].suggestion.profile.name == "Karl Fremd" and "kein Teilnehmer" in dec["S2"].reason
+    # a participant that sounds less like the voice than a non-participant is not assigned either
+    dec2 = store.decide({"S1": onehot(2, 0.05, 3)}, "m", participants=[Person("Anna Beispiel", "anna@firma.de")],
+                        threshold=0.0, margin=0.0)
+    assert dec2["S1"].match is None and dec2["S1"].suggestion.profile.name == "Karl Fremd"  # type: ignore[union-attr]
+
+
+def test_margin_and_not_eligible(store: ProfileStore):
+    a = onehot(1)
+    b = a + 0.15 * onehot(2)
+    store.add_sample("Anna", "", a, "m")
+    store.add_sample("Berta", "", b / np.linalg.norm(b), "m")
+    both = [Person("Anna"), Person("Berta")]
+    dec = store.decide({"S1": a}, "m", participants=both, threshold=0.5, margin=0.08)
+    assert dec["S1"].match is None and "nicht eindeutig" in dec["S1"].reason
+    assert store.decide({"S1": a}, "m", participants=both, threshold=0.5, margin=0.0)["S1"].match is not None
+    dec = store.decide({"S1": a}, "m", participants=both, threshold=0.5, not_eligible={"S1": "zu wenig Sprache"})
+    assert dec["S1"].match is None and dec["S1"].reason == "zu wenig Sprache"
+
+
+# -- provenance ----------------------------------------------------------------------------------
+def test_contributions_replace_undo_and_reset(store: ProfileStore, tmp_path: Path):
+    store.learn("Anna", "", onehot(1), "m", recording="r1", speaker="S1", source="manual", seconds=30)
+    p = store.learn("Anna", "", onehot(1, 0.1), "m", recording="r1", speaker="S1", source="manual", seconds=30)
+    assert len(p.contributions) == 1  # the same recording+speaker is never counted twice
+    store.learn("Anna", "", onehot(1, 0.1, 5), "m", recording="r2", speaker="S2", source="auto")
+    assert len(store.find("Anna", "", "m").contributions) == 2  # type: ignore[union-attr]
+    with pytest.raises(ValueError):  # an automatic match never creates a profile
+        store.learn("Neu", "", onehot(3), "m", recording="r2", speaker="S3", source="auto")
+    # correction: r1/S1 was Bernd, not Anna -> Anna loses that sample, Bernd gets it
+    store.learn("Bernd", "", onehot(1), "m", recording="r1", speaker="S1", source="manual")
+    anna = store.find("Anna", "", "m")
+    assert anna is not None and [c.recording for c in anna.contributions] == ["r2"]
+    assert store.reset_to_confirmed(anna.id) is None  # only automatic left -> deleted
+    assert store.find("Anna", "", "m") is None
+    assert [p.name for p in ProfileStore(PlainFilePersistence(tmp_path / "vp.json")).all_profiles()] == ["Bernd"]
+    assert store.forget("r1", "S1") == ["Bernd"] and store.all_profiles() == []
+
+
+def test_legacy_profile_is_readable_and_resettable(tmp_path: Path):
+    path = tmp_path / "old.json"
+    path.write_text(json.dumps({"version": 1, "profiles": [{
+        "id": "x1", "name": "Alt", "email": "", "model_id": "m", "embedding": onehot(4).tolist(), "samples": 7,
+        "created_at": "", "updated_at": ""}]}), encoding="utf-8")
+    s = ProfileStore(PlainFilePersistence(path))
+    p = s.get("x1")
+    assert p is not None and p.samples == 7 and p.contributions[0].source == "legacy"
+    p2 = s.learn("Alt", "", onehot(4, 0.1), "m", recording="r", speaker="S1", source="manual")
+    assert p2.samples == 8 and np.dot(p2.embedding, onehot(4)) > 0.9
+    assert s.reset_to_confirmed("x1") is not None and [c.source for c in s.get("x1").contributions] == ["manual"]  # type: ignore[union-attr]
+
+
+# -- pipeline ------------------------------------------------------------------------------------
+def _two_known_voices(tmp_path: Path, profiles: ProfileStore):
+    rec = recording_with_voices(tmp_path / "r1", 330, 550)
+    pipeline, _tr, _s = make_pipeline(profiles)
+    pipeline.run(rec)
+    apply_assignments(rec, [Assignment("S1", "Anna Beispiel"), Assignment("S2", "Bernd Muster")], profiles,
+                      lambda: pipeline.run(rec, {"render"}), min_learn_speech_s=0)
+    return rec
+
+
+def test_previous_call_people_are_not_assigned_without_being_participants(tmp_path: Path, store: ProfileStore):
+    _two_known_voices(tmp_path, store)
+    rec2 = recording_with_voices(tmp_path / "r2", 550, 330)
+    set_participants(rec2, [Person("Olga Organisatorin", "olga@firma.de"), Person("Anna Beispiel", "anna@firma.de")])
+    pipeline, _, _ = make_pipeline(store)
+    pipeline.run(rec2)
+    sp = rec2.load_speakers()
+    assert sp["S2"].name == "Anna Beispiel" and sp["S2"].source == "auto"
+    assert sp["S1"].name == "" and sp["S1"].suggested_name == "Bernd Muster"  # suggestion only
+    ov = {o.id: o for o in speaker_overview(rec2)}
+    choices = row_choices(rec2, store, ov["S1"])
+    assert choices[0] == "Olga Organisatorin"  # not yet assigned participants first
+    assert suggestion_label("Bernd Muster") in choices and choices[-1] == SELF_CHOICE
+    assert "Bernd Muster" not in name_choices(rec2, store)
+    # picking the suggestion makes Bernd a participant of this recording
+    apply_assignments(rec2, [Assignment("S1", suggestion_label("Bernd Muster"), save_profile=False)], store,
+                      lambda: pipeline.run(rec2, {"render"}))
+    assert any(p.name == "Bernd Muster" for p in rec2.participants())
+    assert rec2.load_speakers()["S1"].source == "manual"
+
+
+def test_no_participant_list_assigns_nothing(tmp_path: Path, store: ProfileStore):
+    _two_known_voices(tmp_path, store)
+    rec2 = recording_with_voices(tmp_path / "r2", 550, 330)
+    set_participants(rec2, [])
+    pipeline, _, _ = make_pipeline(store)
+    res = pipeline.run(rec2)
+    assert res.unassigned_speakers == 2
+    assert "keine Teilnehmerliste" in rec2.load_speakers()["S1"].note
+    # relaxed mode (config.toml only): earlier behaviour
+    cfg = short_cfg()
+    cfg.speakers.match_scope = "all_profiles"
+    pipeline2, _, _ = make_pipeline(store, cfg=cfg)
+    pipeline2.run(rec2, {"identify", "render"})
+    assert rec2.load_speakers()["S1"].name == "Bernd Muster"
+
+
+def test_participants_edit_reidentifies_and_manual_wins(tmp_path: Path, store: ProfileStore):
+    _two_known_voices(tmp_path, store)
+    rec2 = recording_with_voices(tmp_path / "r2", 550, 330)
+    set_participants(rec2, [])
+    pipeline, _, _ = make_pipeline(store)
+    pipeline.run(rec2)
+    apply_assignments(rec2, [Assignment("S2", "Carla Neu", save_profile=False)], store,
+                      lambda: pipeline.run(rec2, {"render"}))
+    set_participants(rec2, rec2.participants() + [Person("Bernd Muster", "bernd@firma.de"),
+                                                  Person("Anna Beispiel", "anna@firma.de")])
+    assert pipeline.preview_identification(rec2) == [("Sprecher 1", "Sprecher 1", "Bernd Muster")]
+    pipeline.run(rec2, {"identify", "render"})
+    sp = rec2.load_speakers()
+    assert sp["S1"].name == "Bernd Muster" and sp["S2"].name == "Carla Neu" and sp["S2"].source == "manual"
+    meta = rec2.load_meta()["processing"]
+    assert meta["identification"]["rule"] == "participants-v2" and "identify_s" in meta["identification"]["timing"]
+    assert {"diarize_s", "embed_s", "total_s", "rtf"} <= set(meta["diarization"]["timing"])
+
+
+def test_auto_learning_is_replaced_not_repeated_and_corrections_undo(tmp_path: Path, store: ProfileStore):
+    _two_known_voices(tmp_path, store)
+    rec2 = recording_with_voices(tmp_path / "r2", 550, 330)
+    pipeline, _, _ = make_pipeline(store)
+    pipeline.run(rec2)
+    for _ in range(3):  # re-running the identification never adds the same recording again
+        pipeline.run(rec2, {"identify", "render"})
+    anna = store.find("Anna Beispiel", "", "fake-embedder")
+    assert anna is not None and [c.source for c in anna.contributions] == ["manual", "auto"]
+    # the user corrects S2: not Anna -> Anna forgets what S2 taught her
+    apply_assignments(rec2, [Assignment("S2", "Dora Dritte", save_profile=False)], store,
+                      lambda: pipeline.run(rec2, {"render"}))
+    assert [c.source for c in store.find("Anna Beispiel", "", "fake-embedder").contributions] == ["manual"]  # type: ignore[union-attr]
+
+
+def test_unchanged_auto_match_is_not_confirmed_silently(tmp_path: Path, store: ProfileStore):
+    _two_known_voices(tmp_path, store)
+    rec2 = recording_with_voices(tmp_path / "r2", 550, 330)
+    cfg = short_cfg()
+    cfg.speakers.auto_update_on_match = False
+    pipeline, _, _ = make_pipeline(store, cfg=cfg)
+    pipeline.run(rec2)
+    sp = rec2.load_speakers()
+    apply_assignments(rec2, [Assignment(sid, sp[sid].name, save_profile=False) for sid in ("S1", "S2")], store,
+                      lambda: pipeline.run(rec2, {"render"}))
+    assert {s.source for sid, s in rec2.load_speakers().items() if sid != "ME"} == {"auto"}
+    assert all(len(p.contributions) == 1 for p in store.all_profiles())
+    apply_assignments(rec2, [Assignment("S1", sp["S1"].name, save_profile=True)], store,
+                      lambda: pipeline.run(rec2, {"render"}), min_learn_speech_s=0)
+    bernd = store.find("Bernd Muster", "", "fake-embedder")
+    assert [c.source for c in bernd.contributions] == ["manual", "confirmed"]  # type: ignore[union-attr]
+
+
+def test_minimum_speech_blocks_matching_and_learning(tmp_path: Path, store: ProfileStore):
+    rec = _two_known_voices(tmp_path, store)
+    rec2 = recording_with_voices(tmp_path / "r2", 550, 330)
+    pipeline, _, _ = make_pipeline(store, cfg=Config())  # defaults: 8 s / 20 s, the fake voices speak ~2-3 s
+    pipeline.run(rec2)
+    assert all(not s.name for sid, s in rec2.load_speakers().items() if sid != "ME")
+    assert "zu wenig Sprache" in rec2.load_speakers()["S1"].note
+    msgs = apply_assignments(rec, [Assignment("S1", "Olga Organisatorin")], store, lambda: None)
+    assert any("zu wenig Sprache" in m for m in msgs) and store.find("Olga Organisatorin", "", "fake-embedder") is None
+
+
+def test_rebuild_profile_from_manual_assignments(tmp_path: Path, store: ProfileStore):
+    rec = _two_known_voices(tmp_path / "recs", store)
+    anna = store.find("Anna Beispiel", "", "fake-embedder")
+    assert anna is not None
+    store.learn("Anna Beispiel", "", onehot(9), "fake-embedder", recording="elsewhere", speaker="S1", source="manual")
+    msg = rebuild_profile(store, anna.id, tmp_path / "recs" / "r1")
+    assert "1 Zuordnung" in msg
+    assert [c.folder for c in store.get(anna.id).contributions] == [rec.folder.name]  # type: ignore[union-attr]
+
+
+# -- own voice -----------------------------------------------------------------------------------
+def test_self_row_name_and_summary_use_the_display_name(tmp_path: Path, store: ProfileStore, isolated_home: Path):
+    rec = recording_with_voices(tmp_path / "r1", 330, 550)
+    pipeline, _, summ = make_pipeline(store)
+    pipeline.cfg.transcript.self_display_name = ""
+    (isolated_home / "data").mkdir(parents=True, exist_ok=True)
+    (isolated_home / "data" / "me.json").write_text(json.dumps(
+        {"name": "van Treeck, Joost", "email": "j@firma.de", "given_name": ""}), encoding="utf-8")
+    pipeline.run(rec)
+    md = rec.transcript_path.read_text(encoding="utf-8")
+    assert "**[00:00:00] Joost:** Hallo zusammen." in md
+    assert "- **Eigene Spur:** Joost (Mikrofonspur, nicht in der Sprecherzuordnung): 2 Beiträge" in md
+    assert any(line.endswith("Joost: Hallo zusammen.") for line in summ.seen[-1])
+    me = self_overview(rec)
+    assert me.name == "Joost" and me.utterances == 2 and me.sample_span is not None
+    pipeline.cfg.transcript.self_display_name = "J. (ich)"
+    pipeline.run(rec, {"render"})  # no new transcription needed
+    assert "J. (ich):** Hallo zusammen." in rec.transcript_path.read_text(encoding="utf-8")
+
+
+def test_das_bin_ich_moves_text_to_me_without_duplicates():
+    remote = AsrResult("de", 10, [
+        AsrSegment(1.0, 2.0, "Hallo", [Word(1.0, 2.0, " Hallo")]),  # sidetone copy of the mic
+        AsrSegment(5.0, 6.0, "Nur hier", [Word(5.0, 6.0, " Nur hier")]),  # mic missed it
+        AsrSegment(7.0, 8.0, "Gegenseite", [Word(7.0, 8.0, " Gegenseite")]),
+    ])
+    turns = [SpeakerTurn(0.5, 6.5, "S2"), SpeakerTurn(6.8, 8.5, "S1")]
+    out = assign_remote(remote, turns, self_ids={"S2"}, self_speaker="ME", mic_words=[Word(1.1, 1.9, " Hallo")])
+    assert [(u.speaker, u.text) for u in out] == [("ME", "Nur hier"), ("S1", "Gegenseite")]
+
+
+def test_das_bin_ich_assignment(tmp_path: Path, store: ProfileStore):
+    rec = recording_with_voices(tmp_path / "r1", 330, 550)
+    pipeline, _, _ = make_pipeline(store)
+    pipeline.run(rec)
+    assert parse_choice(SELF_CHOICE) == ("", True)
+    apply_assignments(rec, [Assignment("S2", SELF_CHOICE)], store, lambda: pipeline.run(rec, {"render"}))
+    assert rec.load_speakers()["S2"].source == "self_echo" and store.all_profiles() == []
+    md = rec.transcript_path.read_text(encoding="utf-8")
+    assert "Ich:** Und zweite Stimme." in md and "Sprecher 2" not in md.split("---", 1)[1]
+    pipeline.run(rec, {"identify", "render"})
+    assert rec.load_speakers()["S2"].source == "self_echo"  # survives like a manual assignment
+
+
+def _asr(words: list[tuple[float, str]]) -> AsrResult:
+    return AsrResult("de", 600, [AsrSegment(t, t + 0.8, w, [Word(t, t + 0.8, " " + w)]) for t, w in words])
+
+
+def test_trackcheck_little_speech_echo_and_own_voice_on_remote():
+    remote_words = [(i * 2.0, f"wort{i}") for i in range(100)]  # 100 segments = 80 s speech
+    rep = trackcheck.check(_asr([(3.0, "jawohl")]), _asr(remote_words), [], {}, None)
+    assert rep.warnings and "kaum Sprache" in rep.warnings[0]
+    rep = trackcheck.check(_asr([(t + 0.2, w) for t, w in remote_words]), _asr(remote_words), [], {}, None,
+                           devices={"mic": {"name": "Headset (Jabra Hands-Free AG Audio)", "sample_rate": 16000}})
+    assert rep.mic_unreliable and any("Echo" in w and "Freisprech" in w for w in rep.warnings)
+    # the user's words also appear on the remote track, in cluster S2
+    mic = [(300 + i * 2.0, f"mein{i}") for i in range(30)]
+    remote = _asr(remote_words + [(t + 0.1, w) for t, w in mic])
+    turns = [SpeakerTurn(0, 200, "S1"), SpeakerTurn(299, 400, "S2")]
+    rep = trackcheck.check(_asr(mic), remote, turns, {}, None)
+    assert set(rep.self_suspects) == {"S2"} and "Sprecher 2" in rep.warnings[-1] and len(rep.warnings) == 1
+    # partial leakage of the other side into the microphone
+    rep = trackcheck.check(_asr(mic + [(t + 0.2, w) for t, w in remote_words[:30]]), _asr(remote_words),
+                           [SpeakerTurn(0, 200, "S1")], {}, None)
+    assert not rep.mic_unreliable and "Teil der Gegenseite" in rep.warnings[0]
+    # embedding similarity alone also flags it
+    rep = trackcheck.check(_asr(mic), _asr(remote_words), [SpeakerTurn(0, 200, "S1")], {"S1": onehot(3)}, onehot(3))
+    assert "S1" in rep.self_suspects
+
+
+def test_envelope_correlation():
+    rng = np.random.default_rng(0)
+    sr = 1000
+    env = np.repeat(rng.random(800) > 0.3, int(0.1 * sr)).astype(np.float32)  # 80 s of on/off "speech"
+    speech = env * rng.normal(scale=0.2, size=env.size).astype(np.float32)
+    echo = np.concatenate([np.zeros(100, np.float32), 0.3 * speech[:-100]])  # 100 ms later, quieter
+    other = np.roll(speech, 40000) * 0.5
+    corr, lag = trackcheck.envelope_correlation(trackcheck.envelope(echo, sr), trackcheck.envelope(speech, sr))
+    assert corr > 0.9 and lag == pytest.approx(0.1, abs=0.03)
+    assert trackcheck.envelope_correlation(trackcheck.envelope(other, sr), trackcheck.envelope(speech, sr))[0] < 0.6
+    tone = np.sin(np.arange(40 * sr) / 3.0).astype(np.float32)
+    assert trackcheck.envelope_correlation(trackcheck.envelope(tone, sr), trackcheck.envelope(tone, sr))[0] == 0.0
+
+
+def test_clean_intervals_exclude_overlap():
+    turns = [SpeakerTurn(0, 10, "S1"), SpeakerTurn(8, 12, "S2"), SpeakerTurn(11, 20, "S1")]
+    iv = clean_intervals(turns)
+    assert iv["S1"] == [(0, 8), (12, 20)] and iv["S2"] == [(10, 11)]
+    assert speech_seconds(turns) == {"S1": 16.0, "S2": 1.0}
+
+
+def test_self_is_excluded_even_with_name_variant(tmp_path: Path, store: ProfileStore):
+    rec = recording_with_voices(tmp_path / "r1", 330, 550)
+    store.add_sample("Selbst, Ich", "", np.eye(16, dtype=np.float32)[6], "fake-embedder")  # 330 Hz bucket
+    pipeline, _, _ = make_pipeline(store)
+    cfg = pipeline.cfg
+    cfg.speakers.match_scope = "all_profiles"
+    pipeline.run(rec)
+    assert rec.load_speakers()["S1"].name == ""
+
+
+# -- threads / config ----------------------------------------------------------------------------
+def test_auto_threads():
+    assert threads.auto_threads(2, recording=False) == 1
+    assert threads.auto_threads(6, recording=False) == 5
+    assert threads.auto_threads(16, recording=False) == 8
+    assert threads.auto_threads(8, recording=True) == 3
+    assert threads.auto_threads(2, recording=True) == 1
+    assert threads.effective_threads(3, cores=16) == 3
+    threads.set_recording_active(True)
+    try:
+        assert threads.effective_threads(0, cores=16) == 4 and "Aufnahme läuft" in threads.describe(0)
+    finally:
+        threads.set_recording_active(False)
+
+
+def test_legacy_thread_default_and_preset_cannot_relax_matching(tmp_path: Path):
+    p = tmp_path / "config.toml"
+    p.write_text("[diarization]\nnum_threads = 2\n[speakers]\nmatch_threshold = 0.6\n", encoding="utf-8")
+    assert load_config(p, preset="").diarization.num_threads == 0  # old template default -> automatic
+    p.write_text("[diarization]\nnum_threads = 2\n[speakers]\nmatch_scope = \"participants\"\n", encoding="utf-8")
+    assert load_config(p, preset="").diarization.num_threads == 2  # written by this version: deliberate
+    cfg = apply_preset(Config(), {"speakers": {"match_scope": "all_profiles", "match_margin": 0.1}}, "x")
+    assert cfg.speakers.match_scope == "participants" and cfg.speakers.match_margin == 0.1
+    assert any("match_scope" in w for w in cfg.warnings)
+
+
+def test_old_identification_hint_and_capture_warning_in_library(tmp_path: Path):
+    from callrec.library import read_info, status_description
+
+    rec = make_recording(tmp_path, with_parts=False)
+    rec.save_speakers({"ME": SpeakerInfo("ME", "Ich", source="self"),
+                       "S1": SpeakerInfo("S1", "Sprecher 1", name="Karl", source="auto")})
+    assert "Sprecherzuordnung neu prüfen" in status_description(read_info(rec.folder))
+    rec.update_meta(["processing", "identification"], {"rule": "participants-v2",
+                                                       "trackcheck": {"warnings": ["Mikro kaputt"]}})
+    text = status_description(read_info(rec.folder))
+    assert "neu prüfen" not in text and "Mikrofon prüfen: Mikro kaputt" in text

@@ -42,13 +42,16 @@ REMOTE_MIN_SPEECH_S = 60.0
 # "Little speech": less than 5 % of the remote speech time and less than 10 s in absolute terms.
 MIC_LITTLE_FRACTION = 0.05
 MIC_LITTLE_ABS_S = 10.0
-# Fraction of mic words that are also on the remote track at the same time:
-ECHO_WORD_FRACTION = 0.6  # most of what the mic "heard" is the other side -> copy/echo
+# Fraction of the other side's words that are also on the mic track at the same time:
+ECHO_WORD_FRACTION = 0.6  # most of the other side reached the microphone -> echo/copy
 LEAK_WORD_FRACTION = 0.15  # a noticeable part -> leakage into the microphone
 MIN_WORDS = 20  # fractions of fewer words are noise
 # Envelope correlation of both tracks: two independent talkers correlate around 0 (or slightly
 # negative, they take turns); an acoustic echo of the loudspeaker correlates clearly.
 ECHO_ENVELOPE_CORR = 0.6
+ENVELOPE_MIN_ACTIVE_S = 30.0  # judge the envelopes only with at least this much remote audio
+ACTIVITY_FLOOR_LOG = -2.5  # log10(RMS) of about -50 dBFS
+MIN_LOG_STD = 0.3  # speech swings by tens of dB between syllables and pauses; steady signals do not
 # A remote speaker is "probably you" if most of its words are also on the mic track at the
 # same time, or its voice is as close to the mic track as a voice is to itself across calls.
 SELF_WORD_FRACTION = 0.5
@@ -143,12 +146,19 @@ def envelope(samples: np.ndarray, sr: int) -> np.ndarray:
 
 
 def envelope_correlation(mic_env: np.ndarray, remote_env: np.ndarray) -> tuple[float, float]:
-    """(max Pearson correlation of the log envelopes over +-MAX_LAG_S, lag in s; mic later = > 0)."""
+    """(max Pearson correlation of the log envelopes over +-MAX_LAG_S, lag in s; mic later = > 0).
+
+    Returns 0 when there is too little to judge: less than ``ENVELOPE_MIN_ACTIVE_S`` of audio
+    above the activity floor on the remote track, or envelopes without speech-like loudness
+    variation (steady tones/noise correlate by accident)."""
     n = min(mic_env.size, remote_env.size)
     if n < 100:
         return 0.0, 0.0
     a = np.log10(mic_env[:n] + 1e-4)
     b = np.log10(remote_env[:n] + 1e-4)
+    active = int(np.sum(b > ACTIVITY_FLOOR_LOG))
+    if active * FRAME_S < ENVELOPE_MIN_ACTIVE_S or float(np.std(a)) < MIN_LOG_STD or float(np.std(b)) < MIN_LOG_STD:
+        return 0.0, 0.0
     best, best_lag = -1.0, 0
     max_lag = int(MAX_LAG_S / FRAME_S)
     for lag in range(-max_lag, max_lag + 1):
@@ -195,52 +205,69 @@ def check(
     env_corr = float((signal or {}).get("envelope_corr") or 0.0)
     mic_name = str(((devices or {}).get("mic") or {}).get("name") or "")
     mic_rate = int(((devices or {}).get("mic") or {}).get("sample_rate") or 0)
-    rep.metrics = {"mic_speech_s": round(mic_s, 1), "remote_speech_s": round(remote_s, 1),
-                   "mic_words": mic_words, "mic_words_also_remote": round(mic_dup, 3),
-                   "envelope_corr": round(env_corr, 3), "lag_s": (signal or {}).get("lag_s")}
     hf = _is_hands_free(mic_name) or (0 < mic_rate <= 16000)
     device_hint = (f" Das Mikrofon „{mic_name}“ ist vermutlich ein Bluetooth-Freisprechgerät (schlechte Qualität, "
                    "nimmt oft den Lautsprecher mit) – besser das Stereo-/Headset-Mikrofon wählen."
                    if hf and mic_name else "")
+    # Remote words per diarized speaker. Which direction the duplicates go tells echo from sidetone:
+    # an echo puts (nearly) ALL of the other side onto the mic track - every remote speaker is
+    # duplicated; the user's voice on the remote track duplicates only the cluster that is the user.
+    by_spk: dict[str, list[tuple[float, str]]] = {}
+    if turns:
+        from callrec.speakers.assign import TurnIndex
+
+        index = TurnIndex(turns)
+        for tt, tok in remote_tok:
+            spk = index.speaker_for(tt - 0.01, tt + 0.01, max_distance=0.0) or "?"
+            by_spk.setdefault(spk, []).append((tt, tok))
+    else:
+        by_spk["?"] = remote_tok
+    frac_by_spk = {spk: duplicate_fraction(words, mic_idx) for spk, words in by_spk.items()}
+    remote_dup, remote_words = duplicate_fraction(remote_tok, mic_idx)
+    rep.metrics = {"mic_speech_s": round(mic_s, 1), "remote_speech_s": round(remote_s, 1),
+                   "mic_words": mic_words, "mic_words_also_remote": round(mic_dup, 3),
+                   "remote_words": remote_words, "remote_words_also_mic": round(remote_dup, 3),
+                   "envelope_corr": round(env_corr, 3), "lag_s": (signal or {}).get("lag_s")}
     if remote_s >= REMOTE_MIN_SPEECH_S and mic_s < max(MIC_LITTLE_ABS_S, MIC_LITTLE_FRACTION * remote_s):
         rep.warnings.append(
             f"Die Mikrofonspur enthält kaum Sprache ({mic_s:.0f} s gegenüber {remote_s:.0f} s der Gegenseite). Falls Sie "
             f"gesprochen haben, wurde vermutlich das falsche oder ein stummgeschaltetes Mikrofon aufgenommen – "
             f"Mikrofon prüfen: {MIC_SETTINGS}.{device_hint}")
         rep.mic_unreliable = mic_s < 1.0
-    echo = (mic_words >= MIN_WORDS and mic_dup >= ECHO_WORD_FRACTION) or env_corr >= ECHO_ENVELOPE_CORR
+    echo = (remote_words >= MIN_WORDS and remote_dup >= ECHO_WORD_FRACTION) or env_corr >= ECHO_ENVELOPE_CORR
     if echo:
-        rep.mic_unreliable = True
+        rep.mic_unreliable = rep.mic_unreliable or mic_dup >= ECHO_WORD_FRACTION or env_corr >= ECHO_ENVELOPE_CORR
+        what = ("im Wesentlichen ein Echo/eine Kopie der Gegenseite" if rep.mic_unreliable
+                else "enthält fast alles, was die Gegenseite sagt (Echo)")
         rep.warnings.append(
-            f"Die Mikrofonspur ist im Wesentlichen ein Echo/eine Kopie der Gegenseite ({mic_dup:.0%} der Wörter gleichzeitig "
-            f"auf beiden Spuren, Lautstärkeverlauf-Korrelation {env_corr:.2f}). Wahrscheinliche Ursachen: Lautsprecher statt "
-            f"Headset, Bluetooth-Freisprechprofil oder „Abhören“ der Wiedergabe. Mikrofon prüfen: {MIC_SETTINGS}; "
+            f"Die Mikrofonspur {what} ({remote_dup:.0%} der Wörter der Gegenseite auch auf dem Mikrofon, "
+            f"Lautstärkeverlauf-Korrelation {env_corr:.2f}). Wahrscheinliche Ursachen: Lautsprecher statt Headset, "
+            f"Bluetooth-Freisprechprofil oder „Abhören“ der Wiedergabe. Mikrofon prüfen: {MIC_SETTINGS}; "
             f"{LISTEN_SETTINGS}.{device_hint}")
-    elif mic_words >= MIN_WORDS and mic_dup >= LEAK_WORD_FRACTION:
+        return rep
+    for spk, (frac, n) in frac_by_spk.items():
+        if spk == "?" or not turns:
+            continue
+        sim = _cos(np.asarray(embeddings[spk]).reshape(-1), np.asarray(self_embedding).reshape(-1)) \
+            if self_embedding is not None and spk in embeddings else 0.0
+        if (n >= SELF_MIN_WORDS and frac >= SELF_WORD_FRACTION) or (sim >= SELF_EMBEDDING_SIM and not rep.mic_unreliable):
+            rep.self_suspects[spk] = {"words_also_on_mic": round(frac, 3), "words": n, "similarity_to_mic": round(sim, 3)}
+    for spk in dict.fromkeys(t.speaker for t in turns):  # speakers without any word: embedding only
+        if spk in rep.self_suspects or spk in frac_by_spk or self_embedding is None or spk not in embeddings:
+            continue
+        sim = _cos(np.asarray(embeddings[spk]).reshape(-1), np.asarray(self_embedding).reshape(-1))
+        if sim >= SELF_EMBEDDING_SIM and not rep.mic_unreliable:
+            rep.self_suspects[spk] = {"words_also_on_mic": 0.0, "words": 0, "similarity_to_mic": round(sim, 3)}
+    rest = [w for spk, words in by_spk.items() if spk not in rep.self_suspects for w in words]
+    leak, leak_n = duplicate_fraction(rest, mic_idx)
+    if leak_n >= MIN_WORDS and leak >= LEAK_WORD_FRACTION:
         rep.warnings.append(
-            f"Ein Teil der Gegenseite ist auch auf der Mikrofonspur ({mic_dup:.0%} der Wörter) – Übersprechen des Headsets "
+            f"Ein Teil der Gegenseite ist auch auf der Mikrofonspur ({leak:.0%} ihrer Wörter) – Übersprechen des Headsets "
             f"oder Lautsprecher. Solche Stellen können im Transkript doppelt (auch unter Ihrem Namen) erscheinen. "
             f"Abhilfe: Headset verwenden, Lautstärke senken; {MIC_SETTINGS}.{device_hint}")
-    if not rep.mic_unreliable:
-        by_spk: dict[str, list[tuple[float, str]]] = {}
-        if turns:
-            from callrec.speakers.assign import TurnIndex
-
-            index = TurnIndex(turns)
-            for t, tok in remote_tok:
-                spk = index.speaker_for(t - 0.01, t + 0.01, max_distance=0.0)
-                if spk:
-                    by_spk.setdefault(spk, []).append((t, tok))
-        for spk in dict.fromkeys(t.speaker for t in turns):
-            frac, n = duplicate_fraction(by_spk.get(spk, []), mic_idx)
-            sim = _cos(np.asarray(embeddings[spk]).reshape(-1), np.asarray(self_embedding).reshape(-1)) \
-                if self_embedding is not None and spk in embeddings else 0.0
-            if (n >= SELF_MIN_WORDS and frac >= SELF_WORD_FRACTION) or sim >= SELF_EMBEDDING_SIM:
-                rep.self_suspects[spk] = {"words_also_on_mic": round(frac, 3), "words": n,
-                                          "similarity_to_mic": round(sim, 3)}
-        if rep.self_suspects:
-            rep.warnings.append(
-                "Ihre eigene Stimme ist vermutlich auch auf der Spur der Gegenseite (Mithören/Sidetone) und wurde dort als "
-                f"Sprecher erkannt ({', '.join(_label(s) for s in sorted(rep.self_suspects))}). Im Dialog „Sprecher zuordnen“ mit „Das bin ich“ "
-                f"markieren; abstellen: {LISTEN_SETTINGS}.")
+    if rep.self_suspects:
+        rep.warnings.append(
+            "Ihre eigene Stimme ist vermutlich auch auf der Spur der Gegenseite (Mithören/Sidetone) und wurde dort als "
+            f"Sprecher erkannt ({', '.join(_label(s) for s in sorted(rep.self_suspects))}). Im Dialog „Sprecher zuordnen“ "
+            f"mit „Das bin ich“ markieren; abstellen: {LISTEN_SETTINGS}.")
     return rep

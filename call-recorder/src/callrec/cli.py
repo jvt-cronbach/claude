@@ -229,7 +229,7 @@ def cmd_profiles(args: argparse.Namespace) -> int:
                 continue
             print(f"{p.name} <{p.email}> ({p.id[:8]}), Modell {p.model_id}, gelernt aus:")
             for i, c in enumerate(p.contributions):
-                where = f"{c.recording} {c.speaker}" if c.recording else "–"
+                where = f"{c.folder or c.recording[:8]} {c.speaker}" if c.recording else "–"
                 print(f"  [{i}] {SOURCE_TEXT.get(c.source, c.source):<38} {where:<50} {c.seconds:5.0f} s  {c.at}")
         return 0
     return 2

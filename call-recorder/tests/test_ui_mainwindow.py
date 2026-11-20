@@ -402,7 +402,7 @@ def test_menu_bar_reaches_profiles_log_and_settings(world: World, monkeypatch):
     w = world
     w.win.show()
     called: list[str] = []
-    monkeypatch.setattr(dialogs, "manage_profiles", lambda root, profiles: called.append("profiles"))
+    monkeypatch.setattr(dialogs, "manage_profiles", lambda root, profiles, **k: called.append("profiles"))
     monkeypatch.setattr(w.actions, "settings", lambda tab="": called.append(f"settings:{tab}") or False)
     extras = w.win.menus["Extras"]
     labels = [extras.entrycget(i, "label") for i in range(extras.index("end") + 1)]

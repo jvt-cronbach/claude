@@ -442,9 +442,9 @@ def manage_profiles(root: tk.Tk, profiles: ProfileStore, rebuild: Callable[[str]
         if p is None:
             return
         for i, c in enumerate(p.contributions):
-            rec_text = c.title or c.recording or "–"
-            if c.recording and c.title:
-                rec_text = f"{c.title} ({c.recording})"
+            rec_text = c.title or c.folder or ("–" if not c.recording else c.recording[:8])
+            if c.folder and c.title:
+                rec_text = f"{c.title} ({c.folder})"
             origins.insert("", "end", iid=str(i), values=(rec_text, c.speaker if c.recording else "–",
                                                           SOURCE_TEXT.get(c.source, c.source),
                                                           f"{c.seconds:.0f} s" if c.seconds else "–", c.at))
