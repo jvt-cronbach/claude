@@ -719,6 +719,7 @@ def _boot(core: WebCore, start_minimized: bool) -> None:
         threading.Thread(target=detection_loop, args=(cfg, controller, ui, core.stop_event), name="detect",
                          daemon=True).start()
     core.loop.after(3000, actions.show_update_result)
+    actions.schedule_retention()  # automatic deletion of old recordings: at the start, then daily
     schedule_daily_update_check(cfg, core.loop, actions)
 
     def tick() -> None:

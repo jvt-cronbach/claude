@@ -202,6 +202,15 @@ class Pipeline:
         unknown = wanted - ALL_STEPS
         if unknown:
             raise ValueError(f"Unbekannte Schritte: {', '.join(sorted(unknown))}")
+        from callrec.retention import SCOPE_AUDIO, SCOPE_AUDIO_TRANSCRIPT, removed_scope
+
+        gone = removed_scope(rec.load_meta()) if rec.meta_path.exists() else ""
+        if gone == SCOPE_AUDIO_TRANSCRIPT:  # never an empty summary from a deleted transcript
+            raise FileNotFoundError("Audio und Transkript dieser Aufnahme wurden gelöscht – nur die Zusammenfassung "
+                                    "ist noch vorhanden.")
+        if gone == SCOPE_AUDIO and wanted & {"finalize", "transcribe", "diarize"}:
+            raise FileNotFoundError("Das Audio dieser Aufnahme wurde gelöscht – neu transkribieren oder Sprecher neu "
+                                    "trennen ist nicht mehr möglich.")
         result = ProcessResult()
         rec.update_meta(["processing", "status"], "running")
         try:

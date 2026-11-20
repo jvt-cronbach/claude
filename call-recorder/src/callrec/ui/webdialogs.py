@@ -315,6 +315,15 @@ class WebDialogPort:
     def ask_yes_no(self, title: str, message_text: str, warning: bool = False) -> bool:
         return confirm(self.broker, title, message_text, "Ja", "Nein", warning=warning)
 
+    def ask_retention(self, kind: str, text: str, items: list[tuple[str, str]], rt: Any) -> str:
+        from callrec.retention import RETENTION_CHOICES, question_text
+
+        title, message_text = question_text(kind, text, items, rt)
+        res = _as_dict(self.broker.ask("choice", {"title": title, "message": message_text, "danger": "delete",
+                                                  "choices": [{"key": k, "label": lbl} for k, lbl in RETENTION_CHOICES]}))
+        choice = res.get("choice")
+        return str(choice) if choice in {k for k, _l in RETENTION_CHOICES} else "later"
+
 
 class SampleClips:
     """Speaker samples of the open review dialog as WAV clips (:class:`callrec.ui.clips.ClipStore`),

@@ -472,3 +472,25 @@ def resolve_folder(root: Path, name: str) -> Recording:
 
 def all_recordings(root: Path) -> list[Recording]:
     return list_recordings(root)
+
+
+RETENTION_CHOICES = (
+    ("delete", "Wie eingestellt löschen"),
+    ("keep", "Diese behalten (anpinnen)"),
+    ("off", "Automatisches Löschen ausschalten"),
+    ("later", "Später entscheiden"),
+)
+
+
+def question_text(kind: str, text: str, items: list[tuple[str, str]], rt: Any) -> tuple[str, str]:
+    """(title, message) of the question of a run that did not delete (first activation / unusual run)."""
+    names = "\n".join(f"• {t}" for t, _w in items[:12]) + (f"\n• … und {len(items) - 12} weitere" if len(items) > 12 else "")
+    how = ("ENDGÜLTIG gelöscht (nicht rückgängig zu machen)" if rt.delete_mode == "permanent"
+           else "in den Windows-Papierkorb verschoben")
+    title = "Automatisches Löschen" if kind == "first" else "Ungewöhnlich viele Aufnahmen zum Löschen"
+    intro = (f"Automatisches Löschen ist eingeschaltet: Aufnahmen älter als {rt.max_age_days} Tage werden gelöscht. "
+             if kind == "first" else "")
+    msg = (f"{intro}{text}\n\n{names}\n\nBei „Wie eingestellt löschen“ wird von diesen Aufnahmen "
+           f"{SCOPE_TEXT.get(rt.scope, rt.scope)} {how}. Bereits an SharePoint übergebene Zusammenfassungen bleiben "
+           "dort erhalten. Ohne Entscheidung wird nichts gelöscht.")
+    return title, msg

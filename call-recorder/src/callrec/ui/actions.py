@@ -70,6 +70,12 @@ def open_path(path: Any, startfile: Callable[[str], None] | None = None,
         run(["explorer.exe", f"/select,{p}"])  # noqa: S603, S607
 
 
+def datetime_now() -> Any:
+    from datetime import datetime
+
+    return datetime.now().astimezone()
+
+
 def language_label(code: str) -> str:
     from callrec.asr.language import language_name
 
@@ -715,6 +721,89 @@ class AppActions:
         how = self.controller.delete(rec, permanent=permanent)
         self._changed(None)
         return how
+
+    def remove(self, rec: Recording, scope: str, permanent: bool = True) -> str:
+        """Manual "Nur Audio löschen" / "Audio und Transkript löschen" / "vollständig löschen" (after the
+        confirmation in the UI) - the same path as the automatic deletion."""
+        text = self.controller.remove(rec, scope, "permanent" if permanent else "recycle_bin")
+        self._changed(None if scope == "recording" else rec)
+        return text
+
+    def set_pinned(self, rec: Recording, on: bool) -> None:
+        from callrec.retention import set_pinned
+
+        set_pinned(rec, on)
+        self._changed(rec)
+
+    # -- automatic deletion (retention) ------------------------------------------------
+    def retention_plan(self) -> Any:
+        from callrec import retention
+
+        return retention.plan(self.cfg.recordings_path(), self.cfg, busy=self.controller.is_busy)
+
+    def run_retention(self, confirmed: bool = False, done: Callable[[Any], None] | None = None) -> None:
+        """At the start and then daily (worker thread): remove what is due; a run that must ask (first
+        activation, clock looks wrong) asks on the UI thread instead of deleting."""
+        from callrec import retention
+
+        def worker() -> None:
+            rt = self.cfg.retention
+            try:
+                res = retention.run(self.cfg.recordings_path(), self.cfg,
+                                    lambda rec, scope, mode: self.controller.remove(
+                                        rec, scope, mode, by="retention", reason=f"älter als {rt.max_age_days} Tage"),
+                                    busy=self.controller.is_busy, confirmed=confirmed)
+                plan = self.retention_plan()
+            except Exception:
+                log.exception("Automatisches Löschen fehlgeschlagen")
+                return
+            if res.removed:
+                self.ui.notify("Alte Aufnahmen gelöscht", f"{len(res.removed)} Aufnahme(n) älter als {rt.max_age_days} "
+                               f"Tage: {retention.SCOPE_TEXT[rt.scope]}.")
+                self.ui.post(lambda: self._changed(None))
+            if res.blocked:
+                self.ui.post(lambda: self.ask_retention(res.blocked, res.blocked_text))
+            else:
+                text = retention.notify_due_today(plan)
+                if text:
+                    self.ui.notify("Automatisches Löschen", text + " – „Behalten“ verhindert das.")
+            if done is not None:
+                done(res)
+
+        threading.Thread(target=worker, name="retention", daemon=True).start()
+
+    def schedule_retention(self, first_delay_ms: int = 20000) -> None:
+        def tick() -> None:
+            if self.cfg.retention.enabled:
+                self.run_retention()
+            self._after(24 * 3600 * 1000, tick)
+
+        self._after(first_delay_ms, tick)
+
+    def ask_retention(self, kind: str, text: str) -> str:
+        """The run did not delete: first activation with old recordings, or the clock looks wrong."""
+        from callrec import retention
+
+        plan = self.retention_plan()
+        if not plan.removable or kind == "future":
+            if kind == "future":
+                self.ui.notify("Automatisches Löschen ausgesetzt", text)
+            return ""
+        choice = self.dialogs.ask_retention(kind, text, [(i.title, i.when_text(datetime_now())) for i in plan.removable],
+                                            self.cfg.retention)
+        if choice == "delete":
+            self.run_retention(confirmed=True)
+        elif choice == "keep":
+            retention.pin_all(plan.removable)
+            retention.acknowledge()
+            self._changed(None)
+        elif choice == "off":
+            base = load_config(preset="")
+            base.retention.enabled = False
+            save_config(base)
+            self.apply_saved_config()
+            retention.acknowledge()
+        return choice
 
     # -- models -------------------------------------------------------
     def download_whisper(self, report: Callable[[str], None], done: Callable[[bool, str], None]) -> None:

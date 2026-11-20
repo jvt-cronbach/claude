@@ -66,6 +66,18 @@ class RecordingInfo:
     summary_missing: list[str] = field(default_factory=list)  # expected sections the summary lacks
     old_identification: bool = False  # speakers matched automatically under the rule of earlier versions
     capture_warnings: list[str] = field(default_factory=list)  # mic track checks (processing.identification)
+    pinned: bool = False  # "Behalten": never deleted automatically
+    removed: str = ""  # retention scope already removed ("audio" | "audio_transcript")
+    removed_text: str = ""  # "Nur Zusammenfassung (Audio und Transkript gelöscht am …)"
+
+    @property
+    def has_audio(self) -> bool:
+        return self.removed not in ("audio", "audio_transcript")
+
+    @property
+    def reduced(self) -> bool:
+        """Only the summary is left (audio and transcript removed)."""
+        return self.removed == "audio_transcript"
 
     @property
     def id(self) -> str:
@@ -188,8 +200,15 @@ def read_info(folder: Path) -> RecordingInfo:
     info.summary_outdated = info.has_summary and bool(smeta.get("speakers_outdated"))
     if info.has_summary and isinstance(smeta.get("missing_sections"), list):
         info.summary_missing = [str(x) for x in smeta["missing_sections"]]
+    from callrec.retention import is_pinned, removed_scope, removed_text
+
+    info.pinned = is_pinned(meta)
+    info.removed = removed_scope(meta)
+    info.removed_text = removed_text(meta)
     sp = proc.get("speakers")
-    if isinstance(sp, dict) and "unassigned" in sp:
+    if info.reduced:
+        pass  # no speaker data left: nothing to assign
+    elif isinstance(sp, dict) and "unassigned" in sp:
         info.speakers_unassigned = int(sp.get("unassigned") or 0)
         info.speakers_spoken = int(sp.get("spoken") or 0)
     elif rec.speakers_path.exists():  # older recordings: approximate from speakers.json
@@ -360,6 +379,9 @@ def status_description(info: RecordingInfo) -> str:
     parts = []
     if info.error:
         return info.error
+    if info.removed_text:
+        return info.removed_text + (" – die Zusammenfassung bleibt lesbar und kann übergeben werden."
+                                    if info.reduced else " – Transkript und Zusammenfassung bleiben.")
     if info.recording_status == "recording" and not info.processing_status:
         return "Aufnahme läuft bzw. wurde unterbrochen (wird beim nächsten Start repariert)."
     if info.recording_status == "failed":

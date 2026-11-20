@@ -237,6 +237,27 @@ def ask_record_prompt_choice(root: tk.Tk, prompt: Prompt, summary_provider: str 
     return answer["value"]
 
 
+def choose(root: tk.Misc, title: str, message: str, choices: list[tuple[str, str]]) -> str:
+    """A question with several answers (key of the clicked one; the last one on close/Esc)."""
+    win = tk.Toplevel(root)
+    win.title(title)
+    answer = {"v": choices[-1][0]}
+    ttk.Label(win, text=message, wraplength=560, justify="left").pack(anchor="w", **PAD)
+    bar = ttk.Frame(win)
+    bar.pack(fill="x", **PAD)
+
+    def pick(key: str) -> None:
+        answer["v"] = key
+        win.destroy()
+
+    for key, label in reversed(choices):
+        ttk.Button(bar, text=label, command=lambda k=key: pick(k)).pack(side="right", padx=4)
+    win.bind("<Escape>", lambda e: win.destroy())
+    _modal(win)
+    root.wait_window(win)
+    return answer["v"]
+
+
 # ---------------------------------------------------------------------------
 # Speaker review
 # ---------------------------------------------------------------------------

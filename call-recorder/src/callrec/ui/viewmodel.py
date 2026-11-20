@@ -297,6 +297,12 @@ def next_action(info: RecordingInfo, busy: bool = False, recording_now: bool = F
         if info.chain_stage == "review":
             return "wartet auf Zuordnung", "Sprecher zuordnen", "review"
         return "wird verarbeitet …", "", ""
+    if info.reduced:
+        if info.has_summary and not info.handoff:
+            return "Nur Zusammenfassung, nicht übergeben", "Übergeben", "handoff"
+        return "Nur Zusammenfassung", "", ""
+    if info.needs_processing and not info.has_audio:
+        return "Audio gelöscht", "", ""
     if info.needs_processing:
         return "nicht verarbeitet", "Jetzt verarbeiten", "process_now"
     if info.speakers_state() == OPEN:
@@ -387,24 +393,44 @@ def markdown_blocks(md: str, transcript: bool = False) -> list[dict[str, Any]]:
 # per-recording actions (both main windows)
 # ---------------------------------------------------------------------------
 def action_states(info: RecordingInfo, recording_now: bool, busy: bool, calendar_connected: bool) -> dict[str, bool]:
-    """Which actions of a recording are possible right now."""
+    """Which actions of a recording are possible right now (see :func:`disabled_reasons` for why not)."""
+    audio = info.has_audio
+    material = not info.reduced  # transcript and speaker data still there
     return {
-        "process_now": info.needs_processing and not busy and not recording_now,
+        "process_now": info.needs_processing and not busy and not recording_now and audio,
         "handoff": info.has_summary,
-        "review": info.speakers_unassigned is not None and not busy,
-        "resummarize": info.has_transcript and not recording_now,
-        "retranscribe": info.recording_status in ("stopped", "recovered") and not recording_now,
-        "reprocess": info.recording_status in ("stopped", "recovered", "recording") and not recording_now,
+        "review": info.speakers_unassigned is not None and not busy and material,
+        "resummarize": info.has_transcript and not recording_now and material,
+        "retranscribe": info.recording_status in ("stopped", "recovered") and not recording_now and audio,
+        "reprocess": info.recording_status in ("stopped", "recovered", "recording") and not recording_now and audio,
         "rename": not busy,
-        "assign_event": not busy and not recording_now and calendar_connected,
-        "participants": not busy,
-        "recheck": not busy and info.speakers_unassigned is not None,
-        "rerender": not busy and info.has_transcript,
-        "speaker_limit": not busy and info.speakers_unassigned is not None,
+        "assign_event": not busy and not recording_now and calendar_connected and material,
+        "participants": not busy and material,
+        "recheck": not busy and info.speakers_unassigned is not None and material,
+        "rerender": not busy and info.has_transcript and material,
+        "speaker_limit": not busy and info.speakers_unassigned is not None and material and audio,
         "folder": True,
-        "play": not recording_now and (info.folder / "audio").is_dir(),
+        "play": not recording_now and audio and (info.folder / "audio").is_dir(),
         "delete": not busy,
+        "delete_audio": not busy and not recording_now and audio and info.recording_status != "recording",
+        "delete_material": not busy and not recording_now and material and info.recording_status != "recording",
+        "pin": True,
     }
+
+
+def disabled_reasons(info: RecordingInfo) -> dict[str, str]:
+    """Short explanation for actions that need material the recording no longer has."""
+    out: dict[str, str] = {}
+    if info.reduced:
+        why = "Audio und Transkript dieser Aufnahme wurden gelöscht."
+        for k in ("review", "resummarize", "retranscribe", "reprocess", "recheck", "rerender", "participants",
+                  "assign_event", "speaker_limit", "play", "process_now", "delete_audio", "delete_material"):
+            out[k] = why
+    elif not info.has_audio:
+        why = "Das Audio dieser Aufnahme wurde gelöscht."
+        for k in ("retranscribe", "reprocess", "play", "process_now", "speaker_limit", "delete_audio"):
+            out[k] = why
+    return out
 
 
 def status_tone(info: RecordingInfo, key: str, busy: bool = False, recording_now: bool = False) -> str:
@@ -420,3 +446,46 @@ def status_tone(info: RecordingInfo, key: str, busy: bool = False, recording_now
     if key:
         return "warn"
     return "ok" if info.has_summary else ""
+
+
+# ---------------------------------------------------------------------------
+# deleting (both main windows): one wording for the confirmation
+# ---------------------------------------------------------------------------
+DELETE_LABELS = {
+    "recording": "Aufnahme vollständig löschen",
+    "audio_transcript": "Audio und Transkript löschen (Zusammenfassung bleibt)",
+    "audio": "Nur Audio löschen",
+}
+
+
+def delete_question(infos: list[RecordingInfo], scope: str, permanent: bool) -> tuple[str, str, str]:
+    """(title, message, confirm button) for deleting ``scope`` of one or more recordings."""
+    n = len(infos)
+    what = f"„{infos[0].title}“" if n == 1 else f"{n} Aufnahmen"
+    gone = {
+        "recording": "Audio, Transkript, Zusammenfassung und Sprecherdaten (Stimmmerkmale dieses Gesprächs)",
+        "audio_transcript": "Audio, alle Transkript-Versionen und alle Sprecher- und Erkennungsdaten – die "
+                            "Zusammenfassung bleibt lesbar und übergebbar",
+        "audio": "nur die Audiodateien – Transkript und Zusammenfassung bleiben (neu transkribieren und Hörproben "
+                 "sind danach nicht mehr möglich)",
+    }[scope]
+    how = ("ENDGÜLTIG gelöscht – das lässt sich nicht rückgängig machen" if permanent
+           else "in den Windows-Papierkorb verschoben (dort wiederherstellbar, bis er geleert wird)")
+    msg = f"{what}: {gone}.\n\nDie Dateien werden {how}."
+    if any(i.handoff for i in infos):
+        msg += "\n\nBereits an SharePoint übergebene Zusammenfassungen bleiben dort erhalten (CallRecorder löscht sie nicht)."
+    if any(i.pinned for i in infos):
+        msg += "\n\nDarunter ist eine mit „Behalten“ markierte Aufnahme."
+    title = DELETE_LABELS[scope] + ("?" if scope != "recording" else "?")
+    button = ("Endgültig löschen" if permanent else "In den Papierkorb") if scope == "recording" else (
+        "Endgültig löschen" if permanent else "Löschen")
+    return title, msg, button
+
+
+def retention_badge(info: RecordingInfo, due_text: str = "") -> str:
+    """Short marker for the list: "Behalten" / "wird in 2 Tagen gelöscht" / "Nur Zusammenfassung"."""
+    if info.pinned:
+        return "Behalten"
+    if info.removed_text:
+        return "Nur Zusammenfassung" if info.reduced else "Audio gelöscht"
+    return due_text

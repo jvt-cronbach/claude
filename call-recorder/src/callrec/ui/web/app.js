@@ -699,6 +699,8 @@ DLG.review = d => {
 DLG.participants = d => modal(d, h`<h2 id="dlg-t">Teilnehmende – ${d.data.title}</h2>`, h`<div class="field"><label class="label" for="pp">Eine Person pro Zeile, optional mit E-Mail: Name &lt;E-Mail&gt;</label><textarea class="textarea tall" id="pp" spellcheck="false">${d.data.text}</textarea>
   <p class="help">Stimmen werden automatisch nur Personen aus dieser Liste zugeordnet; manuelle Zuordnungen bleiben erhalten. Was bei der Aufnahme vermerkt wurde (Einwilligung bzw. Start mit Hinweis), bleibt unverändert.</p></div>`,
   h`${btn("Abbrechen", { act: "dlg-cancel" })}${btn("Speichern und Sprecher neu erkennen", { cls: "btn-primary", act: "pp-ok" })}`);
+DLG.choice = d => modal(d, h`<h2 id="dlg-t">${d.data.title}</h2>`, h`<p class="pre">${d.data.message}</p>`,
+  h`${d.data.choices.slice().reverse().map((c, i) => btn(c.label, { cls: i === d.data.choices.length - 1 ? "btn-primary" + (c.key === d.data.danger ? " btn-danger" : "") : (c.key === d.data.danger ? "btn-danger" : ""), act: "ch-ok", attrs: data({ c: c.key }) }))}`);
 DLG.confirm = d => modal(d, h`<h2 id="dlg-t">${d.data.title}</h2>`, h`<p class="pre">${d.data.message}</p>`,
   h`${btn(d.data.cancel || "Abbrechen", { act: "dlg-cancel" })}${btn(d.data.confirm || "OK", { cls: `btn-primary ${d.data.danger ? "btn-danger" : ""}`, act: "cf-ok" })}`);
 DLG.info = d => modal(d, h`<h2 id="dlg-t">${d.data.title}</h2>`, h`<p class="pre">${d.data.message}</p>`, h`${btn("Schließen", { cls: "btn-primary", act: "dlg-cancel" })}`);
@@ -1114,6 +1116,7 @@ A.sample = async el => {
 function stopSample() { const a = $("#sample-audio"); if (a) { a.pause(); } const d = topDialog(); if (d && d.local) d.local.playing = ""; }
 A["pp-ok"] = el => answer(curDlg(el), { text: $("#pp").value });
 A["cf-ok"] = el => answer(curDlg(el), { ok: true });
+A["ch-ok"] = el => answer(curDlg(el), { choice: el.dataset.c });
 A["ho-go"] = el => { el.disabled = true; answer(curDlg(el), { action: "go" }); snack("Übergabe läuft …"); };
 A["ev-ok"] = el => { const d = curDlg(el); answer(d, { index: d.local.i, take_title: d.local.take }); };
 A["rt-ok"] = el => { const d = curDlg(el); answer(d, { ok: true, language: d.local.lang, preset: ($("#rt-p") || {}).value || "" }); };

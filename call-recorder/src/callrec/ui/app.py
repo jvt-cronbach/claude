@@ -389,6 +389,7 @@ def _run_tk(cfg: Config, log_file: Any, start_minimized: bool, fallback_notice: 
             log.info("Setze Verarbeitung fort: %s", rec.folder.name)
             controller.process(rec)
 
+    actions.schedule_retention()  # automatic deletion of old recordings: at the start, then daily
     if cfg.detection.enabled and sys.platform == "win32":
         threading.Thread(target=detection_loop, args=(cfg, controller, ui, stop_event), name="detect", daemon=True).start()
 

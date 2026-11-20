@@ -51,6 +51,8 @@ class DialogPort(Protocol):
 
     def ask_yes_no(self, title: str, message: str, warning: bool = False) -> bool: ...
 
+    def ask_retention(self, kind: str, text: str, items: list[tuple[str, str]], rt: Any) -> str: ...
+
 
 class TkDialogPort:
     """The Tk dialogs of the classic UI (all calls on the Tk thread)."""
@@ -141,3 +143,10 @@ class TkDialogPort:
         if warning:
             kwargs["icon"] = "warning"
         return bool(messagebox.askyesno(title, message, **kwargs))
+
+    def ask_retention(self, kind: str, text: str, items: list[tuple[str, str]], rt: Any) -> str:
+        from callrec.retention import RETENTION_CHOICES, question_text
+        from callrec.ui import dialogs
+
+        title, message = question_text(kind, text, items, rt)
+        return dialogs.choose(self._root(), title, message, list(RETENTION_CHOICES))
