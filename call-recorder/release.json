@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "version": "0.3.1",
-  "commit": "d57b3fad96091372023368becaa68c1ca1376682",
+  "commit": "883db0a5376ef2e3de1f0d1fc06d2a1bdbedb352",
   "date": "2026-11-20",
   "notes": [
     "Sprecher zuordnen: Sehr kurze Stimmen (unter 5 s Sprache – Husten, „mhm“, Störgeräusche) werden nicht mehr abgefragt und zählen nicht als offen. Ihr Text bleibt erhalten: bei der passenden Person oder als „Unklar“. „Kurze Fragmente anzeigen“ blendet sie bei Bedarf ein; „Sprecherzuordnung neu prüfen“ wendet das auf ältere Aufnahmen an.",
