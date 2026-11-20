@@ -9,6 +9,7 @@ from __future__ import annotations
 import copy
 import dataclasses
 import logging
+import re
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -59,7 +60,16 @@ class TranscriptionConfig:
     model: str = "auto"
     device: str = "auto"  # auto | cuda | cpu
     compute_type: str = "auto"  # auto -> float16 (cuda) / int8 (cpu)
-    language: str = "de"  # ISO code or "auto"
+    # "auto" = detect per recording, restricted to language_candidates (first entry = prior);
+    # an ISO code ("de", "en", ...) forces that language. See README "Sprache".
+    language: str = "auto"
+    language_candidates: list[str] = field(default_factory=lambda: ["de", "en"])
+    language_detection_windows: int = 6  # 30-s speech windows per track, spread over the recording
+    language_switch_threshold: float = 0.75  # probability another candidate needs to beat the prior
+    language_min_speech_s: float = 20.0  # less speech than this -> keep the prior
+    # per-segment language detection of faster-whisper (all ~100 languages, not the candidates) -
+    # experimental, for calls that switch language within one track
+    multilingual: bool = False
     beam_size: int = 5
     vad_filter: bool = True
     condition_on_previous_text: bool = False
@@ -70,6 +80,17 @@ class TranscriptionConfig:
     vad_min_silence_ms: int = 2000
     vad_speech_pad_ms: int = 400
     hallucination_silence_threshold: float = 0.0  # 0 = off (seconds)
+    # Decoding guards against repetition loops (faster-whisper 1.2.1 defaults, now explicit):
+    # a 30-s window is decoded again at the next temperature if its text compresses too well
+    # (repetitive) or its average log-probability is too low.
+    compression_ratio_threshold: float = 2.4  # 0 = off
+    log_prob_threshold: float = -1.0  # 0 = off
+    no_speech_threshold: float = 0.6  # 0 = off
+    temperature_fallback: bool = True  # temperatures 0.0, 0.2 ... 1.0; False = only 0.0
+    repetition_penalty: float = 1.0  # > 1 penalises repeated tokens (1 = off)
+    no_repeat_ngram_size: int = 0  # forbid repeating n-grams of this size within a window (0 = off)
+    # post-check: warn when a phrase repeats this often in a row (0 = off)
+    repetition_warn_min_repeats: int = 4
 
 
 @dataclass
@@ -115,7 +136,9 @@ class SummaryConfig:
     num_ctx: int = 16384
     temperature: float = 0.2
     max_chunk_chars: int = 24000
-    timeout_s: float = 900.0
+    timeout_s: float = 900.0  # local providers (Ollama / OpenAI-compatible)
+    # language the summary is written in, whatever language the call was in
+    language: str = "de"
     # --- Claude via the Anthropic API (provider = "anthropic"): the transcript LEAVES this computer.
     # Only usable after the explicit confirmation in the settings dialog / `callrec anthropic enable`,
     # which sets the flag below; a preset can never set it or select this provider.
@@ -124,7 +147,12 @@ class SummaryConfig:
     anthropic_effort: str = "medium"  # low | medium | high | xhigh | max | "" (= not sent)
     anthropic_max_tokens: int = 32000
     anthropic_max_chunk_chars: int = 300000
-    anthropic_max_retries: int = 4
+    anthropic_max_retries: int = 4  # attempts per request (including the first)
+    anthropic_connect_timeout_s: float = 15.0
+    # maximum silence while waiting for the next part of the streamed answer
+    anthropic_read_timeout_s: float = 180.0
+    # no new attempt is started after this many seconds (waits are shortened to fit)
+    anthropic_retry_budget_s: float = 300.0
     anthropic_refusal_fallback: bool = True
 
 
@@ -206,8 +234,25 @@ class Config:
             raise ConfigError(f"handoff.graph_scope muss einer von {', '.join(GRAPH_FILE_SCOPES)} sein")
         if self.transcription.beam_size < 1:
             raise ConfigError("transcription.beam_size muss >= 1 sein")
+        t = self.transcription
+        if t.language != "auto" and not _LANG_RE.fullmatch(t.language):
+            raise ConfigError(f"transcription.language muss 'auto' oder ein Sprachcode wie 'de' sein, nicht {t.language!r}")
+        if not t.language_candidates or not all(_LANG_RE.fullmatch(c) for c in t.language_candidates):
+            raise ConfigError("transcription.language_candidates muss eine Liste von Sprachcodes sein, z. B. [\"de\", \"en\"]")
+        if not 0.5 <= t.language_switch_threshold < 1.0:
+            raise ConfigError("transcription.language_switch_threshold muss zwischen 0,5 und 1 liegen")
+        if not 1 <= t.language_detection_windows <= 30:
+            raise ConfigError("transcription.language_detection_windows muss zwischen 1 und 30 liegen")
+        if t.repetition_penalty <= 0 or t.no_repeat_ngram_size < 0 or t.repetition_warn_min_repeats < 0:
+            raise ConfigError("transcription.repetition_penalty muss > 0, no_repeat_ngram_size/repetition_warn_min_repeats >= 0 sein")
+        if not _LANG_RE.fullmatch(self.summary.language):
+            raise ConfigError("summary.language muss ein Sprachcode wie 'de' sein")
+        s = self.summary
+        if min(s.anthropic_connect_timeout_s, s.anthropic_read_timeout_s, s.anthropic_retry_budget_s) <= 0:
+            raise ConfigError("summary.anthropic_*_timeout_s / anthropic_retry_budget_s müssen > 0 sein")
 
 
+_LANG_RE = re.compile(r"[a-z]{2,3}")
 TIMESTAMP_FORMATS = ("hh:mm:ss", "mm:ss", "none")
 SUMMARY_PROVIDERS = ("ollama", "openai", "anthropic")
 CLOUD_PROVIDERS = ("anthropic",)  # providers that send the transcript to a third party by design
@@ -317,6 +362,10 @@ def _read_toml(path: Path) -> dict[str, Any]:
 def apply_preset(cfg: Config, preset: dict[str, Any], name: str) -> Config:
     """Overlay a preset (only the tuning sections) onto ``cfg``."""
     allowed = {k: v for k, v in preset.items() if k in PRESET_SECTIONS}
+    if is_legacy_language(allowed.get("transcription")):
+        # presets of earlier versions stored the old default "de" - do not let it switch detection off
+        allowed["transcription"] = {k: v for k, v in allowed["transcription"].items() if k != "language"}
+        log.info("Preset %r: alter Standardwert language = \"de\" ignoriert (automatische Erkennung bleibt)", name)
     ignored = sorted(set(preset) - set(allowed))
     dropped: list[str] = []
     for section, keys in PRESET_FORBIDDEN_KEYS.items():
@@ -343,6 +392,52 @@ def apply_preset(cfg: Config, preset: dict[str, Any], name: str) -> Config:
     return out
 
 
+LEGACY_LANGUAGE_NOTE = (
+    "Spracherkennung: Ihre Konfiguration enthielt language = \"de\" (Standardwert früherer Versionen). "
+    "Die Sprache wird jetzt je Aufnahme automatisch erkannt (Deutsch oder Englisch, Deutsch bei Zweifel). "
+    "Immer Deutsch erzwingen: Einstellungen > Transkription > Sprache \"de\"."
+)
+
+
+def is_legacy_language(section: Any) -> bool:
+    """``language = "de"`` without ``language_candidates`` = written as a default by a version before 0.2.
+
+    Those versions wrote the whole template (and the settings dialog wrote every value), so "de"
+    there is not a deliberate choice. Once ``language_candidates`` is present the file was written
+    by this version and ``language`` is respected as set.
+    """
+    return isinstance(section, dict) and section.get("language") == "de" and "language_candidates" not in section
+
+
+_LEGACY_LANGUAGE_LINE = re.compile(r'^language\s*=\s*"de"\s*(#.*)?$')
+
+
+def migrate_config_file(path: Path) -> bool:
+    """Rewrite only the ``language`` line of [transcription] (comments and layout are kept)."""
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines(keepends=True)
+    section = ""
+    for i, line in enumerate(lines):
+        st = line.strip()
+        if st.startswith("["):
+            section = st.strip("[] ")
+            continue
+        if section == "transcription" and _LEGACY_LANGUAGE_LINE.match(st):
+            lines[i] = (
+                "# automatisch umgestellt: Sprache je Aufnahme erkennen (\"de\" = immer Deutsch)\n"
+                'language = "auto"\nlanguage_candidates = ["de", "en"]\n'
+            )
+            new = "".join(lines)
+            data = tomllib.loads(new)  # never write a file that does not parse
+            if data.get("transcription", {}).get("language") != "auto":
+                return False
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(new, encoding="utf-8")
+            tmp.replace(path)
+            return True
+    return False
+
+
 def load_config(path: Path | None = None, preset: str | None = None) -> Config:
     """Load config.toml and overlay the preset (argument wins over general.preset)."""
     path = path or paths.config_file()
@@ -350,7 +445,20 @@ def load_config(path: Path | None = None, preset: str | None = None) -> Config:
         write_default_config(path)
         cfg = Config()
     else:
-        cfg = config_from_dict(_read_toml(path))
+        data = _read_toml(path)
+        migrated = False
+        tr = data.get("transcription")
+        if is_legacy_language(tr):
+            tr["language"] = "auto"
+            tr["language_candidates"] = ["de", "en"]
+            try:
+                migrated = migrate_config_file(path)
+            except (OSError, ValueError):
+                log.warning("config.toml konnte nicht auf automatische Spracherkennung umgestellt werden", exc_info=True)
+            log.info("transcription.language = \"de\" (alter Standardwert) -> \"auto\" mit Kandidaten de, en")
+        cfg = config_from_dict(data)
+        if migrated:
+            cfg.warnings.append(LEGACY_LANGUAGE_NOTE)
     name = preset if preset is not None else cfg.general.preset.strip()
     if name:
         ppath = paths.presets_dir() / f"{name}.toml"
@@ -435,8 +543,20 @@ model = "auto"
 # "auto" = NVIDIA-GPU (CUDA), falls vorhanden und nutzbar (einmal geprüft), sonst direkt CPU
 device = "auto"
 compute_type = "auto"
-# "de" oder "auto" für automatische Spracherkennung
-language = "de"
+# "auto" = Sprache je Aufnahme erkennen, nur unter language_candidates; der erste Eintrag gilt
+# bei Zweifel (kurzer, leiser oder uneindeutiger Anfang). Ein Sprachcode ("de", "en" ...) erzwingt
+# diese Sprache.
+language = "auto"
+language_candidates = ["de", "en"]
+# so viele 30-s-Abschnitte Sprache je Spur, über die Aufnahme verteilt
+language_detection_windows = 6
+# Wahrscheinlichkeit, ab der eine andere Sprache als die erste gewählt wird
+language_switch_threshold = 0.75
+# weniger Sprache (Sekunden) -> erste Sprache der Liste
+language_min_speech_s = 20.0
+# Sprachwechsel innerhalb einer Spur (faster-whisper "multilingual", experimentell: erkennt je
+# 30-s-Fenster unter allen Sprachen, nicht nur den Kandidaten)
+multilingual = false
 beam_size = 5
 vad_filter = true
 condition_on_previous_text = false
@@ -451,6 +571,18 @@ vad_min_silence_ms = 2000
 vad_speech_pad_ms = 400
 # Sekunden; 0 = aus. Unterdrückt erfundenen Text in langen Pausen.
 hallucination_silence_threshold = 0.0
+# Schutz vor Wiederholungsschleifen (Standardwerte von faster-whisper; 0 = aus): ein Abschnitt wird
+# mit höherer "Temperatur" neu dekodiert, wenn sein Text zu gleichförmig (Kompressionsrate) oder zu
+# unsicher (log-Wahrscheinlichkeit) ist.
+compression_ratio_threshold = 2.4
+log_prob_threshold = -1.0
+no_speech_threshold = 0.6
+temperature_fallback = true
+# > 1 bestraft wiederholte Wörter; n-Gramm-Sperre (0 = aus). Vorsicht: kann echte Wiederholungen unterdrücken.
+repetition_penalty = 1.0
+no_repeat_ngram_size = 0
+# Hinweis im Transkript, wenn sich eine Wortfolge so oft hintereinander wiederholt (0 = aus)
+repetition_warn_min_repeats = 4
 
 [diarization]
 enabled = true
@@ -502,6 +634,8 @@ num_ctx = 16384
 temperature = 0.2
 max_chunk_chars = 24000
 timeout_s = 900.0
+# Sprache der Zusammenfassung - unabhängig von der Sprache des Gesprächs
+language = "de"
 
 [handoff]
 # Übergabe der Zusammenfassung (NUR summary, nie Transkript/Audio) an SharePoint - nur auf Klick.

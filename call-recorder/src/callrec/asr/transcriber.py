@@ -82,9 +82,12 @@ class WorkerOutput:
     """Parses the worker's stdout protocol (see :mod:`callrec.asr.worker`)."""
 
     def __init__(self, progress: Callable[..., None]) -> None:
+        from callrec.asr.download import DownloadDisplay
+
         self.progress = progress
         self.timing: dict[str, float] = {}
         self.stage = ""  # last STAGE reported by the worker ("download" = failed while downloading)
+        self.download = DownloadDisplay()
 
     def _report(self, frac: float, msg: str = "") -> None:
         try:
@@ -94,8 +97,6 @@ class WorkerOutput:
                 self.progress(frac)
 
     def feed(self, line: str) -> None:
-        from callrec.asr.download import describe_progress
-
         parts = line.strip().split()
         if not parts:
             return
@@ -111,9 +112,12 @@ class WorkerOutput:
                     self._report(-1.0, "Modell wird heruntergeladen")
                 elif parts[1] == "transcribe":
                     self._report(0.0, "")
-            elif kind == "DOWNLOAD" and len(parts) >= 4:
-                _frac, text = describe_progress(int(parts[1]), int(parts[2]), int(parts[3]))
-                self._report(-1.0, text)
+                elif parts[1] == "detect":
+                    self._report(-1.0, "Sprache wird erkannt")
+            elif kind in ("DOWNLOAD", "DOWNLOADDISK", "DOWNLOADED"):
+                text = self.download.feed(parts)
+                if text:
+                    self._report(-1.0, text)
             elif kind == "TIMING" and len(parts) >= 4:
                 self.timing = {"download_s": float(parts[1]), "load_s": float(parts[2]), "transcribe_s": float(parts[3])}
         except (ValueError, IndexError):
@@ -154,22 +158,37 @@ class WhisperSubprocessTranscriber:
             return ["cpu"]
         return list(self.plan().devices)
 
-    def build_command(self, audio: Path, out_json: Path, device: str, initial_prompt: str, hotwords: str = "") -> list[str]:
+    def _common_args(self, device: str) -> list[str]:
+        c = self.cfg
+        return [
+            "--model", self.plan().model_for(device),
+            "--device", device,
+            "--compute-type", compute_type_for(device, c.compute_type),
+            "--download-root", str(self.download_root),
+            "--vad-threshold", str(c.vad_threshold),
+            "--vad-min-silence-ms", str(c.vad_min_silence_ms),
+            "--vad-speech-pad-ms", str(c.vad_speech_pad_ms),
+        ]
+
+    def build_command(self, audio: Path, out_json: Path, device: str, initial_prompt: str, hotwords: str = "",
+                      language: str | None = None) -> list[str]:
+        c = self.cfg
         cmd = self.command_prefix + [
             "--audio", str(audio),
             "--out", str(out_json),
-            "--model", self.plan().model_for(device),
-            "--device", device,
-            "--compute-type", compute_type_for(device, self.cfg.compute_type),
-            "--language", self.cfg.language,
-            "--beam-size", str(self.cfg.beam_size),
-            "--vad" if self.cfg.vad_filter else "--no-vad",
-            "--condition-on-previous-text" if self.cfg.condition_on_previous_text else "--no-condition-on-previous-text",
-            "--download-root", str(self.download_root),
-            "--vad-threshold", str(self.cfg.vad_threshold),
-            "--vad-min-silence-ms", str(self.cfg.vad_min_silence_ms),
-            "--vad-speech-pad-ms", str(self.cfg.vad_speech_pad_ms),
-            "--hallucination-silence-threshold", str(self.cfg.hallucination_silence_threshold),
+            *self._common_args(device),
+            "--language", language or c.language,
+            "--beam-size", str(c.beam_size),
+            "--vad" if c.vad_filter else "--no-vad",
+            "--condition-on-previous-text" if c.condition_on_previous_text else "--no-condition-on-previous-text",
+            "--hallucination-silence-threshold", str(c.hallucination_silence_threshold),
+            "--compression-ratio-threshold", str(c.compression_ratio_threshold),
+            "--log-prob-threshold", str(c.log_prob_threshold),
+            "--no-speech-threshold", str(c.no_speech_threshold),
+            "--temperature-fallback" if c.temperature_fallback else "--no-temperature-fallback",
+            "--repetition-penalty", str(c.repetition_penalty),
+            "--no-repeat-ngram-size", str(c.no_repeat_ngram_size),
+            "--multilingual" if c.multilingual else "--no-multilingual",
         ]
         if initial_prompt:
             cmd += ["--initial-prompt", initial_prompt]
@@ -210,8 +229,36 @@ class WhisperSubprocessTranscriber:
                 with _ACTIVE_LOCK:
                     _ACTIVE.discard(proc)
 
+    def detect_languages(self, tracks: dict[str, Path], out_json: Path,
+                         progress: ProgressFn = lambda f: None) -> dict[str, Any]:
+        """Language probabilities of speech windows per track (worker ``--detect-language``)."""
+        errors: list[str] = []
+        log_path = out_json.with_suffix(".log")
+        _CANCEL.clear()
+        for device in self.devices_to_try():
+            if out_json.exists():
+                out_json.unlink()
+            cmd = self.command_prefix + ["--detect-language", "--out", str(out_json), *self._common_args(device),
+                                         "--detect-windows", str(self.cfg.language_detection_windows)]
+            for track, path in tracks.items():
+                cmd += ["--detect-audio", f"{track}={path}"]
+            output = WorkerOutput(progress)
+            rc = self._run(cmd, progress, log_path, output)
+            if _CANCEL.is_set():
+                raise TranscriptionCancelled("Transkription abgebrochen.")
+            if rc == 0 and out_json.exists():
+                return dict(json.loads(out_json.read_text(encoding="utf-8")))
+            msg = f"Spracherkennung auf {device.upper()} fehlgeschlagen (Exit-Code {rc}), Details: {log_path}"
+            log.warning(msg)
+            errors.append(msg)
+            if device == "cuda" and output.stage != "download":
+                WhisperSubprocessTranscriber._cuda_failed = True
+                self._on_cuda_failed(f"Spracherkennung auf CUDA fehlgeschlagen (Exit-Code {rc})")
+        raise TranscriptionError("; ".join(errors))
+
     def transcribe(
-        self, audio: Path, out_json: Path, *, initial_prompt: str = "", hotwords: str = "", progress: ProgressFn = lambda f: None
+        self, audio: Path, out_json: Path, *, initial_prompt: str = "", hotwords: str = "",
+        progress: ProgressFn = lambda f: None, language: str | None = None,
     ) -> AsrResult:
         errors: list[str] = []
         log_path = out_json.with_suffix(".log")
@@ -220,7 +267,7 @@ class WhisperSubprocessTranscriber:
         for device in self.devices_to_try():
             if out_json.exists():
                 out_json.unlink()
-            cmd = self.build_command(audio, out_json, device, initial_prompt, hotwords)
+            cmd = self.build_command(audio, out_json, device, initial_prompt, hotwords, language)
             log.info("Starte Transkription (%s, Modell %s) von %s", device, self.plan().model_for(device), audio.name)
             output = WorkerOutput(progress)
             started = time.monotonic()

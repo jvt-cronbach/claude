@@ -106,6 +106,14 @@ class AsrSegment:
     end: float
     text: str
     words: list[Word] = field(default_factory=list)
+    # decoding statistics of faster-whisper (None in results written by earlier versions)
+    avg_logprob: float | None = None
+    compression_ratio: float | None = None
+    temperature: float | None = None
+
+
+def _opt_float(v: Any) -> float | None:
+    return None if v is None else float(v)
 
 
 @dataclass
@@ -128,6 +136,9 @@ class AsrResult:
                 end=float(s["end"]),
                 text=str(s["text"]),
                 words=[Word(**w) for w in s.get("words", [])],
+                avg_logprob=_opt_float(s.get("avg_logprob")),
+                compression_ratio=_opt_float(s.get("compression_ratio")),
+                temperature=_opt_float(s.get("temperature")),
             )
             for s in d.get("segments", [])
         ]

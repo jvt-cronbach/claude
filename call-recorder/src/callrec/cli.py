@@ -5,9 +5,11 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import re
 import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
+from typing import Any
 
 from callrec import __version__, paths
 from callrec.config import ConfigError, load_config, write_default_config
@@ -43,20 +45,18 @@ def _recording(path: str):  # type: ignore[no-untyped-def]
     return rec
 
 
-_last_line = {"len": 0}
-
-
 def _print_progress(step: str, frac: float, msg: str) -> None:
+    """Pipeline progress: one line updated in place on a terminal, rate-limited otherwise."""
+    from callrec.console import default_status
     from callrec.jobs import status_text
 
-    text = status_text(step, frac, msg)
-    pad = max(0, _last_line["len"] - len(text))
-    sys.stdout.write("\r" + text + " " * pad)
-    _last_line["len"] = len(text)
-    sys.stdout.flush()
-    if frac >= 1.0:
-        sys.stdout.write("\n")
-        _last_line["len"] = 0
+    default_status().update(status_text(step, frac, msg))
+
+
+def _say(text: str) -> None:
+    from callrec.console import default_status
+
+    default_status().message(text)
 
 
 def cmd_process(args: argparse.Namespace) -> int:
@@ -67,18 +67,24 @@ def cmd_process(args: argparse.Namespace) -> int:
         cfg.transcription.model = args.model
     if args.device:
         cfg.transcription.device = args.device
-    if args.language:
-        cfg.transcription.language = args.language
+    language = (args.language or "").strip().lower() or None
+    if language and language != "auto" and not re.fullmatch(r"[a-z]{2,3}", language):
+        raise SystemExit(f"Ungültige Sprache {args.language!r}: Sprachcode wie de oder en, oder auto")
     rec = _recording(args.folder)
     if "summarize" in args.steps and not _cloud_consent_ok(cfg, rec, getattr(args, "confirm_anthropic", False)):
         return 1
     from callrec.asr.transcriber import TranscriptionCancelled
 
     try:
-        result = build_pipeline(cfg).run(rec, args.steps, _print_progress)
+        pipeline = build_pipeline(cfg)
+        result = pipeline.run(rec, args.steps, _print_progress, language=language) if language else \
+            pipeline.run(rec, args.steps, _print_progress)
     except (KeyboardInterrupt, TranscriptionCancelled):
-        print("\nAbgebrochen. Ein erneuter Aufruf setzt fort (bereits geladene Modelldateien bleiben erhalten).")
+        _say("Abgebrochen. Ein erneuter Aufruf setzt fort (bereits geladene Modelldateien bleiben erhalten).")
         return 130
+    from callrec.console import default_status
+
+    default_status().finish()
     for m in result.messages:
         print(m)
     if result.unassigned_speakers:
@@ -411,21 +417,24 @@ def cmd_record(args: argparse.Namespace) -> int:
             return False
 
         def notify(self, title: str, message: str) -> None:
-            print(f"[{title}] {message}")
+            _say(f"[{title}] {message}")
 
         def set_recording_state(self, recording: bool, title: str) -> None:
             pass
 
         def set_status(self, text: str) -> None:
-            if text:
-                print(text)
+            status(text)
 
         def open_review(self, rec) -> None:  # type: ignore[no-untyped-def]
             print(f'Sprecher zuordnen: callrec speakers "{rec.folder}"')
 
+    from callrec.console import default_status
+
     def status(text: str) -> None:
         if text:
-            print(text)
+            default_status().update(text)
+        else:
+            default_status().finish()
 
     queue = ProcessingQueue(lambda: build_pipeline(cfg), status=status)
     ctl = Controller(cfg, ConsoleUi(), lambda: WasapiBackend(cfg.detection.teams_processes), calendar, queue, MeProvider(cfg))
@@ -446,63 +455,124 @@ def cmd_record(args: argparse.Namespace) -> int:
 
 
 def run_whisper_download(model: str, download_root: Path, out: Callable[[str], None] = print,
-                         command_prefix: Sequence[str] | None = None) -> int:
-    """Download a Whisper model in a child process with progress; Ctrl+C stops it."""
+                         command_prefix: Sequence[str] | None = None, status: Any = None) -> int:
+    """Download a Whisper model in a child process with progress; Ctrl+C stops it.
+
+    Returns 0 only if the worker verified the complete model afterwards (``DOWNLOADED`` line).
+    """
     import subprocess
 
-    from callrec.asr.download import describe_progress
+    from callrec.asr.download import DownloadDisplay
     from callrec.asr.transcriber import console_python
+    from callrec.console import ConsoleStatus
 
+    status = status or ConsoleStatus()
     cmd = [*(command_prefix or [console_python(), "-m", "callrec.asr.worker"]),
            "--download-only", "--model", model, "--download-root", str(download_root)]
     env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1")
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True, encoding="utf-8", errors="replace", env=env)  # noqa: S603
     assert proc.stdout is not None
-    width = 0
+    display = DownloadDisplay()
+    failure = ""
     try:
         for line in proc.stdout:
             parts = line.split()
-            if parts[:1] == ["DOWNLOAD"] and len(parts) >= 4:
-                _f, text = describe_progress(int(parts[1]), int(parts[2]), int(parts[3]))
-                sys.stdout.write("\r" + text.ljust(width))
-                width = max(width, len(text))
-                sys.stdout.flush()
-            elif parts[:2] == ["STAGE", "download"]:
-                out("Download läuft (Abbrechen mit Strg+C; ein erneuter Aufruf setzt fort) ...")
+            if parts[:2] == ["STAGE", "download"]:
+                status.message("Download läuft (Abbrechen mit Strg+C; ein erneuter Aufruf setzt fort) ...")
+            elif parts[:1] == ["FAILED"]:
+                failure = line.strip()[len("FAILED"):].strip()
+            elif parts[:1] in (["DOWNLOAD"], ["DOWNLOADDISK"], ["DOWNLOADED"]):
+                text = display.feed(parts)
+                if text and parts[0] != "DOWNLOADED":
+                    status.update(text)
         rc = proc.wait()
     except KeyboardInterrupt:
         proc.kill()
         proc.wait()
-        out("\nDownload abgebrochen. Erneut starten mit: callrec models --whisper")
+        status.message("Download abgebrochen. Erneut starten mit: callrec models --whisper")
         return 130
-    if width:
-        sys.stdout.write("\n")
-    return rc
+    status.finish()
+    if rc == 0 and display.final:
+        out(display.final)
+        return 0
+    if failure:
+        out(f"FEHLER: {failure}")
+    return rc or 3
+
+
+def _whisper_root() -> Path:
+    return paths.models_dir() / "whisper"
+
+
+def _selected_whisper_model(cfg: Any) -> tuple[str, str]:
+    from callrec.asr.gpu import gpu_status, plan_asr
+
+    usable = gpu_status().usable if cfg.transcription.device == "auto" else None
+    plan = plan_asr(cfg.transcription, usable)
+    return plan.model_for(plan.devices[0]), plan.note
 
 
 def cmd_models(args: argparse.Namespace) -> int:
-    from callrec.speakers.modelstore import SEGMENTATION, embedding_model, ensure_model
+    from callrec.asr.download import fmt_bytes
+    from callrec.asr.modelcache import find_model, installed_models, remove_model
 
     cfg = load_config()
+    root = _whisper_root()
+    if args.action == "list":
+        models = installed_models(root)
+        current, _note = _selected_whisper_model(cfg)
+        if not models:
+            print(f"Keine Whisper-Modelle in {root}.")
+        for m in models:
+            print(("* " if current in (m.name, m.repo) else "  ") + m.describe())
+        if models:
+            print(f"\nGesamt: {fmt_bytes(sum(m.size for m in models))} in {root}")
+            print(f"* = wird verwendet ({current}). Entfernen: callrec models remove <Name>")
+        return 0
+    if args.action == "remove":
+        if not args.name:
+            raise SystemExit("Bitte den Modellnamen angeben (siehe: callrec models list)")
+        m = find_model(root, args.name)
+        if m is None:
+            print(f"Modell {args.name!r} ist nicht installiert (callrec models list).")
+            return 1
+        current, _note = _selected_whisper_model(cfg)
+        if current in (m.name, m.repo):
+            print(f"Achtung: {m.name} ist das Modell, das die Transkription verwendet - es wird bei der nächsten "
+                  "Transkription erneut heruntergeladen.")
+        if not args.yes and input(f"{m.name} ({fmt_bytes(m.size)}) löschen? (ja/nein) ").strip().lower() != "ja":
+            print("Abgebrochen.")
+            return 1
+        try:
+            freed = remove_model(m, root)
+        except OSError as exc:
+            print(f"Löschen fehlgeschlagen (wird das Modell gerade verwendet?): {exc}")
+            return 1
+        print(f"Gelöscht: {m.name}, {fmt_bytes(freed)} frei.")
+        return 0
+
+    from callrec.speakers.modelstore import SEGMENTATION, embedding_model, ensure_model
+
     print("Lade Diarisierungsmodelle ...")
     print(" ", ensure_model(SEGMENTATION, paths.models_dir()))
     print(" ", ensure_model(embedding_model(cfg.diarization.embedding_model), paths.models_dir()))
     if args.whisper:
-        from callrec.asr.gpu import gpu_status, plan_asr
-
-        model = args.model
+        model = args.model or args.name
         if not model:
-            usable = gpu_status().usable if cfg.transcription.device == "auto" else None
-            plan = plan_asr(cfg.transcription, usable)
-            model = plan.model_for(plan.devices[0])
-            if plan.note:
-                print(plan.note)
+            model, note = _selected_whisper_model(cfg)
+            if note:
+                print(note)
         print(f"Lade Whisper-Modell {model} (je nach Modell 1,5-3 GB) ...")
-        rc = run_whisper_download(model, paths.models_dir() / "whisper")
+        rc = run_whisper_download(model, root)
         if rc != 0:
             if rc != 130:
-                print(f"Download fehlgeschlagen (Exit-Code {rc}). Details mit: callrec -v models --whisper")
+                print(f"Download fehlgeschlagen (Exit-Code {rc}) - das Modell ist NICHT vollständig. "
+                      "Erneut versuchen: callrec models --whisper; Details: callrec -v models --whisper")
             return rc
+        m = find_model(root, model)
+        if m is not None and not m.complete:
+            print(f"FEHLER: Modell {model} ist nicht vollständig im Modellordner.")
+            return 3
     print("Fertig.")
     return 0
 
@@ -641,7 +711,7 @@ def build_parser() -> argparse.ArgumentParser:
                     help=f"Kommagetrennt aus {','.join(STEPS)} oder Preset: {', '.join(PRESETS)}")
     pr.add_argument("--model")
     pr.add_argument("--device", choices=["auto", "cuda", "cpu"])
-    pr.add_argument("--language")
+    pr.add_argument("--language", help="Sprache für diese Verarbeitung: de, en … oder auto (neu erkennen)")
     pr.add_argument("--preset", help="Preset für diese Verarbeitung (überschreibt general.preset)")
     pr.set_defaults(func=cmd_process)
 
@@ -656,7 +726,11 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--preset")
         sp.add_argument("--confirm-anthropic", action="store_true",
                         help="ältere Aufnahme: Zustimmung zur Übertragung an Anthropic nachträglich bestätigen")
-        sp.set_defaults(func=cmd_process, steps=_steps(preset), model=None, device=None, language=None)
+        if name == "retranscribe":
+            sp.add_argument("--language", help="Sprache für diese Neu-Transkription: de, en … oder auto (neu erkennen)")
+        sp.set_defaults(func=cmd_process, steps=_steps(preset), model=None, device=None)
+        if name != "retranscribe":
+            sp.set_defaults(language=None)
 
     s = sub.add_parser("speakers", help="Sprecher einer Aufnahme anzeigen")
     s.add_argument("folder")
@@ -713,10 +787,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("devices", help="Audiogeräte anzeigen").set_defaults(func=cmd_devices)
 
-    m = sub.add_parser("models", help="Modelle vorab herunterladen")
-    m.add_argument("action", choices=["download"], nargs="?", default="download")
+    m = sub.add_parser("models", help="Modelle laden (download), installierte Whisper-Modelle anzeigen (list) "
+                       "oder löschen (remove <Name>)")
+    m.add_argument("action", choices=["download", "list", "remove"], nargs="?", default="download")
+    m.add_argument("name", nargs="?", help="Whisper-Modell für remove (bzw. download --whisper)")
     m.add_argument("--whisper", action="store_true", help="auch das Whisper-Modell laden")
     m.add_argument("--model", help="Whisper-Modell (Standard: das für diesen Rechner gewählte)")
+    m.add_argument("--yes", action="store_true", help="ohne Rückfrage löschen")
     m.set_defaults(func=cmd_models)
 
     gp = sub.add_parser("gpu", help="Ist eine NVIDIA-GPU nutzbar? Effektives Gerät/Modell anzeigen")

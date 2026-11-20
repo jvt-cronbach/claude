@@ -46,7 +46,7 @@ FALLBACK_BETA = "server-side-fallback-2026-07-01"
 _FALLBACK_MODELS = ("claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5", "claude-fable-5-2", "claude-fable-5-1")
 _NON_RETRYABLE_429 = ("spend_limit", "ramp_limit")
 
-StreamProgress = Callable[[str], None]  # status text (heartbeat / streamed characters)
+StreamProgress = Callable[..., None]  # progress(text, wait_until=None): status text; wait_until = monotonic end of a retry wait
 
 
 class AnthropicError(LlmUnavailable):
@@ -108,7 +108,8 @@ def _refuse_redirect(response: Any) -> None:
         )
 
 
-def build_client(api_key: str, timeout_s: float, sdk_max_retries: int = 2, transport: Any = None) -> Any:
+def build_client(api_key: str, timeout_s: float, sdk_max_retries: int = 0, transport: Any = None,
+                 connect_timeout_s: float = 15.0) -> Any:
     """Anthropic client pinned to the official host, without redirects and without other credential sources."""
     anthropic = _sdk()
     http_kwargs: dict[str, Any] = {
@@ -122,7 +123,8 @@ def build_client(api_key: str, timeout_s: float, sdk_max_retries: int = 2, trans
         api_key=api_key,
         base_url=API_BASE,
         max_retries=sdk_max_retries,
-        timeout=anthropic.Timeout(timeout_s, connect=15.0),
+        # read timeout = longest silence on the (streamed) connection; the SDK default would be 10 min
+        timeout=anthropic.Timeout(timeout_s, connect=connect_timeout_s),
         http_client=http_client,
     )
 
@@ -133,6 +135,42 @@ def _retry_after(exc: Any) -> float | None:
         return float(value) if value else None
     except (AttributeError, TypeError, ValueError):
         return None
+
+
+def _reporter(progress: Any) -> Callable[..., None]:
+    def report(text: str, wait_until: float | None = None) -> None:
+        if progress is None:
+            return
+        try:
+            progress(text, wait_until=wait_until)
+        except TypeError:  # progress(text) only
+            progress(text)
+
+    return report
+
+
+def _fmt_s(seconds: float) -> str:
+    s = int(round(seconds))
+    return f"{s // 60}:{s % 60:02d} min" if s >= 60 else f"{s} s"
+
+
+def short_reason(exc: BaseException) -> str:
+    """Short German label of a retryable failure for the status line."""
+    try:
+        anthropic = _sdk()
+        if isinstance(exc, anthropic.APITimeoutError):
+            return "Zeitüberschreitung"
+        if isinstance(exc, anthropic.APIConnectionError):
+            return "keine Verbindung"
+        if isinstance(exc, anthropic.RateLimitError):
+            return "Ratenlimit"
+        if isinstance(exc, anthropic.InternalServerError) or getattr(exc, "type", None) in _RETRYABLE_STREAM_ERROR_TYPES:
+            return "Anthropic überlastet"
+    except AnthropicError:  # pragma: no cover
+        pass
+    if _transport_error(exc):
+        return "Verbindung abgebrochen"
+    return exc.__class__.__name__
 
 
 class AnthropicProvider:
@@ -148,7 +186,9 @@ class AnthropicProvider:
         api_key: str,
         model: str = DEFAULT_MODEL,
         *,
-        timeout_s: float = 900.0,
+        timeout_s: float = 180.0,
+        connect_timeout_s: float = 15.0,
+        retry_budget_s: float = 300.0,
         effort: str = "medium",
         max_tokens: int = 32000,
         max_chunk_chars: int = 300000,
@@ -156,12 +196,16 @@ class AnthropicProvider:
         refusal_fallback: bool = True,
         key_source: str = "",
         transport: Any = None,
-        sdk_max_retries: int = 2,
+        sdk_max_retries: int = 0,
         sleep: Callable[[float], None] = time.sleep,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.api_key = api_key.strip()
         self.model = model.strip() or DEFAULT_MODEL
         self.timeout_s = timeout_s
+        self.connect_timeout_s = connect_timeout_s
+        self.retry_budget_s = retry_budget_s
+        self._clock = clock
         self.effort = effort
         self.max_tokens = max_tokens
         self.max_chunk_chars = max_chunk_chars
@@ -184,7 +228,8 @@ class AnthropicProvider:
             raise AnthropicError(NO_KEY_MESSAGE)
         with self._lock:
             if self._client is None:
-                self._client = build_client(self.api_key, self.timeout_s, self._sdk_max_retries, self._transport)
+                self._client = build_client(self.api_key, self.timeout_s, self._sdk_max_retries, self._transport,
+                                            self.connect_timeout_s)
             return self._client
 
     def _fallback_enabled(self, model: str) -> bool:
@@ -319,15 +364,31 @@ class AnthropicProvider:
                     on_text(chars)
             return stream.get_final_message()
 
+    def worst_case_wait_s(self) -> float:
+        """Upper bound for one request incl. retries (shown in README / log)."""
+        return self.retry_budget_s + self.connect_timeout_s + self.timeout_s
+
     def chat(self, model: str, messages: list[dict[str, str]], options: dict[str, Any],
              progress: StreamProgress | None = None) -> str:
+        """One request with bounded retries.
+
+        The SDK's own retries are off (``max_retries=0``): every attempt is ours, so the status can
+        always say what is happening right now ("Versuch 2/4 läuft", "nächster Versuch in 20 s").
+        No attempt starts after ``retry_budget_s``; waits are shortened to fit. Worst case for one
+        request: budget + connect timeout + read timeout (default 300 + 15 + 180 s).
+        """
         model = model or self.model
-        report = progress or (lambda s: None)
+        report = _reporter(progress)
         use_fallback = self._fallback_enabled(model)
         anthropic = _sdk()
+        started = self._clock()
+        deadline = started + self.retry_budget_s
         attempt = 0
+        last_reason = ""
         while True:
             attempt += 1
+            if attempt > 1:
+                report(f"Versuch {attempt}/{self.max_attempts} läuft (vorher: {last_reason})")
             try:
                 final = self._request(model, messages, use_fallback,
                                       lambda n: report(f"Claude schreibt … {n} Zeichen empfangen"))
@@ -337,16 +398,25 @@ class AnthropicProvider:
                 if use_fallback and "anthropic-beta" in msg:
                     log.info("Fallback-Beta nicht verfügbar - wiederhole ohne Ersatzmodell")
                     use_fallback = False
+                    attempt -= 1
                     continue
                 raise self.translate_error(exc, model) from exc
             except Exception as exc:
-                if not self._retryable(exc) or attempt >= self.max_attempts:
-                    raise self.translate_error(exc, model) from exc
-                delay = _retry_after(exc) or min(60.0, 5.0 * 2 ** (attempt - 1)) + random.uniform(0, 1)
                 why = self.translate_error(exc, model)
+                last_reason = short_reason(exc)
+                now = self._clock()
+                spent = now - started
+                if not self._retryable(exc) or attempt >= self.max_attempts or now >= deadline:
+                    if self._retryable(exc):
+                        log.warning("Anthropic-Anfrage aufgegeben nach %d Versuch(en) in %.0f s: %s", attempt, spent, why)
+                        raise AnthropicError(f"{why} (aufgegeben nach {attempt} Versuch(en) in {_fmt_s(spent)})") from exc
+                    raise why from exc
+                delay = _retry_after(exc) or min(60.0, 5.0 * 2 ** (attempt - 1)) + random.uniform(0, 1)
+                delay = max(0.0, min(delay, deadline - now))
                 log.warning("Anthropic-Anfrage fehlgeschlagen (Versuch %d/%d): %s - neuer Versuch in %.0f s",
                             attempt, self.max_attempts, why, delay)
-                report(f"Anthropic: {exc.__class__.__name__}, neuer Versuch {attempt + 1}/{self.max_attempts} in {delay:.0f} s")
+                report(f"Versuch {attempt}/{self.max_attempts} fehlgeschlagen ({last_reason}), "
+                       f"neuer Versuch {attempt + 1}/{self.max_attempts} in {delay:.0f} s", wait_until=now + delay)
                 self._sleep(delay)
         self.usage["requests"] += 1
         usage = getattr(final, "usage", None)

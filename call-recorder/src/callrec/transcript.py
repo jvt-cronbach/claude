@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from callrec.models import Person, SpeakerInfo, Utterance
+from callrec.models import SELF_SPEAKER_ID, Person, SpeakerInfo, Utterance
+from callrec.speakers.assign import UNKNOWN as UNKNOWN_SPEAKER_ID
 
 WEEKDAYS = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
 
@@ -63,6 +64,26 @@ def merge_by_name(utterances: list[Utterance], names: dict[str, str], join_gap: 
     return out
 
 
+def speaker_lists(utterances: list[Utterance], speakers: dict[str, SpeakerInfo]) -> tuple[list[str], list[SpeakerInfo], list[SpeakerInfo]]:
+    """(names that speak in the transcript, unassigned speakers with text, speakers without any text).
+
+    Diarization sometimes finds a "speaker" whose turns are too short to carry a transcribed word.
+    Such a speaker is not listed as speaking and not asked to be assigned in the header; it is
+    named once as "ohne Text" so the numbering (Sprecher 1 ... n) stays explainable.
+    """
+    names = display_names(speakers)
+    spoken_ids = list(dict.fromkeys(u.speaker for u in utterances))
+    spoken: list[str] = []
+    for sid in spoken_ids:
+        n = names.get(sid, sid)
+        if n not in spoken:
+            spoken.append(n)
+    internal = (SELF_SPEAKER_ID, UNKNOWN_SPEAKER_ID)
+    unassigned = [s for s in speakers.values() if not s.name and s.id not in internal and s.id in spoken_ids]
+    silent = [s for s in speakers.values() if s.id not in internal and s.id not in spoken_ids and s.display not in spoken]
+    return spoken, unassigned, silent
+
+
 def render_markdown(
     title: str,
     start: datetime | None,
@@ -74,6 +95,8 @@ def render_markdown(
     ts_format: str = "hh:mm:ss",
     join_gap: float | None = 1.5,
     version_note: str = "",
+    language_note: str = "",
+    warnings: list[str] | None = None,
 ) -> str:
     names = display_names(speakers)
     parts = [f"# Transkript: {title}", ""]
@@ -82,19 +105,22 @@ def render_markdown(
     parts.append(f"- **Dauer:** {fmt_ts(duration_s)}")
     if participants:
         parts.append("- **Eingeladen:** " + ", ".join(p.display for p in participants))
-    spoken = []
-    for sid in dict.fromkeys(u.speaker for u in utterances):
-        n = names.get(sid, sid)
-        if n not in spoken:
-            spoken.append(n)
+    spoken, unassigned, silent = speaker_lists(utterances, speakers)
     if spoken:
         parts.append("- **Sprechende:** " + ", ".join(spoken))
-    unassigned = [s for s in speakers.values() if not s.name and s.id != "ME"]
     if unassigned:
         parts.append(
             "- **Hinweis:** " + ", ".join(s.label for s in unassigned)
             + " noch nicht zugeordnet (Tray-Menü: „Sprecher zuordnen“)."
         )
+    if silent:
+        parts.append("- **Ohne Text:** " + ", ".join(s.display for s in silent)
+                     + " (nur sehr kurze Sprechabschnitte erkannt, kein Text zugeordnet).")
+    if language_note:
+        parts.append(f"- **Sprache:** {language_note}")
+    for w in warnings or []:
+        parts.append(f"- **Warnung:** {w}. Bitte die Stelle anhören und ggf. neu transkribieren "
+                     "(Tray: „Letzte Aufnahme: neu transkribieren“ bzw. callrec retranscribe <Ordner> --language …).")
     if model_note:
         parts.append(f"- **Erstellt lokal mit:** {model_note}")
     if version_note:

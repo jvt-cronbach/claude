@@ -91,6 +91,7 @@ class SettingsDialog:
         self.nb.pack(fill="both", expand=True, padx=6, pady=6)
         self._general(mic_names, render_names)
         self._transcription()
+        self._language_quality()
         self._speakers()
         self._rendering()
         self._summary()
@@ -129,7 +130,7 @@ class SettingsDialog:
             w = ttk.Checkbutton(tab, variable=var)
             w.grid(row=row, column=1, sticky="w", **PAD)
         else:
-            var = tk.StringVar(value=str(value))
+            var = tk.StringVar(value=", ".join(value) if isinstance(value, list) else str(value))
             if values is not None:
                 w = ttk.Combobox(tab, textvariable=var, values=values, width=width)
             else:
@@ -147,6 +148,8 @@ class SettingsDialog:
             raw = var.get()
             if isinstance(default, bool):
                 val: Any = bool(raw)
+            elif isinstance(default, list):
+                val = [x.strip() for x in str(raw).replace(";", ",").split(",") if x.strip()]
             elif isinstance(default, int):
                 try:
                     val = int(str(raw).strip())
@@ -197,7 +200,7 @@ class SettingsDialog:
         t = self._tab("Transkription")
         rows = [
             ("Whisper-Modell:", "model", WHISPER_MODELS),
-            ("Sprache (de / auto / en …):", "language", ["de", "auto", "en"]),
+            ("Sprache (auto = je Aufnahme erkennen; de/en = erzwingen):", "language", ["auto", "de", "en"]),
             ("Rechenwerk:", "device", ["auto", "cuda", "cpu"]),
             ("Beam-Größe (Genauigkeit vs. Tempo):", "beam_size", None),
             ("Zusatz-Prompt (Kontext):", "initial_prompt", None),
@@ -227,12 +230,96 @@ class SettingsDialog:
         ttk.Label(t, text="Modell „auto“: large-v3 auf einer NVIDIA-GPU, ohne GPU large-v3-turbo (int8). "
                   "Der Echtzeitfaktor jeder Transkription steht in meta.json und im Protokoll.",
                   wraplength=520, foreground="#555").grid(row=len(rows) + 2, column=0, columnspan=3, sticky="w", **PAD)
+        self._installed_models(t, len(rows) + 3)
         self._gpu: Any = None
         for key in ("model", "device", "compute_type"):
             var = self.vars.get(("transcription", key))
             if var is not None:
                 var.trace_add("write", lambda *a: self._show_effective())
         self.refresh_gpu(False)
+
+    def _language_quality(self) -> None:
+        t = self._tab("Sprache & Qualität")
+        rows = [
+            ("Mögliche Sprachen (Kommas; erste = bei Zweifel):", "transcription", "language_candidates"),
+            ("Andere Sprache erst ab Wahrscheinlichkeit (0,5–1):", "transcription", "language_switch_threshold"),
+            ("Mindestens so viel Sprache für einen Wechsel (s):", "transcription", "language_min_speech_s"),
+            ("Messabschnitte je Spur (je 30 s):", "transcription", "language_detection_windows"),
+            ("Sprachwechsel innerhalb einer Spur (experimentell):", "transcription", "multilingual"),
+            ("Schleifenschutz: max. Kompressionsrate (0 = aus):", "transcription", "compression_ratio_threshold"),
+            ("Schleifenschutz: min. log-Wahrscheinlichkeit (0 = aus):", "transcription", "log_prob_threshold"),
+            ("Stille-Schwelle no_speech (0 = aus):", "transcription", "no_speech_threshold"),
+            ("Neu dekodieren mit höherer Temperatur:", "transcription", "temperature_fallback"),
+            ("Wiederholungs-Strafe (1 = aus):", "transcription", "repetition_penalty"),
+            ("Wiederholte n-Gramme sperren (0 = aus):", "transcription", "no_repeat_ngram_size"),
+            ("Warnung ab Wiederholungen in Folge (0 = aus):", "transcription", "repetition_warn_min_repeats"),
+            ("Sprache der Zusammenfassung:", "summary", "language"),
+        ]
+        for i, (label, sec, key) in enumerate(rows):
+            self.field(t, i, label, sec, key, ["de", "en"] if key == "language" else None)
+        ttk.Label(t, text="Bei Sprache „auto“ wird je Aufnahme an mehreren Stellen beider Spuren gemessen; die erste "
+                  "Sprache der Liste gilt, solange keine andere eindeutig erkannt wird. Ergebnis und Wahrscheinlichkeiten "
+                  "stehen im Transkriptkopf und in meta.json. Die Zusammenfassung wird immer in der eingestellten "
+                  "Sprache geschrieben. „Sprachwechsel innerhalb einer Spur“ nutzt die Erkennung von faster-whisper je "
+                  "30-s-Abschnitt unter allen Sprachen (nicht nur der Liste) – nur bei echten Mischgesprächen.",
+                  wraplength=520, foreground="#555").grid(row=len(rows), column=0, columnspan=3, sticky="w", **PAD)
+
+    def _installed_models(self, tab: ttk.Frame, row: int) -> None:
+        f = ttk.LabelFrame(tab, text="Installierte Whisper-Modelle")
+        f.grid(row=row, column=0, columnspan=3, sticky="we", padx=6, pady=6)
+        f.columnconfigure(0, weight=1)
+        self.models_list = tk.Listbox(f, height=4, width=80)
+        self.models_list.grid(row=0, column=0, columnspan=2, sticky="we", **PAD)
+        self.models_info = tk.StringVar(value="wird ermittelt …")
+        ttk.Label(f, textvariable=self.models_info, foreground="#555", wraplength=520).grid(
+            row=1, column=0, sticky="w", **PAD)
+        ttk.Button(f, text="Ausgewähltes Modell löschen …", command=self.remove_selected_model).grid(
+            row=1, column=1, sticky="e", **PAD)
+        self._models: list[Any] = []
+        self.refresh_installed_models()
+
+    def _models_root(self) -> Path:
+        return paths.models_dir() / "whisper"
+
+    def refresh_installed_models(self) -> None:
+        from callrec.asr.download import fmt_bytes
+        from callrec.asr.modelcache import installed_models
+
+        root = self._models_root()
+
+        def done(res: Any) -> None:
+            self.models_list.delete(0, "end")
+            if isinstance(res, Exception):
+                self.models_info.set(f"Modellordner nicht lesbar: {res}")
+                return
+            self._models = list(res)
+            for m in self._models:
+                self.models_list.insert("end", m.describe())
+            total = sum(m.size for m in self._models)
+            self.models_info.set(f"{len(self._models)} Modell(e), zusammen {fmt_bytes(total)} in {root}"
+                                 if self._models else f"Keine Whisper-Modelle in {root}")
+
+        self._bg(lambda: installed_models(root), done)
+
+    def remove_selected_model(self) -> None:
+        from callrec.asr.download import fmt_bytes
+        from callrec.asr.modelcache import remove_model
+
+        sel = self.models_list.curselection()
+        if not sel or sel[0] >= len(self._models):
+            self.models_info.set("Bitte zuerst ein Modell in der Liste auswählen.")
+            return
+        m = self._models[sel[0]]
+        if not messagebox.askyesno("Modell löschen", f"{m.name} ({fmt_bytes(m.size)}) löschen? Wird es noch "
+                                   "verwendet, lädt CallRecorder es bei der nächsten Transkription erneut.",
+                                   parent=self.win):
+            return
+        try:
+            remove_model(m, self._models_root())
+        except (OSError, ValueError) as exc:
+            messagebox.showerror("Modell löschen", f"Löschen fehlgeschlagen (wird das Modell gerade verwendet?): {exc}",
+                                 parent=self.win)
+        self.refresh_installed_models()
 
     def _gpu_fn(self) -> Callable[[bool], Any]:
         if self.gpu_status_fn is not None:

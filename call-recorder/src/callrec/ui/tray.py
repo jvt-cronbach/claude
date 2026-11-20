@@ -31,7 +31,9 @@ def make_icon(color: str, recording: bool = False, size: int = 64) -> Image.Imag
 
 class TrayIcon:
     READY_TIMEOUT_S = 5.0
-    def __init__(self, actions: dict[str, Callable[[], None]], post: Callable[[Callable[[], None]], None]) -> None:
+    def __init__(self, actions: dict[str, Callable[[], None]], post: Callable[[Callable[[], None]], None],
+                 retranscribe_languages: list[tuple[str, str]] | None = None) -> None:
+        """``retranscribe_languages``: (menu text, action name) for "neu transkribieren in Sprache …"."""
         import pystray
 
         self._pystray = pystray
@@ -57,6 +59,9 @@ class TrayIcon:
                 item("Letzte Aufnahme: Sprecher zuordnen …", act("review_last")),
                 item("Letzte Aufnahme: Zusammenfassung neu erstellen", act("resummarize_last")),
                 item("Letzte Aufnahme: mit aktuellen Einstellungen neu transkribieren", act("retranscribe_last")),
+                *([item("Letzte Aufnahme: neu transkribieren in Sprache", pystray.Menu(
+                    *[item(text, act(name)) for text, name in retranscribe_languages]))]
+                  if retranscribe_languages else []),
                 item("Letzte Aufnahme: Zusammenfassung an SharePoint übergeben \u2026", act("handoff_last")),
                 item("Letzte Aufnahme: komplett neu verarbeiten", act("reprocess_last")),
                 item("Laufende Verarbeitung abbrechen", act("cancel_processing")),

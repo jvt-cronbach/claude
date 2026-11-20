@@ -182,8 +182,11 @@ class Controller:
         self.process(rec)
         return rec
 
-    def process(self, rec: Recording, steps: frozenset[str] = ALL_STEPS) -> None:
-        self.queue.submit(rec, steps, on_done=self._on_processed)
+    def process(self, rec: Recording, steps: frozenset[str] = ALL_STEPS, language: str | None = None) -> None:
+        if language:
+            self.queue.submit(rec, steps, on_done=self._on_processed, language=language)
+        else:
+            self.queue.submit(rec, steps, on_done=self._on_processed)
 
     def _on_processed(self, job: Any, result: ProcessResult | None, error: BaseException | None) -> None:
         rec: Recording = job.recording
@@ -194,6 +197,8 @@ class Controller:
         msg = "Transkript erstellt."
         if result.summary_skipped:
             msg += f" Zusammenfassung übersprungen: {result.summary_skipped}"
+            if result.summary_failed:
+                msg += " Später nachholen: „Letzte Aufnahme: Zusammenfassung neu erstellen“."
         elif "summarize" in result.steps_done:
             msg += " Zusammenfassung erstellt."
         self.ui.notify(f"Fertig: {rec.title()}", msg)

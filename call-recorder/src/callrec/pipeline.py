@@ -16,6 +16,7 @@ from typing import Any
 
 import numpy as np
 
+from callrec.asr import quality
 from callrec.audio.finalize import finalize_recording, find_audio, has_unfinished_parts
 from callrec.config import Config
 from callrec.consent import cloud_summary_covered
@@ -26,7 +27,7 @@ from callrec.speakers.assign import UNKNOWN, assign_remote, assign_single
 from callrec.speakers.diarize import Diarizer, Embedder, speaker_embeddings
 from callrec.speakers.profiles import ProfileStore
 from callrec.summary import Summarizer, SummaryUnavailable, missing_sections, render_summary_md
-from callrec.transcript import merge_utterances, render_lines, render_markdown
+from callrec.transcript import fmt_ts, merge_utterances, render_lines, render_markdown, speaker_lists
 from callrec.userfiles import Rule, apply_replacements
 from callrec.versions import adopt_legacy, fingerprint, latest, write_version
 
@@ -60,7 +61,25 @@ class ProcessResult:
     steps_done: list[str] = field(default_factory=list)
     messages: list[str] = field(default_factory=list)
     summary_skipped: str = ""
+    summary_failed: bool = False  # an error, not a deliberate skip (the transcript is still fine)
     unassigned_speakers: int = 0
+    language_note: str = ""
+    transcript_warnings: list[str] = field(default_factory=list)
+
+
+def summary_retry_hint(rec: Recording) -> str:
+    return ("Das Transkript ist fertig (transcript.md). Zusammenfassung später nachholen: Tray-Menü "
+            f"„Letzte Aufnahme: Zusammenfassung neu erstellen“ oder callrec summarize \"{rec.folder}\"")
+
+
+def _accepts(fn: Any, name: str) -> bool:
+    import inspect
+
+    try:
+        params = inspect.signature(fn).parameters
+    except (TypeError, ValueError):
+        return False
+    return name in params or any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values())
 
 
 def initial_prompt_for(participants: list[Person], self_person: Person) -> str:
@@ -79,6 +98,7 @@ class Pipeline:
     def __init__(self, cfg: Config, components: Components) -> None:
         self.cfg = cfg
         self.c = components
+        self._language: str | None = None  # one-off override for run(): "de", "en", ... or "auto"
 
     # -- settings snapshots (recorded in meta.json for before/after comparison) --
     def effective_prompt(self, rec: Recording) -> str:
@@ -122,7 +142,10 @@ class Pipeline:
         rec: Recording,
         steps: Iterable[str] = ALL_STEPS,
         progress: ProgressFn = lambda s, f, m: None,
+        language: str | None = None,
     ) -> ProcessResult:
+        """``language`` overrides transcription.language for this run ("auto" = detect again)."""
+        self._language = language or None
         wanted = set(steps)
         unknown = wanted - ALL_STEPS
         if unknown:
@@ -187,6 +210,11 @@ class Pipeline:
         if selection:
             result.messages.append(selection)
             log.info("Transkription: %s", selection)
+        decision = self._decide_language(rec, transcriber, {"mic": fa.mic, "remote": fa.remote}, progress)
+        result.language_note = str(decision.get("reason") or "")
+        log.info("Sprache %s: %s", rec.folder.name, result.language_note)
+        result.messages.append(f"Sprache: {result.language_note}")
+        tcfg = self.cfg.transcription
         for i, (track, path) in enumerate((("mic", fa.mic), ("remote", fa.remote))):
 
             def track_progress(f: float, msg: str = "", i: int = i, track: str = track) -> None:
@@ -194,15 +222,23 @@ class Pipeline:
                 label = f"Spur {track}: {msg}" if msg else f"Spur {track}"
                 progress(-1.0 if f < 0 else (i + f) / 2, label)
 
+            lang = str((decision.get("tracks") or {}).get(track, {}).get("language") or "") or None
+            kwargs: dict[str, Any] = {"language": lang} if _accepts(transcriber.transcribe, "language") else {}
             asr: AsrResult = transcriber.transcribe(
                 path,
                 rec.asr_path(track),
                 initial_prompt=prompt,
                 hotwords=hotwords,
                 progress=track_progress,
+                **kwargs,
             )
             rec.save_asr(track, asr)
             asr_meta[track] = {"model": asr.model, "device": asr.device, "compute_type": asr.compute_type, "language": asr.language}
+            q = quality.check(asr.segments, tcfg.repetition_warn_min_repeats, tcfg.compression_ratio_threshold)
+            asr_meta[track]["quality"] = q
+            for r in q["repetitions"]:
+                log.warning("Spur %s: mögliche Wiederholungsschleife bei %.0f s: %r x%d (%s)",
+                            track, r["start"], r["phrase"], r["repeats"], rec.folder.name)
             stats = getattr(transcriber, "last_stats", None)
             if isinstance(stats, dict) and stats:
                 asr_meta[track]["timing"] = dict(stats)
@@ -210,10 +246,55 @@ class Pipeline:
                     log.info("Transkription Spur %s: %.1f s Audio in %.1f s (Echtzeitfaktor %.2f, Modell %s, %s/%s, Laden %.1f s)",
                              track, stats.get("audio_s", 0.0), stats.get("transcribe_s", 0.0), stats["rtf"],
                              asr.model, asr.device, asr.compute_type, stats.get("load_s", 0.0))
-        tmeta: dict[str, Any] = {**asr_meta, "run_id": run_id, "settings": self.asr_settings(rec), "finished_at": _now_iso()}
+        tmeta: dict[str, Any] = {**asr_meta, "run_id": run_id, "settings": self.asr_settings(rec),
+                                 "language_detection": decision, "finished_at": _now_iso()}
+        result.transcript_warnings = quality.warning_lines({t: asr_meta[t]["quality"] for t in ("mic", "remote")},
+                                                           lambda x: fmt_ts(x))
+        for w in result.transcript_warnings:
+            result.messages.append(f"Warnung: {w}")
         if selection:
             tmeta["selection_note"] = selection
         rec.update_meta(["processing", "transcription"], tmeta)
+
+    def _decide_language(self, rec: Recording, transcriber: Any, tracks: dict[str, Any],
+                         progress: Callable[..., None]) -> dict[str, Any]:
+        from callrec.asr import language as lang
+
+        tcfg = self.cfg.transcription
+        names = list(tracks)
+        override = (self._language or "").strip().lower()
+        if override and override != "auto":
+            return lang.forced(override, names, "für diese Verarbeitung gewählt")
+        if not override and tcfg.language != "auto":
+            return lang.forced(tcfg.language, names, "fest eingestellt")
+        candidates = list(tcfg.language_candidates)
+        prior = candidates[0]
+        detect = getattr(transcriber, "detect_languages", None)
+        if detect is None:
+            return {**lang.forced(prior, names, "Vorgabe – Spracherkennung nicht verfügbar"), "mode": "prior"}
+        from callrec.asr.transcriber import TranscriptionCancelled, TranscriptionError
+
+        try:
+            raw = detect(tracks, rec.data_dir / "language_detect.json",
+                         progress=lambda f, m="": progress(-1.0, "Sprache wird erkannt" if not m else m))
+        except TranscriptionCancelled:
+            raise
+        except (TranscriptionError, OSError, ValueError) as exc:
+            log.warning("Spracherkennung fehlgeschlagen (%s) - verwende %s", exc, prior)
+            return {**lang.forced(prior, names, "Vorgabe – Spracherkennung fehlgeschlagen"), "mode": "prior"}
+        if not raw.get("multilingual_model", True):
+            return lang.forced("en", names, "das gewählte Modell kann nur Englisch")
+        windows = {t: list(((raw.get("tracks") or {}).get(t) or {}).get("windows") or []) for t in names}
+        decision = lang.decide(windows, candidates, tcfg.language_switch_threshold, tcfg.language_min_speech_s)
+        decision["detect_s"] = raw.get("detect_s")
+        return decision
+
+    def _transcript_language(self, rec: Recording) -> str:
+        """Detected/forced language of the call ("" if unknown, "de+en" if the tracks differ)."""
+        tmeta = (rec.load_meta().get("processing") or {}).get("transcription") or {}
+        langs = [str((tmeta.get(t) or {}).get("language") or "") for t in ("mic", "remote")]
+        langs = [x for x in dict.fromkeys(langs) if x]
+        return "+".join(langs)
 
     def _step_diarize(self, rec: Recording, result: ProcessResult, progress: Callable[..., None]) -> None:
         import json
@@ -343,10 +424,21 @@ class Pipeline:
         prev = latest(rec, "transcript")
         n = int(prev["version"]) + (0 if prev and prev.get("fingerprint") == fp else 1) if prev else 1
         preset = f", Preset {self.cfg.active_preset}" if self.cfg.active_preset else ""
+        from callrec.asr.language import header_text, language_name
+
+        lang_note = header_text(tmeta.get("language_detection") or {})
+        if not lang_note and mic.language:
+            lang_note = language_name(mic.language) if mic.language == remote.language else \
+                f"Ich: {language_name(mic.language)}, Gegenseite: {language_name(remote.language)}"
+        warnings = quality.warning_lines({t: (tmeta.get(t) or {}).get("quality") or {} for t in ("mic", "remote")},
+                                         lambda x: fmt_ts(x))
         md = render_markdown(
             rec.title(), rec.started_at(), rec.duration() or mic.duration, rec.participants(), utterances, speakers, note,
             ts_format=tc.timestamp_format, join_gap=join_gap, version_note=f"v{n}{preset}",
+            language_note=lang_note, warnings=warnings,
         )
+        _spoken, unassigned, _silent = speaker_lists(utterances, speakers)
+        result.unassigned_speakers = len(unassigned)
         n2, new = write_version(rec, "transcript", md, fp, settings)
         if new and n2 > 1:
             result.messages.append(f"Neue Transkript-Version v{n2} erstellt (vorherige bleibt als transcript.v{n2 - 1}.md erhalten).")
@@ -378,16 +470,30 @@ class Pipeline:
             rec.update_meta(["processing", "summary"], {"skipped": result.summary_skipped, "at": _now_iso()})
             log.warning("Zusammenfassung übersprungen: Einwilligung deckt Anthropic nicht ab (%s)", rec.folder.name)
             return
+        started = datetime.now(UTC)
         try:
             summarizer = self.c.summarizer_factory()
             if hasattr(summarizer, "progress"):
                 summarizer.progress = lambda f, m="": progress(f, m)
-            body = summarizer.summarize(rec.title(), names, lines, date=date)
-        except SummaryUnavailable as exc:
-            result.summary_skipped = str(exc)
-            result.messages.append(f"Zusammenfassung übersprungen: {exc}")
-            rec.update_meta(["processing", "summary"], {"skipped": str(exc), "at": _now_iso()})
-            log.warning("Zusammenfassung übersprungen: %s", exc)
+            kwargs: dict[str, Any] = {}
+            call_lang = self._transcript_language(rec)
+            if call_lang and _accepts(summarizer.summarize, "transcript_language"):
+                kwargs["transcript_language"] = call_lang
+            body = summarizer.summarize(rec.title(), names, lines, date=date, **kwargs)
+        except Exception as exc:  # noqa: BLE001 - a failed summary never fails the recording
+            unexpected = not isinstance(exc, SummaryUnavailable)
+            waited = int((datetime.now(UTC) - started).total_seconds())
+            reason = str(exc) if not unexpected else f"unerwarteter Fehler ({exc.__class__.__name__}: {exc})"
+            result.summary_skipped = reason
+            result.summary_failed = True
+            hint = summary_retry_hint(rec)
+            result.messages.append(f"Zusammenfassung nicht erstellt (nach {waited} s): {reason} {hint}")
+            rec.update_meta(["processing", "summary"], {"skipped": reason, "status": "failed", "waited_s": waited,
+                                                        "at": _now_iso()})
+            if unexpected:
+                log.exception("Zusammenfassung fehlgeschlagen (%s)", rec.folder.name)
+            else:
+                log.warning("Zusammenfassung übersprungen nach %d s: %s", waited, exc)
             return
         created = datetime.now().strftime("%d.%m.%Y %H:%M")
         describe = getattr(summarizer, "describe", None)

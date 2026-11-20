@@ -120,6 +120,19 @@ def detection_loop(cfg: Config, controller: Controller, ui: Any, stop: threading
                 ui.post(lambda p=prompt: controller.on_reminder(p))
 
 
+def language_label(code: str) -> str:
+    from callrec.asr.language import language_name
+
+    return "Sprache automatisch erkennen" if code == "auto" else language_name(code)
+
+
+def retranscribe_language_items(candidates: list[str]) -> list[tuple[str, str]]:
+    """Tray submenu "neu transkribieren in Sprache": one entry per candidate plus "automatisch"."""
+    codes = list(dict.fromkeys([*candidates, "de", "en"]))
+    return [(language_label(c), f"retranscribe_lang:{c}") for c in codes] + \
+        [(language_label("auto"), "retranscribe_lang:auto")]
+
+
 def run_tray_app(cfg: Config | None = None) -> int:
     log_file = setup_logging(console=sys.stderr is not None)
     if not acquire_single_instance():
@@ -196,7 +209,7 @@ def run_tray_app(cfg: Config | None = None) -> int:
             return
         dialogs.ask_handoff(ui.root, rec, cfg, lambda sha: perform_handoff(cfg, rec, sha))
 
-    def with_last(steps: frozenset[str]) -> None:
+    def with_last(steps: frozenset[str], language: str | None = None) -> None:
         rec = last_recording()
         if rec is None:
             ui.notify("Keine Aufnahme", "Keine abgeschlossene Aufnahme gefunden.")
@@ -204,8 +217,12 @@ def run_tray_app(cfg: Config | None = None) -> int:
         if not cloud_ok(rec, steps):
             ui.notify("Keine Übertragung", "Ohne Bestätigung wird die Zusammenfassung nicht von Claude erstellt.")
             return
-        controller.process(rec, steps)
-        ui.notify("Verarbeitung gestartet", rec.folder.name)
+        if language:
+            controller.process(rec, steps, language=language)
+            ui.notify("Neu-Transkription gestartet", f"{rec.folder.name}: {language_label(language)}")
+        else:
+            controller.process(rec, steps)
+            ui.notify("Verarbeitung gestartet", rec.folder.name)
 
     def cancel_processing() -> None:
         if queue.cancel_current():
@@ -263,11 +280,12 @@ def run_tray_app(cfg: Config | None = None) -> int:
         tray.stop()
         ui.root.quit()
 
-    actions = {
+    retranscribe = frozenset({"transcribe", "identify", "render", "summarize"})
+    actions: dict[str, Any] = {
         "toggle": controller.toggle,
         "review_last": lambda: review(None),
         "resummarize_last": lambda: with_last(frozenset({"summarize"})),
-        "retranscribe_last": lambda: with_last(frozenset({"transcribe", "identify", "render", "summarize"})),
+        "retranscribe_last": lambda: with_last(retranscribe),
         "handoff_last": lambda: handoff(None),
         "reprocess_last": lambda: with_last(frozenset({"finalize", "transcribe", "diarize", "identify", "render", "summarize"})),
         "open_folder": lambda: open_path(cfg.recordings_path()),
@@ -278,7 +296,11 @@ def run_tray_app(cfg: Config | None = None) -> int:
         "open_log": lambda: open_path(log_file),
         "quit": quit_app,
     }
-    tray = TrayIcon(actions, ui.post)
+    lang_items = retranscribe_language_items(cfg.transcription.language_candidates)
+    for _text, name in lang_items:
+        code = name.split(":", 1)[1]
+        actions[name] = lambda code=code: with_last(retranscribe, language=code)
+    tray = TrayIcon(actions, ui.post, retranscribe_languages=lang_items)
     ui.tray = tray
     tray.start()
 

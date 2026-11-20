@@ -305,7 +305,9 @@ def make_provider(cfg: Any, session: Any = None, *, anthropic_key: tuple[str, st
             anthropic_key = load_key()
         key, source = anthropic_key
         return AnthropicProvider(  # type: ignore[return-value]
-            key, cfg.anthropic_model, timeout_s=cfg.timeout_s, effort=cfg.anthropic_effort,
+            key, cfg.anthropic_model, timeout_s=cfg.anthropic_read_timeout_s,
+            connect_timeout_s=cfg.anthropic_connect_timeout_s, retry_budget_s=cfg.anthropic_retry_budget_s,
+            effort=cfg.anthropic_effort,
             max_tokens=cfg.anthropic_max_tokens, max_chunk_chars=cfg.anthropic_max_chunk_chars,
             max_attempts=cfg.anthropic_max_retries, refusal_fallback=cfg.anthropic_refusal_fallback,
             key_source=source, transport=anthropic_transport,

@@ -19,6 +19,7 @@ class Job:
     recording: Recording
     steps: frozenset[str] = ALL_STEPS
     on_done: Callable[[Job, ProcessResult | None, BaseException | None], None] | None = None
+    language: str | None = None  # one-off transcription language ("auto" = detect again)
     result: ProcessResult | None = field(default=None, init=False)
     error: BaseException | None = field(default=None, init=False)
 
@@ -56,8 +57,9 @@ class ProcessingQueue:
             self._thread.start()
             self._started = True
 
-    def submit(self, rec: Recording, steps: Iterable[str] = ALL_STEPS, on_done: Callable[..., None] | None = None) -> Job:
-        job = Job(rec, frozenset(steps), on_done)
+    def submit(self, rec: Recording, steps: Iterable[str] = ALL_STEPS, on_done: Callable[..., None] | None = None,
+               language: str | None = None) -> Job:
+        job = Job(rec, frozenset(steps), on_done, language)
         self._q.put(job)
         self.start()
         return job
@@ -89,7 +91,11 @@ class ProcessingQueue:
                 self._status(status_text(step, frac, msg, title))
 
             try:
-                job.result = self._pipeline_factory().run(job.recording, job.steps, progress)
+                pipeline = self._pipeline_factory()
+                if job.language:
+                    job.result = pipeline.run(job.recording, job.steps, progress, language=job.language)
+                else:
+                    job.result = pipeline.run(job.recording, job.steps, progress)
                 self._status("")
             except BaseException as exc:  # noqa: BLE001 - report everything to the UI
                 log.exception("Verarbeitung von %s fehlgeschlagen", title)

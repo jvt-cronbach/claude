@@ -73,8 +73,45 @@ def clean_output(text: str) -> str:
     return text.strip()
 
 
+def language_instruction(summary_language: str, transcript_language: str = "") -> str:
+    """Appended to the system prompt (also to customised templates): the minutes' language is fixed.
+
+    Calls are mostly German, sometimes English, occasionally mixed; the minutes must always be in
+    the configured language and keep the machine-readable German headings.
+    """
+    from callrec.asr.language import language_name
+
+    target = language_name(summary_language)
+    text = (f"Sprache des Protokolls: {target}. Diese Vorgabe gilt immer und hat Vorrang. "
+            "Die vorgegebenen Überschriften bleiben exakt wie angegeben.")
+    others = [c for c in transcript_language.split("+") if c and c != summary_language]
+    if others:
+        src = " und ".join(language_name(c) for c in others)
+        text += (f" Das Transkript ist ganz oder teilweise auf {src}. Schreibe das Protokoll trotzdem vollständig "
+                 f"auf {target}: Inhalte sinngemäß übertragen; Personen-, Firmen- und Produktnamen sowie "
+                 "Fachbegriffe ohne gängige Übersetzung unverändert lassen.")
+    else:
+        text += f" Ist das Transkript teilweise in einer anderen Sprache, schreibe das Protokoll trotzdem auf {target}."
+    return text
+
+
 ProgressCb = Callable[..., None]  # progress(fraction 0..1, message="")
 HEARTBEAT_S = 2.0
+
+
+STREAMING_PREFIX = "Claude schreibt"
+
+
+def heartbeat_text(state: dict[str, Any], now: float, started: float) -> str:
+    """Current state, not the last event: "warte noch 12 s", "Versuch 2/4 läuft – 35 s" ..."""
+    until = state.get("until")
+    total = int(now - started)
+    if until is not None:
+        return f"{state['detail']} – noch {max(0, int(round(until - now)))} s (insgesamt {total} s)"
+    since = int(now - float(state.get("since") or started))
+    if since == total:
+        return f"{state['detail']} – {total} s"
+    return f"{state['detail']} – {since} s (insgesamt {total} s)"
 
 
 class LlmSummarizer:
@@ -93,6 +130,7 @@ class LlmSummarizer:
         self.progress: ProgressCb = progress or (lambda f, m="": None)
         self.heartbeat_s = heartbeat_s
         self._frac = 0.0
+        self.transcript_language = ""
 
     def describe(self) -> dict[str, Any]:
         info: dict[str, Any] = {
@@ -100,6 +138,8 @@ class LlmSummarizer:
             "endpoint": self.provider.base_url,
             "model": self.model_name,
             "prompt_fingerprint": self.prompts.fingerprint(),
+            "summary_language": self.cfg.language,
+            "transcript_language": self.transcript_language,
         }
         extra = getattr(self.provider, "describe", None)
         if callable(extra):  # cloud provider: served model, token usage, what was sent
@@ -117,21 +157,30 @@ class LlmSummarizer:
     def _ask(self, prompt: str, label: str) -> str:
         """One model request with a heartbeat (elapsed time) and streamed progress if available."""
         options = {"temperature": self.cfg.temperature, "num_ctx": self.cfg.num_ctx}
-        messages = [{"role": "system", "content": self.prompts.system}, {"role": "user", "content": prompt}]
+        system = self.prompts.system.rstrip() + "\n\n" + language_instruction(self.cfg.language, self.transcript_language)
+        messages = [{"role": "system", "content": system}, {"role": "user", "content": prompt}]
         started = time.monotonic()
-        state = {"detail": f"warte auf {self.provider.name} ({self.model_name})"}
+        state: dict[str, Any] = {"detail": f"warte auf {self.provider.name} ({self.model_name})", "since": started,
+                                 "until": None}
         stop = threading.Event()
 
         def beat() -> None:
             while not stop.wait(self.heartbeat_s):
-                self._report(f"{label}: {state['detail']} – {int(time.monotonic() - started)} s")
+                self._report(f"{label}: {heartbeat_text(state, time.monotonic(), started)}")
 
         ticker = threading.Thread(target=beat, name="summary-heartbeat", daemon=True)
         ticker.start()
         try:
             if getattr(self.provider, "streams_progress", False):
-                def streamed(detail: str) -> None:
-                    state["detail"] = detail
+                def streamed(detail: str, wait_until: float | None = None) -> None:
+                    # a state change (retry wait, next attempt) is shown at once and restarts the
+                    # per-state clock; streamed text only updates the detail for the next heartbeat
+                    changed = wait_until != state["until"] or not detail.startswith(STREAMING_PREFIX)
+                    if changed:
+                        state["since"] = time.monotonic()
+                    state["detail"], state["until"] = detail, wait_until
+                    if changed:
+                        self._report(f"{label}: {heartbeat_text(state, time.monotonic(), started)}")
 
                 text = self.provider.chat(self.model_name, messages, options, progress=streamed)  # type: ignore[call-arg]
             else:
@@ -155,9 +204,11 @@ class LlmSummarizer:
     def max_chunk_chars(self) -> int:
         return int(getattr(self.provider, "max_chunk_chars", 0) or self.cfg.max_chunk_chars)
 
-    def summarize(self, title: str, participants: list[str], transcript_lines: list[str], date: str = "") -> str:
+    def summarize(self, title: str, participants: list[str], transcript_lines: list[str], date: str = "",
+                  transcript_language: str = "") -> str:
         from callrec.llm_anthropic import ContextTooLong
 
+        self.transcript_language = transcript_language
         self.check()
         limit = self.max_chunk_chars()
         for _attempt in range(4):
