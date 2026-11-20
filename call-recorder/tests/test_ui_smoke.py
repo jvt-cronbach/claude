@@ -144,6 +144,62 @@ def test_review_and_profiles_dialogs(root, tmp_path: Path):
     assert store.all_profiles() == []
 
 
+def test_review_dialog_shows_own_track_and_profile_origins(root, tmp_path: Path):
+    from callrec.models import AsrResult, AsrSegment, SpeakerInfo, Word
+    from callrec.speakers.profiles import PlainFilePersistence, ProfileStore
+    from tests.conftest import make_recording
+
+    rec = make_recording(tmp_path / "r", with_parts=False)
+    seg = AsrResult("de", 30, [AsrSegment(0, 4, "Guten Morgen", [Word(0, 4, " Guten Morgen")])])
+    rec.save_asr("mic", seg)
+    rec.save_asr("remote", seg)
+    rec.save_speakers({"ME": SpeakerInfo("ME", "Ich", name="Joost", source="self"),
+                       "S1": SpeakerInfo("S1", "Sprecher 1", suggested_name="Karl Fremd", note="klingt wie Karl")})
+    rec.turns_path.write_text('[{"start": 0, "end": 25, "speaker": "S1"}]', encoding="utf-8")
+    from callrec.models import Utterance
+
+    rec.save_utterances([Utterance(0, 4, "ME", "Guten Morgen", "mic"), Utterance(5, 9, "S1", "Hallo", "remote")])
+    store = ProfileStore(PlainFilePersistence(tmp_path / "vp.json"))
+    store.learn("Anna", "", np.ones(8), "m", recording=rec.uid, speaker="S1", source="manual", seconds=25,
+                title="Jour fixe", folder=rec.folder.name)
+    seen = {}
+
+    def drive():
+        win = toplevel(root)
+        seen["me"] = find(win, ttk.Label, "Ich – Joost (Mikrofonspur)").cget("text")
+        seen["values"] = find(win, ttk.Combobox).cget("values")
+        win.destroy()
+
+    root.after(200, drive)
+    assert dialogs.review_speakers(root, rec, store, lambda: None, lambda: None) is False
+    assert "1 Beiträge, 00:04 Sprechzeit" in seen["me"]
+    assert "klingt wie Karl Fremd (kein Teilnehmer dieses Termins)" in seen["values"]
+    assert "Das bin ich (meine Stimme auf der Spur der Gegenseite)" in seen["values"]
+
+    def drive_profiles():
+        win = toplevel(root)
+        trees = [w for w in walk(win) if isinstance(w, ttk.Treeview)]
+        trees[0].selection_set(trees[0].get_children()[0])
+        root.update()
+        seen["origins"] = [trees[1].item(i, "values") for i in trees[1].get_children()]
+        win.destroy()
+
+    root.after(200, drive_profiles)
+    dialogs.manage_profiles(root, store, rebuild=lambda pid: "ok")
+    assert seen["origins"][0][0] == f"Jour fixe ({rec.folder.name})" and seen["origins"][0][2] == "von Ihnen zugeordnet"
+
+    def drive_participants():
+        win = toplevel(root)
+        txt = find(win, tk.Text)
+        txt.delete("1.0", "end")
+        txt.insert("1.0", "Müller, Anna <anna@firma.de>\nKarl Fremd")
+        find(win, ttk.Button, "Speichern").invoke()
+
+    root.after(200, drive_participants)
+    people = dialogs.edit_participants(root, rec)
+    assert [p.name for p in people or []] == ["Müller, Anna", "Karl Fremd"]
+
+
 def test_settings_dialog_all_tabs_and_llm(root, tmp_path: Path):
     from callrec.config import Config, load_config, save_config
     from callrec.ui import settings as st

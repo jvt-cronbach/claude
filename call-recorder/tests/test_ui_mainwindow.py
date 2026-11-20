@@ -606,3 +606,35 @@ def test_compact_view_shows_last_recordings_with_next_action(world: World, monke
     from callrec.ui.viewmodel import WindowState
 
     assert WindowState.load(w.tmp / "window.json").compact is False
+
+
+def test_participants_and_recheck_rerun_identification(world: World, monkeypatch):
+    from callrec.models import Person as P
+
+    w = world
+    w.win.show()
+    w.pump(lambda: len(w.rows()) == 3)
+    name = "2026-11-18_1000_Kunde-Mueller"
+    rec = Recording(w.root_dir / name)
+    rec.save_speakers({})
+    w.win.select(name)
+    w.pump(lambda: w.win.selected is not None and w.win.selected.id == name)
+    labels = [w.win.more_menu.entrycget(i, "label") for i in range(w.win.more_menu.index("end") + 1)
+              if w.win.more_menu.type(i) == "command"]
+    assert "Teilnehmende bearbeiten …" in labels and "Sprecherzuordnung neu prüfen …" in labels
+    monkeypatch.setattr(dialogs, "edit_participants", lambda root, r: [P("Karl Kunde", "karl@kunde.de")])
+    assert w.actions.edit_participants(rec)
+    assert [p.name for p in rec.participants()] == ["Karl Kunde"]
+    w.pump(lambda: any(j[0] == name and j[1] == frozenset({"identify", "render"}) for j in w.jobs))
+    w.pump(lambda: not w.queue.is_busy_with(rec.folder))
+
+    class Preview:
+        def preview_identification(self, r):
+            return [("Sprecher 1", "Anna", "Sprecher 1")]
+
+    monkeypatch.setattr("callrec.ui.actions.build_pipeline", lambda cfg, profiles: Preview())
+    monkeypatch.setattr(dialogs, "confirm_recheck", lambda root, r, changes: changes == Preview().preview_identification(r))
+    n = len(w.jobs)
+    assert w.actions.recheck_speakers(rec)
+    w.pump(lambda: len(w.jobs) > n)
+    assert any((rec.data_dir / "archive").glob("speakers.*.json"))
