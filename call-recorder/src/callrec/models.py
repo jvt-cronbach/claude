@@ -206,6 +206,7 @@ class SpeakerInfo:
     suggested_score: float | None = None
     note: str = ""  # why there is no automatic assignment
     self_suspect: bool = False  # probably the user's own voice on the remote track
+    preselect: bool = False  # suggested_name is pre-filled in the dialog (the only remaining participant)
 
     @property
     def display(self) -> str:
@@ -214,6 +215,7 @@ class SpeakerInfo:
     def clear_hints(self) -> None:
         self.suggested_name, self.suggested_email, self.suggested_score, self.note = "", "", None, ""
         self.self_suspect = False
+        self.preselect = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -234,4 +236,5 @@ class SpeakerInfo:
             suggested_score=float(d["suggested_score"]) if d.get("suggested_score") is not None else None,
             note=str(d.get("note", "")),
             self_suspect=bool(d.get("self_suspect", False)),
+            preselect=bool(d.get("preselect", False)),
         )

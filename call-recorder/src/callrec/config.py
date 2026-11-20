@@ -129,6 +129,10 @@ class SpeakerConfig:
     # clean speech (s) a speaker needs before it is matched automatically / may change a profile
     min_match_speech_s: float = 8.0
     min_learn_speech_s: float = 20.0
+    # the participant list limits the number of remote speakers (participants without you, plus
+    # this many uninvited guests); per recording "Weitere Sprecher zulassen" lifts it
+    limit_to_participants: bool = True
+    extra_remote_speakers: int = 0
     invitee_bonus: float = 0.05  # only in match_scope = "all_profiles"
     auto_update_on_match: bool = True
     auto_update_threshold: float = 0.75
@@ -283,6 +287,8 @@ class Config:
             raise ConfigError("speakers.match_margin muss zwischen 0 und 0,5 liegen, min_*_speech_s >= 0")
         if not sp.match_threshold <= sp.auto_update_threshold < 1.0:
             raise ConfigError("speakers.auto_update_threshold muss zwischen match_threshold und 1 liegen")
+        if not 0 <= sp.extra_remote_speakers <= 20:
+            raise ConfigError("speakers.extra_remote_speakers muss zwischen 0 und 20 liegen")
         if not 0 <= self.diarization.num_threads <= 64:
             raise ConfigError("diarization.num_threads muss zwischen 0 (automatisch) und 64 liegen")
         if self.audio.gap_threshold_s <= 0:
@@ -706,6 +712,10 @@ match_margin = 0.08
 # Mindest-Sprechzeit (s) für die automatische Zuordnung bzw. für das Lernen eines Profils
 min_match_speech_s = 8.0
 min_learn_speech_s = 20.0
+# Anzahl der Sprecher der Gegenseite höchstens = Teilnehmende ohne Sie (+ so viele nicht eingeladene Gäste);
+# je Aufnahme aufhebbar ("Weitere Sprecher zulassen")
+limit_to_participants = true
+extra_remote_speakers = 0
 # Bonus für Eingeladene (nur bei match_scope = "all_profiles")
 invitee_bonus = 0.05
 auto_update_on_match = true

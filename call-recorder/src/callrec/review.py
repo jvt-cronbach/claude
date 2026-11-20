@@ -14,13 +14,14 @@ from callrec.models import (
     SOURCE_SELF_ECHO,
     USER_DECIDED,
     Person,
+    SpeakerInfo,
     SpeakerTurn,
 )
 from callrec.recording import Recording
 from callrec.speakers.profiles import ProfileStore
 
 SOURCE_TEXT = {"manual": "von Ihnen zugeordnet", "confirmed": "von Ihnen bestätigt", "auto": "automatisch",
-               "legacy": "frühere Version (Herkunft unbekannt)"}
+               "sole": "einzige eingeladene Person der Gegenseite", "legacy": "frühere Version (Herkunft unbekannt)"}
 SELF_CHOICE = "Das bin ich (meine Stimme auf der Spur der Gegenseite)"
 SUGGESTION_SUFFIX = " (kein Teilnehmer dieses Termins)"
 
@@ -184,6 +185,7 @@ def apply_assignments(
 
     min_learn = SpeakerConfig().min_learn_speech_s if min_learn_speech_s is None else min_learn_speech_s
     speakers = rec.load_speakers()
+    before = {k: SpeakerInfo.from_dict(v.to_dict()) for k, v in speakers.items()}
     embeddings, model_id = rec.load_embeddings()
     participants = rec.participants()
     me = rec.self_person()
@@ -247,7 +249,21 @@ def apply_assignments(
         messages.append("Als Teilnehmende ergänzt: " + ", ".join(p.display for p in added) + ".")
     rec.save_speakers(speakers)
     rerender()
+    mark_summary_outdated(rec, before, rec.load_speakers())
     return messages
+
+
+def speaker_names(speakers: dict[str, Any]) -> dict[str, str]:
+    return {sid: s.display for sid, s in speakers.items()}
+
+
+def mark_summary_outdated(rec: Recording, before: dict[str, Any], after: dict[str, Any]) -> bool:
+    """The speaker names changed after the summary was written: flag it (main window, header of the
+    hand-over) so the user can regenerate and hand over again."""
+    if not rec.summary_path.exists() or speaker_names(before) == speaker_names(after):
+        return False
+    rec.update_meta(["processing", "summary", "speakers_outdated"], True)
+    return True
 
 
 def archive_speakers(rec: Recording) -> Any:

@@ -33,8 +33,11 @@ log = logging.getLogger(__name__)
 MAX_CENTROID_WEIGHT = 20  # weight cap of the legacy centroid (profiles of earlier versions)
 MAX_CONTRIBUTIONS = 40  # older contributions are folded into the legacy centroid (origin then lost)
 # weight of one contribution in the centroid: an automatic match counts half of a user decision
-SOURCE_WEIGHT = {"manual": 1.0, "confirmed": 1.0, "auto": 0.5}
+# "sole": the only remote participant of a call whose speaker count is bounded by the invitation
+SOURCE_WEIGHT = {"manual": 1.0, "confirmed": 1.0, "sole": 0.75, "auto": 0.5}
 USER_SOURCES = ("manual", "confirmed")
+CREATING_SOURCES = (*USER_SOURCES, "sole")  # may create a new profile
+AUTO_SOURCES = ("auto", "sole")  # learned without a decision of yours: replaced by every re-run
 
 
 class Persistence(Protocol):
@@ -310,12 +313,12 @@ class ProfileStore:
             if recording:
                 # a user decision replaces anything this speaker taught before; an automatic match
                 # only replaces an earlier automatic one
-                self._drop(recording, speaker, None if source in USER_SOURCES else ("auto",))
+                self._drop(recording, speaker, None if source in USER_SOURCES else ("auto", "sole"))
             existing = self.find(name, email, model_id)
             now = _now()
             contrib = Contribution(recording, speaker, source, emb, SOURCE_WEIGHT[source], seconds, now, title, folder)
             if existing is None:
-                if source not in USER_SOURCES:
+                if source not in CREATING_SOURCES:
                     raise ValueError("Ein Stimmprofil wird nur aus einer Zuordnung durch Sie angelegt")
                 prof = VoiceProfile(
                     id=uuid.uuid4().hex, name=name, email=email, model_id=model_id,

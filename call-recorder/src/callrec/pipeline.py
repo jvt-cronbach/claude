@@ -23,6 +23,7 @@ from callrec.consent import cloud_summary_covered
 from callrec.models import (
     SELF_SPEAKER_ID,
     SOURCE_AUTO,
+    SOURCE_MANUAL,
     SOURCE_SELF,
     SOURCE_SELF_ECHO,
     USER_DECIDED,
@@ -32,10 +33,10 @@ from callrec.models import (
     SpeakerTurn,
 )
 from callrec.recording import Recording
-from callrec.review import carry_over_assignments, load_turns
+from callrec.review import carry_over_assignments, load_turns, mark_summary_outdated, speaker_names
 from callrec.speakers.assign import UNKNOWN, assign_remote, assign_single
 from callrec.speakers.diarize import Diarizer, Embedder, speaker_embeddings
-from callrec.speakers.profiles import ProfileStore
+from callrec.speakers.profiles import AUTO_SOURCES, ProfileStore
 from callrec.summary import Summarizer, SummaryUnavailable, missing_sections, render_summary_md
 from callrec.transcript import fmt_ts, merge_utterances, render_lines, render_markdown, speaker_lists
 from callrec.userfiles import Rule, apply_replacements
@@ -419,6 +420,7 @@ class Pipeline:
             json.dumps([t.__dict__ for t in turns], ensure_ascii=False), encoding="utf-8"
         )
         rec.save_embeddings(embeddings, model_id, self_embedding)
+        rec.save_raw_diarization(turns, embeddings, model_id)  # unbounded; the identification limits the count
         rec.save_trackcheck({"signal": signal} if signal else {})
         # Speaker ids of the earlier diarization are no longer valid; manual assignments are
         # carried over to the new clusters where the speaking times clearly overlap.
@@ -426,7 +428,7 @@ class Pipeline:
         if rec.speakers_path.exists():
             rec.speakers_path.unlink()
         # automatic contributions of the old clusters to voice profiles are no longer valid
-        self.c.profiles.forget(rec.uid, sources=("auto",))
+        self.c.profiles.forget(rec.uid, sources=AUTO_SOURCES)
         if carried:
             rec.save_speakers(carried)
             result.messages.append(f"{len(carried)} manuelle Sprecherzuordnung(en) übernommen.")
@@ -475,7 +477,60 @@ class Pipeline:
 
         return display_name(self.cfg, rec.self_person())
 
-    def compute_identification(self, rec: Recording) -> tuple[dict[str, SpeakerInfo], dict[str, Any], list[Any]]:
+    def _participants(self, rec: Recording) -> list[Person]:
+        """This recording's participants without you."""
+        from callrec.selfname import self_people
+        from callrec.speakers.names import persons_match
+
+        me_all = self_people(self.cfg, rec.self_person())
+        out: list[Person] = []
+        for p in rec.participants():
+            if not any(persons_match(p, x) for x in me_all) and not any(persons_match(p, q) for q in out):
+                out.append(p)
+        return out
+
+    def plan_bound(self, rec: Recording) -> tuple[list[SpeakerTurn], dict[str, np.ndarray], str,
+                                                  dict[str, SpeakerInfo], dict[str, Any]]:
+        """The diarization as the identification should use it: the unbounded result with the number
+        of remote speakers limited to the participants (``speakers.limit_to_participants``, lifted per
+        recording by "Weitere Sprecher zulassen"). Works on the cached turns and embeddings only.
+
+        Returns (turns, embeddings, model_id, speakers carried over, bound meta); reads only."""
+        from callrec.speakers import trackcheck
+        from callrec.speakers.bound import merge_to_bound
+        from callrec.speakers.diarize import speech_seconds
+
+        cur_turns = load_turns(rec)
+        cur_emb, model_id = rec.load_embeddings()
+        cur_sp = rec.load_speakers()
+        raw = rec.load_raw_diarization()
+        raw_turns, raw_emb, raw_model = raw if raw is not None else (cur_turns, cur_emb, model_id)
+        meta = rec.load_meta()
+        lifted = bool((meta.get("speaker_limit") or {}).get("lifted"))
+        sc = self.cfg.speakers
+        participants = self._participants(rec)
+        bound = (len(participants) + sc.extra_remote_speakers
+                 if sc.limit_to_participants and participants and not lifted else None)
+        report = trackcheck.check(rec.load_asr("mic"), rec.load_asr("remote"), raw_turns, raw_emb,
+                                  rec.load_self_embedding(), rec.load_trackcheck().get("signal"), meta.get("devices"))
+        keep = carry_over_assignments(cur_turns, cur_sp, raw_turns)
+        keep_apart = {sid: i.name for sid, i in keep.items() if i.source == SOURCE_MANUAL}
+        exclude = set(report.self_suspects) | {sid for sid, i in keep.items() if i.source == SOURCE_SELF_ECHO}
+        res = merge_to_bound(raw_turns, raw_emb, speech_seconds(raw_turns), bound, keep_apart, exclude)
+        raw_n = len({t.speaker for t in raw_turns})
+        info: dict[str, Any] = {"participants": len(participants), "bound": bound, "lifted": lifted,
+                                "raw_speakers": raw_n, "speakers": len({t.speaker for t in res.turns}),
+                                "merged": res.merged, "changed": False}
+        same = [(t.start, t.end, t.speaker) for t in res.turns] == \
+            [(t.start, t.end, t.speaker) for t in sorted(cur_turns, key=lambda t: (t.start, t.end))]
+        if same:
+            return cur_turns, cur_emb, model_id, cur_sp, info
+        info["changed"] = True
+        carried = carry_over_assignments(cur_turns, cur_sp, res.turns) if cur_turns else {}
+        return res.turns, res.embeddings, raw_model or model_id, carried, info
+
+    def compute_identification(self, rec: Recording, diar: tuple[Any, ...] | None = None,
+                               ) -> tuple[dict[str, SpeakerInfo], dict[str, Any], list[Any]]:
         """(speakers, identification meta, profile updates) - reads only, changes nothing.
 
         Rule ("participants", default): a remote speaker is assigned automatically only to a voice
@@ -488,9 +543,12 @@ class Pipeline:
         from callrec.speakers.diarize import speech_seconds
         from callrec.speakers.names import persons_match
 
-        turns = load_turns(rec)
-        embeddings, model_id = rec.load_embeddings()
-        old = rec.load_speakers()
+        if diar is not None:  # (turns, embeddings, model_id, speakers) from plan_bound
+            turns, embeddings, model_id, old = diar[0], diar[1], diar[2], diar[3]
+        else:
+            turns = load_turns(rec)
+            embeddings, model_id = rec.load_embeddings()
+            old = rec.load_speakers()
         me = rec.self_person()
         sc = self.cfg.speakers
         speakers: dict[str, SpeakerInfo] = {
@@ -510,7 +568,7 @@ class Pipeline:
                                   rec.load_self_embedding(), rec.load_trackcheck().get("signal"), meta.get("devices"))
         speech = speech_seconds(turns)
         me_all = self_people(self.cfg, me)
-        participants = [p for p in rec.participants() if not any(persons_match(p, x) for x in me_all)]
+        participants = self._participants(rec)
         strict = sc.match_scope == "participants"
         open_ids = [sid for sid in ids if speakers[sid].source not in USER_DECIDED]
         not_eligible: dict[str, str] = {}
@@ -523,6 +581,22 @@ class Pipeline:
                                      f"mindestens {sc.min_match_speech_s:.0f} s)")
         to_match = {sid: embeddings[sid] for sid in open_ids if sid in embeddings}
         decisions: dict[str, Any] = {}
+        learn: list[Any] = []
+        lifted = bool((rec.load_meta().get("speaker_limit") or {}).get("lifted"))
+        remote_ids = [sid for sid in ids if not speakers[sid].self_suspect and speakers[sid].source != SOURCE_SELF_ECHO]
+        sole = (strict and sc.limit_to_participants and not lifted and len(participants) == 1
+                and len(remote_ids) == 1 and remote_ids[0] in open_ids)
+        if sole:
+            # a call with you and ONE invited person: the remote voice is that person - no voice profile needed
+            sid, person = remote_ids[0], participants[0]
+            info = speakers[sid]
+            info.name, info.email, info.source, info.score = person.name or person.email, person.email, SOURCE_AUTO, None
+            info.note = "einzige eingeladene Person der Gegenseite"
+            open_ids = [x for x in open_ids if x != sid]
+            if (model_id and sid in embeddings and speech.get(sid, 0.0) >= sc.min_learn_speech_s
+                    and not report.mic_unreliable):
+                learn.append((Person(info.name, info.email), sid, embeddings[sid], speech.get(sid, 0.0), "sole"))
+            to_match = {}
         if strict and not participants:
             for sid in open_ids:
                 speakers[sid].note = ("keine Teilnehmerliste für diese Aufnahme – nichts automatisch zugeordnet "
@@ -534,7 +608,6 @@ class Pipeline:
                 bonus=0.0 if strict else sc.invitee_bonus, preferred=None if strict else participants,
                 ignore_recording=rec.uid,
             )
-        learn: list[Any] = []
         for sid in open_ids:
             info, d = speakers[sid], decisions.get(sid)
             if d is None:
@@ -546,13 +619,23 @@ class Pipeline:
                 info.score, info.source = round(m.similarity, 4), SOURCE_AUTO
                 if (sc.auto_update_on_match and m.similarity >= sc.auto_update_threshold
                         and speech.get(sid, 0.0) >= sc.min_learn_speech_s):
-                    learn.append((m.profile, sid, embeddings[sid], speech.get(sid, 0.0)))
+                    learn.append((m.profile.person, sid, embeddings[sid], speech.get(sid, 0.0), "auto"))
             else:
                 info.note = d.reason
                 if d.suggestion is not None:
                     s = d.suggestion
                     info.suggested_name, info.suggested_email = s.profile.name, s.profile.email
                     info.suggested_score = round(s.similarity, 4)
+        # exactly one open voice and one participant left: pre-select that participant (you confirm it)
+        taken = [s for sid2, s in speakers.items() if sid2 != SELF_SPEAKER_ID and s.name]
+        remaining = [p for p in participants
+                     if not any(persons_match(p, Person(s.name, s.email)) for s in taken)]
+        still_open = [sid for sid in remote_ids if not speakers[sid].name]
+        if len(still_open) == 1 and len(remaining) == 1 and not speakers[still_open[0]].suggested_name:
+            info = speakers[still_open[0]]
+            info.suggested_name, info.suggested_email = remaining[0].name or remaining[0].email, remaining[0].email
+            info.preselect = True
+            info.note = info.note or "einzige noch nicht zugeordnete Person des Termins"
         ident = {
             "rule": IDENTIFY_RULE,
             "scope": sc.match_scope,
@@ -570,15 +653,30 @@ class Pipeline:
         import time
 
         t0 = time.monotonic()
-        speakers, ident, learn = self.compute_identification(rec)
+        import json
+
+        before = rec.load_speakers()
+        turns, embs, model_id, carried, binfo = self.plan_bound(rec)
         rid = rec.uid
+        if binfo["changed"]:
+            if rec.load_raw_diarization() is None:  # recording of an earlier version: keep the original
+                old_emb, old_model = rec.load_embeddings()
+                rec.save_raw_diarization(load_turns(rec), old_emb, old_model)
+            rec.turns_path.write_text(json.dumps([t.__dict__ for t in turns], ensure_ascii=False), encoding="utf-8")
+            rec.save_embeddings(embs, model_id, rec.load_self_embedding())
+            rec.save_speakers(carried)
+            if binfo["speakers"] < binfo["raw_speakers"]:
+                result.messages.append(f"Sprecher der Gegenseite auf {binfo['speakers']} begrenzt (Teilnehmende des "
+                                       f"Termins); zuvor {binfo['raw_speakers']} getrennte Stimmen.")
+        rec.update_meta(["processing", "diarization", "bound"], {k: v for k, v in binfo.items() if k != "changed"})
+        speakers, ident, learn = self.compute_identification(rec, (turns, embs, model_id, rec.load_speakers()))
         # automatic contributions of an earlier run of this recording are replaced, never repeated
-        self.c.profiles.forget(rid, sources=("auto",))
-        _emb, model_id = rec.load_embeddings()
-        for prof, sid, emb, secs in learn:
-            self.c.profiles.learn(prof.name, prof.email, emb, model_id, recording=rid, speaker=sid, source="auto",
+        self.c.profiles.forget(rid, sources=AUTO_SOURCES)
+        for person, sid, emb, secs, source in learn:
+            self.c.profiles.learn(person.name, person.email, emb, model_id, recording=rid, speaker=sid, source=source,
                                   seconds=secs, title=rec.title(), folder=rec.folder.name)
         rec.save_speakers(speakers)
+        mark_summary_outdated(rec, before, speakers)
         ident["timing"] = {"identify_s": round(time.monotonic() - t0, 3)}
         ident["at"] = _now_iso()
         rec.update_meta(["processing", "identification"], ident)
@@ -589,7 +687,8 @@ class Pipeline:
 
     def preview_identification(self, rec: Recording) -> list[tuple[str, str, str]]:
         """ "Sprecherzuordnung neu prüfen": what would change, as (label, before, after); nothing is saved."""
-        new, _ident, _learn = self.compute_identification(rec)
+        turns, embs, model_id, carried, _b = self.plan_bound(rec)
+        new, _ident, _learn = self.compute_identification(rec, (turns, embs, model_id, carried))
         old = rec.load_speakers()
         out: list[tuple[str, str, str]] = []
         for sid, info in new.items():
@@ -765,5 +864,6 @@ class Pipeline:
             local=bool(getattr(getattr(summarizer, "provider", None), "is_local", True)),
             provider=str(llm.get("provider", "")),
         ), fp, settings)
-        rec.update_meta(["processing", "summary"], {**llm, "version": n, "missing_sections": missing, "finished_at": _now_iso()})
+        rec.update_meta(["processing", "summary"], {**llm, "version": n, "missing_sections": missing, "finished_at": _now_iso(),
+                                                    "speaker_names": speaker_names(speakers)})
         log.info("Zusammenfassung v%d erstellt (%s, Modell %s)", n, llm.get("provider", "?"), served)

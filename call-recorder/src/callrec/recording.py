@@ -218,6 +218,37 @@ class Recording:
         with np.load(self.embeddings_path, allow_pickle=False) as data:
             return np.asarray(data["own_mic"]) if "own_mic" in data.files else None
 
+    # unbounded diarization result (before limiting the speaker count to the participants)
+    @property
+    def raw_turns_path(self) -> Path:
+        return self.data_dir / "diarization_raw.json"
+
+    @property
+    def raw_embeddings_path(self) -> Path:
+        return self.data_dir / "speaker_embeddings_raw.npz"
+
+    def save_raw_diarization(self, turns: list[Any], embeddings: dict[str, np.ndarray], model_id: str) -> None:
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        write_text_atomic(self.raw_turns_path, json.dumps([t.__dict__ for t in turns], ensure_ascii=False))
+        tmp = self.raw_embeddings_path.with_name("speaker_embeddings_raw.tmp.npz")
+        arrays = {f"spk_{k}": np.asarray(v, dtype=np.float32) for k, v in embeddings.items()}
+        np.savez(tmp, __model_id__=np.array(model_id), **arrays)  # type: ignore[arg-type]
+        tmp.replace(self.raw_embeddings_path)
+
+    def load_raw_diarization(self) -> tuple[list[Any], dict[str, np.ndarray], str] | None:
+        from callrec.models import SpeakerTurn
+
+        if not self.raw_turns_path.exists():
+            return None
+        turns = [SpeakerTurn(**d) for d in json.loads(self.raw_turns_path.read_text(encoding="utf-8"))]
+        embs: dict[str, np.ndarray] = {}
+        model_id = ""
+        if self.raw_embeddings_path.exists():
+            with np.load(self.raw_embeddings_path, allow_pickle=False) as data:
+                model_id = str(data["__model_id__"]) if "__model_id__" in data.files else ""
+                embs = {k[4:]: np.asarray(data[k]) for k in data.files if k.startswith("spk_")}
+        return turns, embs, model_id
+
     @property
     def trackcheck_path(self) -> Path:
         return self.data_dir / "trackcheck.json"
@@ -232,10 +263,12 @@ class Recording:
         write_text_atomic(self.trackcheck_path, json.dumps(data, ensure_ascii=False, indent=2))
 
     def delete_embeddings(self) -> bool:
-        if self.embeddings_path.exists():
-            self.embeddings_path.unlink()
-            return True
-        return False
+        found = False
+        for p in (self.embeddings_path, self.raw_embeddings_path):
+            if p.exists():
+                p.unlink()
+                found = True
+        return found
 
 
 def list_recordings(root: Path) -> list[Recording]:
