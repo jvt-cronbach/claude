@@ -183,6 +183,18 @@ class HandoffConfig:
 
 
 @dataclass
+class ConsentConfig:
+    """How a recording start is authorised (never settable by a preset).
+
+    ``ask`` (default): one question "aufnehmen?" with a reminder that all participants must have
+    agreed; meta.json records that the user started the recording, not that consent was confirmed.
+    ``confirm``: the explicit confirmation (checkbox / typed "ja"). In both modes a recording only
+    ever starts through the user's own action for that recording."""
+
+    mode: str = "ask"  # ask | confirm
+
+
+@dataclass
 class DetectionConfig:
     enabled: bool = True
     teams_processes: list[str] = field(default_factory=lambda: ["ms-teams.exe", "teams.exe"])
@@ -267,6 +279,7 @@ class Config:
     transcript: TranscriptRenderConfig = field(default_factory=TranscriptRenderConfig)
     summary: SummaryConfig = field(default_factory=SummaryConfig)
     handoff: HandoffConfig = field(default_factory=HandoffConfig)
+    consent: ConsentConfig = field(default_factory=ConsentConfig)
     detection: DetectionConfig = field(default_factory=DetectionConfig)
     autostop: AutoStopConfig = field(default_factory=AutoStopConfig)
     processing: ProcessingConfig = field(default_factory=ProcessingConfig)
@@ -283,6 +296,8 @@ class Config:
         return paths.default_recordings_dir()
 
     def validate(self) -> None:
+        if self.consent.mode not in ("ask", "confirm"):
+            raise ConfigError("consent.mode muss 'ask' oder 'confirm' sein")
         if self.audio.format not in ("flac", "opus"):
             raise ConfigError(f"audio.format muss 'flac' oder 'opus' sein, nicht {self.audio.format!r}")
         if self.transcription.device not in ("auto", "cuda", "cpu"):
@@ -387,6 +402,7 @@ _SECTION_TYPES: dict[str, type] = {
     "transcript": TranscriptRenderConfig,
     "summary": SummaryConfig,
     "handoff": HandoffConfig,
+    "consent": ConsentConfig,
     "detection": DetectionConfig,
     "autostop": AutoStopConfig,
     "processing": ProcessingConfig,
@@ -441,7 +457,7 @@ def config_from_dict(data: dict[str, Any], base: Config | None = None) -> Config
     cfg = copy.deepcopy(base) if base is not None else Config()
     warnings: list[str] = list(cfg.warnings)
     for section, values in data.items():
-        if "consent" in section.lower():
+        if "consent" in section.lower() and section != "consent":
             warnings.append(
                 f"Abschnitt [{section}] ignoriert: Die Einwilligungsbestätigung kann nicht abgeschaltet werden."
             )
@@ -453,7 +469,9 @@ def config_from_dict(data: dict[str, Any], base: Config | None = None) -> Config
         target = getattr(cfg, section)
         defaults = {f.name: getattr(target, f.name) for f in dataclasses.fields(target)}
         for key, value in values.items():
-            if "consent" in key.lower() or "einwillig" in key.lower():
+            # [consent] knows exactly one setting (mode = ask | confirm); nothing can switch the
+            # per-recording user action off.
+            if "consent" in key.lower() or "einwillig" in key.lower() or (section == "consent" and key != "mode"):
                 warnings.append(
                     f"{section}.{key} ignoriert: Die Einwilligungsbestätigung kann nicht abgeschaltet werden."
                 )
@@ -800,6 +818,12 @@ teams_processes = ["ms-teams.exe", "teams.exe"]
 poll_interval_s = 3.0
 calendar_reminder = true
 cooldown_minutes = 10
+
+[consent]
+# ask = eine Frage "aufnehmen?" mit Hinweis auf die nötige Zustimmung aller Teilnehmenden (meta.json
+# vermerkt dann: vom Nutzer gestartet, Hinweis angezeigt - nicht: Einwilligung bestätigt).
+# confirm = ausdrückliche Bestätigung per Häkchen bzw. "ja". Eine Aufnahme startet nie von selbst.
+mode = "ask"
 
 [autostop]
 # Aufnahme beenden, wenn das Gespräch vorbei ist - nie still: vorher erscheint ein Countdown

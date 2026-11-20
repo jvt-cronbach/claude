@@ -78,6 +78,11 @@ def test_consent_cannot_be_configured_away():
         }
     )
     assert len([w for w in cfg.warnings if "Einwilligung" in w]) == 4
+    assert cfg.consent.mode == "ask"
+    # the only setting is the mode; an unknown mode is a configuration error
+    assert config_from_dict({"consent": {"mode": "confirm"}}).consent.mode == "confirm"
+    with pytest.raises(ConfigError):
+        config_from_dict({"consent": {"mode": "off"}})
     # no field anywhere in the config model mentions consent
     for section in dataclasses.fields(Config):
         value = getattr(cfg, section.name)

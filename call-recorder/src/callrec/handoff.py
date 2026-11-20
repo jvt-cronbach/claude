@@ -133,10 +133,15 @@ def build_summary_document(rec: Recording, include_emails: bool = False) -> Summ
     names = [f"{p.name} <{p.email}>" if include_emails and p.email and p.email != p.name else p.display for p in people]
     try:
         confirmed = datetime.fromisoformat(consent["confirmed_at"]).strftime("%d.%m.%Y, %H:%M Uhr")
-        consent_line = (
-            f"Aufnahme mit Einwilligung aller Teilnehmenden (bestätigt am {confirmed}"
-            f" durch {consent.get('confirmed_by') or 'den Aufnehmenden'})."
-        )
+        who = consent.get("confirmed_by") or "den Aufnehmenden"
+        if consent.get("mode") == "ask" or consent.get("confirmed") is not True:
+            # mode "ask": no confirmation was requested, so none is claimed here
+            consent_line = (
+                f"Aufnahme gestartet am {confirmed} durch {who}; Hinweis auf die erforderliche "
+                "Zustimmung aller Teilnehmenden wurde angezeigt."
+            )
+        else:
+            consent_line = f"Aufnahme mit Einwilligung aller Teilnehmenden (bestätigt am {confirmed} durch {who})."
     except (KeyError, ValueError):
         consent_line = "Einwilligungsbestätigung nicht auffindbar."
     versions = (meta.get("versions") or {}).get("summary") or []
@@ -152,7 +157,7 @@ def build_summary_document(rec: Recording, include_emails: bool = False) -> Summ
         "",
         f"- **Datum:** {_fmt_date(rec)}",
         f"- **Teilnehmende:** {', '.join(names) if names else '-'}",
-        f"- **Einwilligung:** {consent_line}",
+        f"- **Aufnahme:** {consent_line}",
         f"- **Quelle:** CallRecorder-Zusammenfassung{version_txt}{model_txt}. "
         "Enthält kein Transkript und keine Audiodaten.",
         "",
