@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import logging
 import tkinter as tk
 from collections.abc import Callable
@@ -251,7 +252,7 @@ def choose(root: tk.Misc, title: str, message: str, choices: list[tuple[str, str
         win.destroy()
 
     for key, label in reversed(choices):
-        ttk.Button(bar, text=label, command=lambda k=key: pick(k)).pack(side="right", padx=4)
+        ttk.Button(bar, text=label, command=functools.partial(pick, key)).pack(side="right", padx=4)
     win.bind("<Escape>", lambda e: win.destroy())
     _modal(win)
     root.wait_window(win)

@@ -89,7 +89,8 @@ def has_transcript_material(meta: dict[str, Any]) -> bool:
 
 def removed_text(meta: dict[str, Any]) -> str:
     """ "Nur Zusammenfassung (Audio und Transkript gelöscht am 20.11.2026)" / "Audio gelöscht am …"."""
-    r = meta.get("retention") if isinstance(meta.get("retention"), dict) else {}
+    raw = meta.get("retention")
+    r: dict[str, Any] = raw if isinstance(raw, dict) else {}
     scope = removed_scope(meta)
     if not scope:
         return ""
@@ -152,7 +153,12 @@ def remove(rec: Recording, root: Path, scope: str, mode: str = "permanent", by: 
            recycler: Callable[[Path], None] | None = None) -> str:
     """Remove ``scope`` of one recording (the caller checked that it is not busy). Returns a short
     German description of what happened."""
-    from callrec.library import _check_deletable, _send_to_recycle_bin, delete_recording, recycle_bin_available
+    from callrec.library import (
+        _check_deletable,
+        _send_to_recycle_bin,
+        delete_recording,
+        recycle_bin_available,
+    )
 
     if scope not in SCOPE_TEXT:
         raise RetentionError(f"Unbekannter Umfang: {scope}")
@@ -166,11 +172,10 @@ def remove(rec: Recording, root: Path, scope: str, mode: str = "permanent", by: 
     if removed_scope(meta) == SCOPE_AUDIO_TRANSCRIPT or (scope == SCOPE_AUDIO and removed_scope(meta) == SCOPE_AUDIO):
         return "bereits entfernt"
     items = targets(rec, scope)
-    if mode != "permanent":
-        if recycler is None:
-            if not recycle_bin_available():
-                raise RetentionError("Kein Papierkorb verfügbar - nur endgültiges Löschen möglich.")
-            recycler = _send_to_recycle_bin
+    if mode != "permanent" and recycler is None:
+        if not recycle_bin_available():
+            raise RetentionError("Kein Papierkorb verfügbar - nur endgültiges Löschen möglich.")
+        recycler = _send_to_recycle_bin
     removed = []
     for p in items:
         if mode == "permanent":
