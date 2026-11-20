@@ -38,11 +38,35 @@ from callrec.ui import dialogs
 log = logging.getLogger(__name__)
 
 
-def open_path(path: Any) -> None:
-    if sys.platform == "win32":
-        os.startfile(str(path))  # type: ignore[attr-defined]  # noqa: S606
-    else:
+TEXT_SUFFIXES = (".md", ".log", ".txt", ".toml", ".json")
+
+
+def open_path(path: Any, startfile: Callable[[str], None] | None = None,
+              popen: Callable[..., Any] | None = None) -> None:
+    """Open a file/folder with its Windows default application.
+
+    ``.md`` has no default application on a fresh Windows 11 (startfile then raises
+    "keine Anwendung zugeordnet"): text files fall back to Notepad, everything else to the
+    Explorer with the file selected - a click must never silently do nothing."""
+    if sys.platform != "win32" and startfile is None:
         log.info("Öffnen: %s", path)
+        return
+    import subprocess
+
+    start = startfile or os.startfile  # type: ignore[attr-defined]
+    run = popen or subprocess.Popen
+    p = Path(str(path))
+    try:
+        start(str(p))
+        return
+    except OSError as exc:
+        log.info("Öffnen von %s mit der Standardanwendung nicht möglich: %s", p, exc)
+        if p.is_dir() or not p.exists():
+            raise
+    if p.suffix.lower() in TEXT_SUFFIXES:
+        run(["notepad.exe", str(p)])  # noqa: S603, S607
+    else:
+        run(["explorer.exe", f"/select,{p}"])  # noqa: S603, S607
 
 
 def language_label(code: str) -> str:
@@ -153,6 +177,11 @@ class AppActions:
         rec = self._resolve(rec)
         if rec is None:
             return
+        if self.controller.is_busy(rec):
+            # the dialog re-renders on this thread while the processing thread would write the
+            # same files (speakers.json, transcript, meta.json) - wait for the job instead
+            self.ui.notify("Wird noch verarbeitet", f"{rec.folder.name}: Sprecher zuordnen ist nach der Verarbeitung möglich.")
+            return
         if not rec.speakers_path.exists():
             self.ui.notify("Noch nicht verarbeitet", "Die Aufnahme wird noch verarbeitet.")
             return
@@ -258,8 +287,17 @@ class AppActions:
         dialogs.manage_profiles(self.root, self.profiles)
 
     # -- files --------------------------------------------------------
+    def _open(self, path: Any) -> bool:
+        try:
+            self.opener(path)
+            return True
+        except OSError as exc:
+            log.warning("Öffnen fehlgeschlagen: %s (%s)", path, exc)
+            self.ui.notify("Öffnen nicht möglich", f"{path}: {exc}")
+            return False
+
     def open_folder(self, rec: Recording | None = None) -> None:
-        self.opener(rec.folder if rec is not None else self.cfg.recordings_path())
+        self._open(rec.folder if rec is not None else self.cfg.recordings_path())
 
     def play(self, rec: Recording) -> bool:
         from callrec.audio.finalize import find_audio
@@ -268,18 +306,17 @@ class AppActions:
         if fa is None:
             self.ui.notify("Kein Audio", "Für diese Aufnahme gibt es (noch) keine fertigen Audiodateien.")
             return False
-        self.opener(fa.mix or fa.mic)
-        return True
+        return self._open(fa.mix or fa.mic)
 
     def open_log(self) -> None:
         if self.log_file is not None:
-            self.opener(self.log_file)
+            self._open(self.log_file)
 
     def open_readme(self) -> None:
         from callrec.setupcheck import readme_path
 
         p = readme_path()
-        self.opener(p if p is not None else paths.config_dir())
+        self._open(p if p is not None else paths.config_dir())
 
     def rename(self, rec: Recording, title: str) -> str:
         new = self.controller.rename(rec, title)

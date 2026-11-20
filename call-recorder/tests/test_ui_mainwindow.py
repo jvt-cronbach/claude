@@ -209,11 +209,18 @@ def test_record_start_goes_through_consent_dialog_and_stop_queues_processing(wor
     w.gate.set()
     w.pump(lambda: w.win.job_var.get() == "Keine Verarbeitung aktiv." and w.win.msg_var.get().startswith("Fertig"))
 
+    # a second click right after "stop" (double click) does not open a new consent dialog
+    declined: list[int] = []
+    monkeypatch.setattr(dialogs, "ask_start", lambda *a, **k: declined.append(1))
+    w.controller._stopped_at = time.monotonic()
+    w.win.rec_btn.invoke()
+    assert declined == [] and not w.controller.is_recording
+
     # declining consent: nothing is recorded
-    monkeypatch.setattr(dialogs, "ask_start", lambda *a, **k: None)
+    w.controller._stopped_at = float("-inf")
     w.win.event_var.set(values[-1])
     w.win.rec_btn.invoke()
-    assert not w.controller.is_recording
+    assert declined == [1] and not w.controller.is_recording
 
 
 def test_actions_retranscribe_cancel_error_hint_handoff_rename_delete(world: World, monkeypatch):
@@ -436,3 +443,29 @@ def test_reader_window_shows_formatted_summary(world: World):
     assert "Kurzfassung" in text.get("1.0", "end") and "##" not in text.get("1.0", "end")
     assert "h2" in text.tag_names("3.0") or any("h2" in text.tag_names(f"{i}.0") for i in range(1, 6))
     top.destroy()
+
+
+def test_speaker_review_is_refused_while_the_recording_is_processed(world: World, monkeypatch):
+    """The review dialog re-renders on the Tk thread; it must not run beside a job on the same recording."""
+    w = world
+    opened: list = []
+    monkeypatch.setattr(dialogs, "review_speakers", lambda *a, **k: opened.append(a[1]))
+    monkeypatch.setattr("callrec.ui.actions.build_pipeline", lambda cfg, profiles: None)
+    w.win.show()
+    w.pump(lambda: len(w.rows()) == 3)
+    name = "2026-11-18_1000_Kunde-Mueller"
+    rec = Recording(w.root_dir / name)
+    w.gate.clear()
+    w.actions.resummarize(rec)
+    w.pump(lambda: w.queue.is_busy_with(rec.folder))
+    w.win.select(name)
+    w.pump(lambda: w.win.selected is not None and w.win.selected.id == name)
+    assert w.win.buttons["review"].instate(["disabled"])
+    w.actions.review(rec)  # e.g. from the "Sprecher zuordnen" hint or open_review_after_processing
+    assert opened == []
+    w.gate.set()
+    w.pump(lambda: not w.queue.is_busy_with(rec.folder))
+    rec.speakers_path.parent.mkdir(parents=True, exist_ok=True)
+    rec.speakers_path.write_text("{}", encoding="utf-8")
+    w.actions.review(rec)
+    assert [r.folder for r in opened] == [rec.folder]

@@ -451,6 +451,20 @@ def cmd_record(args: argparse.Namespace) -> int:
     return 0
 
 
+_DOWNLOADS: set[Any] = set()  # running download workers (killed when the tray app exits)
+
+
+def cancel_model_downloads() -> int:
+    """Stop model downloads started with :func:`run_whisper_download` (app exit)."""
+    procs = list(_DOWNLOADS)
+    for proc in procs:
+        try:
+            proc.kill()
+        except OSError:
+            pass
+    return len(procs)
+
+
 def run_whisper_download(model: str, download_root: Path, out: Callable[[str], None] = print,
                          command_prefix: Sequence[str] | None = None, status: Any = None) -> int:
     """Download a Whisper model in a child process with progress; Ctrl+C stops it.
@@ -473,6 +487,7 @@ def run_whisper_download(model: str, download_root: Path, out: Callable[[str], N
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True, encoding="utf-8", errors="replace", env=env,  # noqa: S603
                             creationflags=CREATE_NO_WINDOW if sys.platform == "win32" else 0)
     assert proc.stdout is not None
+    _DOWNLOADS.add(proc)
     display = DownloadDisplay()
     failure = ""
     try:
@@ -492,6 +507,8 @@ def run_whisper_download(model: str, download_root: Path, out: Callable[[str], N
         proc.wait()
         status.message("Download abgebrochen. Erneut starten mit: callrec models --whisper")
         return 130
+    finally:
+        _DOWNLOADS.discard(proc)
     status.finish()
     if rc == 0 and display.final:
         out(display.final)

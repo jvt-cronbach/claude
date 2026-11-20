@@ -388,6 +388,8 @@ def _send_to_recycle_bin(folder: Path) -> None:  # pragma: no cover - Windows on
     from ctypes import wintypes
 
     class SHFILEOPSTRUCTW(ctypes.Structure):
+        if ctypes.sizeof(ctypes.c_void_p) == 4:  # shellapi.h packs its structs to 1 byte on 32-bit Windows
+            _pack_ = 1
         _fields_ = [
             ("hwnd", wintypes.HWND), ("wFunc", wintypes.UINT), ("pFrom", wintypes.LPCWSTR),
             ("pTo", wintypes.LPCWSTR), ("fFlags", ctypes.c_uint16), ("fAnyOperationsAborted", wintypes.BOOL),
@@ -400,7 +402,10 @@ def _send_to_recycle_bin(folder: Path) -> None:  # pragma: no cover - Windows on
     op.wFunc = FO_DELETE
     op.pFrom = str(folder) + "\0"  # double-NUL terminated list
     op.fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI | FOF_WANTNUKEWARNING
-    rc = ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op))  # type: ignore[attr-defined]
+    shfileop = ctypes.windll.shell32.SHFileOperationW  # type: ignore[attr-defined]
+    shfileop.argtypes = [ctypes.POINTER(SHFILEOPSTRUCTW)]
+    shfileop.restype = ctypes.c_int
+    rc = shfileop(ctypes.byref(op))
     if rc != 0:
         raise LibraryError(f"Löschen fehlgeschlagen (Fehlercode {rc}). Ist eine Datei noch geöffnet (z. B. im Player)?")
     if op.fAnyOperationsAborted:

@@ -865,7 +865,7 @@ class MainWindow:
     def toggle_record(self) -> None:
         if self.controller.is_recording:
             self.app.stop_recording()
-        else:
+        elif not self.controller.just_stopped():  # second click of a double click on "stop"
             self.app.start_recording(self.selected_suggestion())
         self._update_record_panel()
 
@@ -1044,7 +1044,7 @@ class MainWindow:
         busy = self.controller.is_busy(rec)
         enabled = {
             "handoff": info.has_summary,
-            "review": info.speakers_unassigned is not None and not recording_now,
+            "review": info.speakers_unassigned is not None and not busy,
             "resummarize": info.has_transcript and not recording_now,
             "retranscribe": info.recording_status in ("stopped", "recovered") and not recording_now,
             "reprocess": info.recording_status in ("stopped", "recovered", "recording") and not recording_now,

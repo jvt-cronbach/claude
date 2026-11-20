@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -72,6 +73,7 @@ class Controller:
         self._lock = threading.RLock()
         self._starting = False
         self._notified: set[str] = set()
+        self._stopped_at = float("-inf")  # time.monotonic() of the last stop
 
     @property
     def is_recording(self) -> bool:
@@ -98,9 +100,18 @@ class Controller:
         cur = self.current
         return (cur is not None and cur.folder == rec.folder) or self.queue.is_busy_with(rec.folder)
 
+    # A double click on "stop" (window button, hotkey pressed twice) must not open the dialog of
+    # a new recording right away: within this time after a stop a toggle does not start one.
+    TOGGLE_GUARD_S = 1.5
+
+    def just_stopped(self) -> bool:
+        return time.monotonic() - self._stopped_at < self.TOGGLE_GUARD_S
+
     def toggle(self) -> None:
         if self.is_recording:
             self.stop()
+        elif self.just_stopped():
+            log.info("Start ignoriert: Aufnahme wurde gerade erst beendet (Doppelklick?)")
         else:
             self.start()
 
@@ -181,6 +192,7 @@ class Controller:
             self.recorder = None
             self.current = None
             self.backend = None
+            self._stopped_at = time.monotonic()
         result = recorder.stop()
         if backend is not None:
             backend.close()
@@ -201,6 +213,7 @@ class Controller:
         self.ui.set_recording_state(False, "")
         self.ui.notify("Aufnahme beendet", "Die Verarbeitung läuft im Hintergrund.")
         self.process(rec)
+        self._stopped_at = time.monotonic()  # again: recorder.stop() can take a moment
         return rec
 
     def process(self, rec: Recording, steps: frozenset[str] = ALL_STEPS, language: str | None = None,

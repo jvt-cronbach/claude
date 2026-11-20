@@ -147,9 +147,12 @@ def run_tray_app(cfg: Config | None = None) -> int:
     def quit_app() -> None:
         if controller.is_recording:
             controller.stop()
-        from callrec.asr.transcriber import cancel_running_workers
+        # do not leave a Whisper worker / download running after exit; the interrupted job is
+        # resumed at the next start
+        queue.shutdown()
+        from callrec.cli import cancel_model_downloads
 
-        cancel_running_workers()  # do not leave a Whisper worker / download running after exit
+        cancel_model_downloads()  # "Jetzt herunterladen" from the setup tab
         stop_event.set()
         if hotkey:
             hotkey.stop()
@@ -202,6 +205,7 @@ def run_tray_app(cfg: Config | None = None) -> int:
         ui.root.after(50, window.show)
     ui.mainloop()
     queue.stop()
+    queue.join(timeout=10)  # let a cancelled job record its state before the process ends
     return 0
 
 

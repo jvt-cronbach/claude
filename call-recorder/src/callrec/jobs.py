@@ -102,6 +102,7 @@ class ProcessingQueue:
         self._recent: deque[Job] = deque(maxlen=self.HISTORY)
         self._listeners: list[Callable[[Job], None]] = []
         self.busy = False
+        self._shutting_down = False
 
     def start(self) -> None:
         if not self._started:
@@ -124,8 +125,25 @@ class ProcessingQueue:
     def stop(self) -> None:
         self._q.put(None)
 
+    def shutdown(self) -> None:
+        """App exit: stop the running job like a cancellation, but leave a recording whose first (full)
+        processing was running marked as interrupted (processing.status "running"), so the next start
+        resumes it - unlike a job the user cancelled, which stays "cancelled" until started again by
+        hand. Waiting jobs are not started any more; they keep their state and are found again at the
+        next start as before."""
+        self._shutting_down = True
+        with self._lock:
+            cur = self._current
+        if cur is not None:
+            cur.cancel_requested = True
+        from callrec.asr.transcriber import cancel_running_workers
+
+        cancel_running_workers()
+        self.stop()
+
     def join(self, timeout: float | None = None) -> None:
-        self._thread.join(timeout)
+        if self._started:
+            self._thread.join(timeout)
 
     def pending(self) -> int:
         with self._lock:
@@ -192,6 +210,14 @@ class ProcessingQueue:
             cur.cancel_requested = True
         return bool(self.busy) and cancel_running_workers() > 0
 
+    @staticmethod
+    def _mark_interrupted(job: Job) -> None:
+        try:
+            job.recording.update_meta(["processing", "status"], "running")
+            log.info("Verarbeitung von %s beim Beenden unterbrochen - wird beim nächsten Start fortgesetzt", job.title)
+        except (OSError, ValueError):
+            log.warning("Status von %s nicht gespeichert", job.title, exc_info=True)
+
     def _notify(self, job: Job) -> None:
         for fn in list(self._listeners):
             try:
@@ -205,7 +231,7 @@ class ProcessingQueue:
             if job is None:
                 break
             with self._lock:
-                if job.state == CANCELLED:  # removed while waiting
+                if job.state == CANCELLED or self._shutting_down:  # removed while waiting / app exit
                     self._q.task_done()
                     continue
                 if job in self._pending:
@@ -235,6 +261,10 @@ class ProcessingQueue:
                     job.state = CANCELLED
                     log.info("Verarbeitung von %s abgebrochen", title)
                     self._status("")
+                    if self._shutting_down and "finalize" in job.steps:
+                        # first/full processing: resumed at the next start. A partial job (re-summarise,
+                        # re-transcribe) stays "cancelled" - resuming means a full re-processing.
+                        self._mark_interrupted(job)
                 else:
                     job.state = FAILED
                     log.exception("Verarbeitung von %s fehlgeschlagen", title)

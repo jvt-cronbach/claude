@@ -120,6 +120,7 @@ class Pipeline:
         self.cfg = cfg
         self.c = components
         self._language: str | None = None  # one-off override for run(): "de", "en", ... or "auto"
+        self._should_cancel: Callable[[], bool] = lambda: False
 
     # -- settings snapshots (recorded in meta.json for before/after comparison) --
     def effective_prompt(self, rec: Recording) -> str:
@@ -168,9 +169,11 @@ class Pipeline:
     ) -> ProcessResult:
         """``language`` overrides transcription.language for this run ("auto" = detect again).
 
-        ``should_cancel`` is checked before every step; a running step is not interrupted here
-        (the Whisper worker is stopped separately via ``cancel_running_workers``)."""
+        ``should_cancel`` is checked before every step and, inside the transcription, before every
+        worker process (language detection, each track); a running worker is stopped separately
+        via ``cancel_running_workers``."""
         self._language = language or None
+        self._should_cancel = should_cancel or (lambda: False)
         wanted = set(steps)
         unknown = wanted - ALL_STEPS
         if unknown:
@@ -226,17 +229,39 @@ class Pipeline:
         old = (rec.load_meta().get("processing") or {}).get("transcription") or {}
         # keep the previous ASR result for before/after comparison
         archive = rec.data_dir / "archive"
+        archived: dict[str, Any] = {}
         for track in ("mic", "remote"):
             p = rec.asr_path(track)
             if p.exists():
                 archive.mkdir(parents=True, exist_ok=True)
-                p.replace(archive / f"asr_{track}.{old.get('run_id', 'alt')}.json")
+                archived[track] = archive / f"asr_{track}.{old.get('run_id', 'alt')}.json"
+                p.replace(archived[track])
+        try:
+            self._transcribe_tracks(rec, result, progress, fa, transcriber, prompt, hotwords)
+        except BaseException:
+            # cancelled or failed: put the previous result back, so the recording stays consistent with
+            # meta.json (render, speaker review, rename and a later retry keep working on it)
+            for track, src in archived.items():
+                try:
+                    if src.exists():
+                        src.replace(rec.asr_path(track))
+                except OSError:
+                    log.warning("Vorherige Transkription %s nicht wiederhergestellt", track, exc_info=True)
+            raise
+
+    def _check_cancel(self) -> None:
+        if self._should_cancel():
+            raise ProcessingCancelled()
+
+    def _transcribe_tracks(self, rec: Recording, result: ProcessResult, progress: Callable[..., None], fa: Any,
+                           transcriber: Any, prompt: str, hotwords: str) -> None:
         run_id = _run_id()
         asr_meta: dict[str, Any] = {}
         selection = str(getattr(transcriber, "selection_note", "") or "")
         if selection:
             result.messages.append(selection)
             log.info("Transkription: %s", selection)
+        self._check_cancel()
         decision = self._decide_language(rec, transcriber, {"mic": fa.mic, "remote": fa.remote}, progress)
         result.language_note = str(decision.get("reason") or "")
         log.info("Sprache %s: %s", rec.folder.name, result.language_note)
@@ -249,6 +274,7 @@ class Pipeline:
                 label = f"Spur {track}: {msg}" if msg else f"Spur {track}"
                 progress(-1.0 if f < 0 else (i + f) / 2, label)
 
+            self._check_cancel()  # the worker of the previous track is done; do not start the next one
             lang = str((decision.get("tracks") or {}).get(track, {}).get("language") or "") or None
             kwargs: dict[str, Any] = {"language": lang} if _accepts(transcriber.transcribe, "language") else {}
             asr: AsrResult = transcriber.transcribe(
@@ -299,22 +325,24 @@ class Pipeline:
         detect = getattr(transcriber, "detect_languages", None)
         if detect is None:
             return {**lang.forced(prior, names, "Vorgabe – Spracherkennung nicht verfügbar"), "mode": "prior"}
-        from callrec.asr.transcriber import TranscriptionCancelled, TranscriptionError
+        from callrec.asr.transcriber import TranscriptionCancelled
 
+        # Detection is an optimisation: whatever goes wrong in it (worker, its output, the decision)
+        # falls back to the prior language - only a user cancellation stops the transcription.
         try:
             raw = detect(tracks, rec.data_dir / "language_detect.json",
                          progress=lambda f, m="": progress(-1.0, m or "Sprache wird erkannt"))
+            if not raw.get("multilingual_model", True):
+                return lang.forced("en", names, "das gewählte Modell kann nur Englisch")
+            windows = {t: list(((raw.get("tracks") or {}).get(t) or {}).get("windows") or []) for t in names}
+            decision = lang.decide(windows, candidates, tcfg.language_switch_threshold, tcfg.language_min_speech_s)
+            decision["detect_s"] = raw.get("detect_s")
+            return decision
         except TranscriptionCancelled:
             raise
-        except (TranscriptionError, OSError, ValueError) as exc:
-            log.warning("Spracherkennung fehlgeschlagen (%s) - verwende %s", exc, prior)
+        except Exception as exc:  # noqa: BLE001 - see above
+            log.warning("Spracherkennung fehlgeschlagen (%s: %s) - verwende %s", exc.__class__.__name__, exc, prior)
             return {**lang.forced(prior, names, "Vorgabe – Spracherkennung fehlgeschlagen"), "mode": "prior"}
-        if not raw.get("multilingual_model", True):
-            return lang.forced("en", names, "das gewählte Modell kann nur Englisch")
-        windows = {t: list(((raw.get("tracks") or {}).get(t) or {}).get("windows") or []) for t in names}
-        decision = lang.decide(windows, candidates, tcfg.language_switch_threshold, tcfg.language_min_speech_s)
-        decision["detect_s"] = raw.get("detect_s")
-        return decision
 
     def _transcript_language(self, rec: Recording) -> str:
         """Detected/forced language of the call ("" if unknown, "de+en" if the tracks differ)."""
