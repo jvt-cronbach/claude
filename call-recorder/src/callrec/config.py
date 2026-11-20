@@ -269,6 +269,28 @@ UI_FRONTENDS = ("tk", "web")
 UI_THEMES = ("system", "light", "dark")
 
 
+RETENTION_SCOPES = ("audio_transcript", "recording", "audio")
+RETENTION_MODES = ("permanent", "recycle_bin")
+
+
+@dataclass
+class RetentionConfig:
+    """Automatic deletion of old recordings (never settable by a preset).
+
+    After ``max_age_days`` (counted from the start of the recording) ``scope`` is removed:
+    ``audio_transcript`` (default) = audio, every transcript version and all data from which the
+    conversation could be reconstructed - the summary stays; ``recording`` = the whole folder;
+    ``audio`` = only the audio files. ``delete_mode``: ``permanent`` (default; ordinary deletion,
+    cannot be undone) or ``recycle_bin``. Recordings marked "Behalten" are never removed."""
+
+    enabled: bool = True
+    max_age_days: int = 7
+    scope: str = "audio_transcript"
+    delete_mode: str = "permanent"
+    # clock safety: a run that would remove more than this share of the library asks instead
+    max_share_per_run: float = 0.5
+
+
 @dataclass
 class UiConfig:
     show_overlay: bool = True
@@ -297,6 +319,7 @@ class Config:
     hotkey: HotkeyConfig = field(default_factory=HotkeyConfig)
     update: UpdateConfig = field(default_factory=UpdateConfig)
     ui: UiConfig = field(default_factory=UiConfig)
+    retention: RetentionConfig = field(default_factory=RetentionConfig)
 
     warnings: list[str] = field(default_factory=list, compare=False, repr=False)
     active_preset: str = field(default="", compare=False, repr=False)
@@ -311,6 +334,13 @@ class Config:
             raise ConfigError("ui.frontend muss 'tk' oder 'web' sein")
         if self.ui.theme not in UI_THEMES:
             raise ConfigError("ui.theme muss 'system', 'light' oder 'dark' sein")
+        rt = self.retention
+        if rt.scope not in RETENTION_SCOPES:
+            raise ConfigError("retention.scope muss 'audio_transcript', 'recording' oder 'audio' sein")
+        if rt.delete_mode not in RETENTION_MODES:
+            raise ConfigError("retention.delete_mode muss 'permanent' oder 'recycle_bin' sein")
+        if rt.max_age_days < 1 or not 0.0 < rt.max_share_per_run <= 1.0:
+            raise ConfigError("retention.max_age_days muss mindestens 1 sein, max_share_per_run zwischen 0 und 1")
         if self.consent.mode not in ("ask", "confirm"):
             raise ConfigError("consent.mode muss 'ask' oder 'confirm' sein")
         if self.audio.format not in ("flac", "opus"):
@@ -424,6 +454,7 @@ _SECTION_TYPES: dict[str, type] = {
     "hotkey": HotkeyConfig,
     "update": UpdateConfig,
     "ui": UiConfig,
+    "retention": RetentionConfig,
 }
 
 
@@ -1002,6 +1033,20 @@ start_minimized = false
 frontend = "tk"
 # neue Oberfläche: "system" = wie der Windows-App-Modus, "light" = hell, "dark" = dunkel
 theme = "system"
+
+[retention]
+# Alte Aufnahmen automatisch löschen (nicht per Preset änderbar). Aufnahmen mit "Behalten" bleiben immer.
+enabled = true
+# Alter in Tagen ab Beginn der Aufnahme
+max_age_days = 7
+# audio_transcript = Audio und Transkript löschen, Zusammenfassung bleibt; recording = ganze Aufnahme;
+# audio = nur das Audio
+scope = "audio_transcript"
+# permanent = endgültig (nicht rückgängig zu machen; gewöhnliches Löschen, kein sicheres Überschreiben);
+# recycle_bin = in den Windows-Papierkorb
+delete_mode = "permanent"
+# Sicherheit bei falscher Systemuhr: würde ein Lauf mehr als diesen Anteil aller Aufnahmen löschen, wird gefragt
+max_share_per_run = 0.5
 """
 
 
