@@ -41,6 +41,7 @@ class SpeakerOverview:
     suggested_score: float | None = None
     note: str = ""
     self_suspect: bool = False
+    preselect_name: str = ""
 
 
 def choose_sample_span(turns: list[SpeakerTurn], min_len: float = 3.0, max_len: float = 8.0) -> tuple[float, float] | None:
@@ -82,7 +83,7 @@ def speaker_overview(rec: Recording) -> list[SpeakerOverview]:
             span = (u.start, min(u.end, u.start + 8.0))
         out.append(SpeakerOverview(sid, info.label, info.name, info.score, info.source, talk, len(spk_utts),
                                    _sample_text(spk_utts), span, info.suggested_name, info.suggested_score,
-                                   info.note, info.self_suspect))
+                                   info.note, info.self_suspect, info.preselect_name))
     out.sort(key=lambda o: (min((t.start for t in turns if t.speaker == o.id), default=1e12), o.id))
     return out
 
@@ -264,6 +265,35 @@ def mark_summary_outdated(rec: Recording, before: dict[str, Any], after: dict[st
         return False
     rec.update_meta(["processing", "summary", "speakers_outdated"], True)
     return True
+
+
+def foreign_old_assignments(rec: Recording, participants: list[Person]) -> list[tuple[str, str, str]]:
+    """Recordings identified by an earlier version: "manual" names of people who are not
+    participants. Earlier versions turned every pre-filled automatic match into a manual assignment
+    when "Übernehmen" was clicked, so these may never have been checked. (sid, label, name)."""
+    from callrec.speakers.names import persons_match
+
+    ident = (rec.load_meta().get("processing") or {}).get("identification")
+    if isinstance(ident, dict) and ident.get("rule"):
+        return []
+    out = []
+    for sid, s in rec.load_speakers().items():
+        if sid == SELF_SPEAKER_ID or s.source != SOURCE_MANUAL or not s.name:
+            continue
+        if not any(persons_match(Person(s.name, s.email), p) for p in participants):
+            out.append((sid, s.label, s.name))
+    return out
+
+
+def reset_speakers(rec: Recording, sids: list[str], profiles: ProfileStore | None = None) -> None:
+    speakers = rec.load_speakers()
+    for sid in sids:
+        info = speakers.get(sid)
+        if info is not None:
+            info.name, info.email, info.profile_id, info.score, info.source = "", "", "", None, ""
+            if profiles is not None:
+                profiles.forget(rec.uid, sid)
+    rec.save_speakers(speakers)
 
 
 def archive_speakers(rec: Recording) -> Any:

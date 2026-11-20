@@ -280,6 +280,7 @@ class AppActions:
             resummarize=lambda: self.resummarize(rec),
             handoff=lambda: self.handoff(rec),
             speaker_cfg=self.cfg.speakers,
+            allow_more=lambda: self.allow_more_speakers(rec),
         )
         self._changed(rec)
 
@@ -292,6 +293,27 @@ class AppActions:
         self.ui.notify("Transkript wird neu erstellt", rec.folder.name)
         self._changed(rec)
         return True
+
+    def allow_more_speakers(self, rec: Recording | None = None, allow: bool = True) -> bool:
+        """ "Weitere Sprecher zulassen": lift (or restore) the limit of remote speakers to the participants
+        for this recording; recomputed from the cached diarization (no audio)."""
+        rec = self._resolve(rec)
+        if rec is None or self.controller.is_busy(rec):
+            return False
+        rec.update_meta(["speaker_limit"], {"lifted": bool(allow)})
+        if rec.speakers_path.exists():
+            self.controller.process(rec, frozenset({"identify", "render"}))
+        self.ui.notify("Sprecher der Gegenseite", ("Weitere Sprecher zugelassen" if allow else
+                       "Wieder auf die Teilnehmenden begrenzt") + f": {rec.folder.name} wird neu erkannt.")
+        self._changed(rec)
+        return True
+
+    def toggle_speaker_limit(self, rec: Recording | None = None) -> bool:
+        rec = self._resolve(rec)
+        if rec is None:
+            return False
+        lifted = bool((rec.load_meta().get("speaker_limit") or {}).get("lifted"))
+        return self.allow_more_speakers(rec, allow=not lifted)
 
     def edit_participants(self, rec: Recording | None = None) -> bool:
         """ "Teilnehmende bearbeiten": who may be recognised automatically; identification runs again
@@ -318,7 +340,7 @@ class AppActions:
     def recheck_speakers(self, rec: Recording | None = None) -> bool:
         """ "Sprecherzuordnung neu prüfen": automatic assignments under the participants rule, after a
         preview; manual ones are never touched."""
-        from callrec.review import archive_speakers
+        from callrec.review import archive_speakers, foreign_old_assignments, rebuild_profile, reset_speakers
 
         rec = self._resolve(rec)
         if rec is None or not rec.speakers_path.exists():
@@ -327,6 +349,14 @@ class AppActions:
             self.ui.notify("Wird noch verarbeitet", f"{rec.folder.name}: erst nach der Verarbeitung möglich.")
             return False
         pipeline = build_pipeline(self.cfg, self.profiles)
+        foreign = foreign_old_assignments(rec, pipeline._participants(rec))
+        if foreign and dialogs.confirm_reset_foreign(self.root, rec, foreign):
+            archive_speakers(rec)
+            names = {name for _sid, _label, name in foreign}
+            reset_speakers(rec, [sid for sid, _l, _n in foreign], self.profiles)
+            for p in self.profiles.all_profiles():
+                if p.name in names:
+                    rebuild_profile(self.profiles, p.id, self.cfg.recordings_path())
         try:
             changes = pipeline.preview_identification(rec)
         except Exception as exc:
@@ -497,6 +527,16 @@ class AppActions:
                 done(text)
 
         threading.Thread(target=worker, name="login", daemon=True).start()
+
+    def edit_prompts(self, rec: Recording | None = None) -> bool:
+        """ "Zusammenfassungs-Prompt bearbeiten" (main window); with a selected recording also
+        "Mit dieser Aufnahme testen" (a new summary version, the earlier one stays for comparison)."""
+        from callrec.ui.settings import edit_summary_prompts
+
+        test = None
+        if rec is not None and rec.utterances_path.exists():
+            test = lambda: self.resummarize(rec)  # noqa: E731
+        return edit_summary_prompts(self.root, test=test)
 
     def manage_profiles(self) -> None:
         from callrec.review import rebuild_profile

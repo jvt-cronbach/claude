@@ -238,11 +238,23 @@ def cmd_profiles(args: argparse.Namespace) -> int:
 def cmd_recheck(args: argparse.Namespace) -> int:
     """ "Sprecherzuordnung neu prüfen" for one recording (automatic assignments only)."""
     from callrec.factory import build_pipeline, profile_store
-    from callrec.review import archive_speakers
+    from callrec.review import archive_speakers, foreign_old_assignments, reset_speakers
 
     cfg = load_config()
     rec = _recording(args.folder)
-    pipeline = build_pipeline(cfg, profile_store())
+    store = profile_store()
+    pipeline = build_pipeline(cfg, store)
+    foreign = foreign_old_assignments(rec, pipeline._participants(rec))
+    if foreign:
+        print("Frühere Zuordnungen zu Nicht-Teilnehmenden (womöglich ungeprüft übernommen):")
+        for _sid, label, name in foreign:
+            print(f"  {label}: {name}")
+        if args.reset_foreign:
+            archive_speakers(rec)
+            reset_speakers(rec, [sid for sid, _l, _n in foreign], store)
+            print("Zurückgesetzt.")
+        else:
+            print("Mit --reset-foreign zurücksetzen.")
     changes = pipeline.preview_identification(rec)
     if not changes:
         print("Keine Änderung nach der aktuellen Regel. Manuelle Zuordnungen werden nie geändert.")
@@ -827,6 +839,7 @@ def build_parser() -> argparse.ArgumentParser:
     rc = sub.add_parser("recheck", help="Sprecherzuordnung neu prüfen (nur automatische, nach Teilnehmenden)")
     rc.add_argument("folder")
     rc.add_argument("--yes", action="store_true")
+    rc.add_argument("--reset-foreign", action="store_true", help="frühere Zuordnungen zu Nicht-Teilnehmenden zurücksetzen")
     rc.set_defaults(func=cmd_recheck)
 
     ho = sub.add_parser("handoff", help="Zusammenfassung (nur diese!) an SharePoint übergeben")

@@ -629,6 +629,9 @@ def test_participants_and_recheck_rerun_identification(world: World, monkeypatch
     w.pump(lambda: not w.queue.is_busy_with(rec.folder))
 
     class Preview:
+        def _participants(self, r):
+            return r.participants()
+
         def preview_identification(self, r):
             return [("Sprecher 1", "Anna", "Sprecher 1")]
 

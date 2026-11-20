@@ -224,6 +224,7 @@ def review_speakers(
     handoff: Callable[[], object] | None = None,
     in_chain: bool = False,
     speaker_cfg: Any = None,
+    allow_more: Callable[[], object] | None = None,
 ) -> bool:
     """``in_chain``: part of the guided processing - "Überspringen" instead of "Abbrechen", and
     no re-summary checkbox (the chain creates the summary next, with the names).
@@ -307,7 +308,7 @@ def review_speakers(
         if audio is None or ov.sample_span is None:
             btn.state(["disabled"])
         btn.grid(row=i, column=2, sticky="nw", **PAD)
-        initial = SELF_CHOICE if ov.source == "self_echo" else ov.name
+        initial = SELF_CHOICE if ov.source == "self_echo" else (ov.name or ov.preselect_name)
         name_var = tk.StringVar(value=initial)
         ttk.Combobox(win, textvariable=name_var, values=row_choices(rec, profiles, ov, all_profiles),
                      width=44).grid(row=i, column=3, sticky="nw", **PAD)
@@ -345,6 +346,18 @@ def review_speakers(
         win.destroy()
 
     ttk.Button(bottom, text="Übernehmen", command=apply).pack(side="right", padx=4)
+    bound = ((rec.load_meta().get("processing") or {}).get("diarization") or {}).get("bound") or {}
+    if allow_more is not None and not in_chain and bound.get("merged"):
+        def more() -> None:
+            _stop_playback()
+            allow_more()
+            win.destroy()
+
+        ttk.Label(win, text=f"Die Sprecher der Gegenseite wurden auf die {bound.get('participants')} eingeladene(n) "
+                  f"Person(en) begrenzt (zuvor {bound.get('raw_speakers')} getrennte Stimmen). Waren nicht eingeladene "
+                  "Personen dabei, „Weitere Sprecher zulassen“.", wraplength=720, foreground="#555").grid(
+            row=last + 1, column=0, columnspan=5, sticky="w", **PAD)
+        ttk.Button(bottom, text="Weitere Sprecher zulassen", command=more).pack(side="left", padx=8)
     if handoff is not None and not in_chain:
         ttk.Button(bottom, text="Zusammenfassung an SharePoint übergeben \u2026", command=handoff).pack(side="left", padx=8)
     ttk.Button(bottom, text="Überspringen" if in_chain else "Abbrechen", command=win.destroy).pack(side="right", padx=4)
@@ -383,6 +396,16 @@ def edit_participants(root: tk.Misc, rec: Recording) -> list[Person] | None:
     txt.focus_set()
     root.wait_window(win)
     return result["v"]
+
+
+def confirm_reset_foreign(root: tk.Misc, rec: Recording, foreign: list[tuple[str, str, str]]) -> bool:
+    lines = "\n".join(f"• {label}: {name}" for _sid, label, name in foreign)
+    return bool(messagebox.askyesno(
+        "Frühere Zuordnungen prüfen",
+        f"In „{rec.title()}“ sind Stimmen Personen zugeordnet, die keine Teilnehmenden dieses Termins sind:\n\n{lines}\n\n"
+        "Frühere Versionen haben automatisch erkannte Namen beim Klick auf „Übernehmen“ als bestätigt gespeichert – "
+        "diese Zuordnungen sind daher womöglich nie geprüft worden. Zurücksetzen und neu erkennen? Die Stimmprofile "
+        "dieser Personen werden dann aus Ihren übrigen Zuordnungen neu aufgebaut.", icon="warning", parent=root))
 
 
 def confirm_recheck(root: tk.Misc, rec: Recording, changes: list[tuple[str, str, str]]) -> bool:
@@ -659,16 +682,25 @@ def ask_event_for_recording(root: tk.Misc, rec: Recording, events: list[Any]) ->
     win = tk.Toplevel(root)
     win.title(f"Termin zuordnen – {rec.title()}")
     result: dict[str, tuple[Any, bool] | None] = {"v": None}
-    ttk.Label(win, text="Termine im Zeitraum der Aufnahme (der wahrscheinlichste zuerst). Die Teilnehmenden des "
-              "Termins werden bei der Sprechererkennung bevorzugt und in der Sprecherzuordnung vorgeschlagen.",
-              wraplength=520).grid(row=0, column=0, columnspan=2, sticky="w", **PAD)
+    from callrec.calendar.selection import demotion
+
+    start = rec.started_at()
+    when = f" am {start:%d.%m.%Y} ({start:%H:%M} Uhr)" if start else ""
+    ttk.Label(win, text=f"Alle Termine des Aufnahmetags{when}, der am besten zur Aufnahmezeit passende zuerst; "
+              "ganztägige Einträge und Blocker stehen am Ende. Nur die Teilnehmenden des gewählten Termins werden "
+              "bei der Sprechererkennung automatisch zugeordnet.",
+              wraplength=560).grid(row=0, column=0, columnspan=2, sticky="w", **PAD)
     choice = tk.IntVar(value=0)
     box = ttk.Frame(win)
     box.grid(row=1, column=0, columnspan=2, sticky="we", **PAD)
     for i, ev in enumerate(events):
-        people = ", ".join(p.display for p in ev.participants()[:5])
-        text = (f"{ev.subject} ({ev.start.astimezone():%d.%m. %H:%M}–{ev.end.astimezone():%H:%M})"
-                + (" – Teams" if ev.is_online else "") + (f"\n    {people}" if people else ""))
+        parts = ev.participants()
+        people = ", ".join(p.display for p in parts[:5]) + (f" und {len(parts) - 5} weitere" if len(parts) > 5 else "")
+        org = ev.organizer.display if ev.organizer else "–"
+        why = demotion(ev)
+        times = "ganztägig" if ev.is_all_day else f"{ev.start.astimezone():%d.%m. %H:%M}–{ev.end.astimezone():%H:%M}"
+        text = (f"{times}  {ev.subject}" + (" – Teams" if ev.is_online else "") + (f"  [{why}]" if why else "")
+                + f"\n    Organisation: {org}; {len(parts)} Teilnehmende" + (f": {people}" if people else ""))
         ttk.Radiobutton(box, text=text, value=i, variable=choice).pack(anchor="w", pady=2)
     take = tk.BooleanVar(value=True)
     ttk.Checkbutton(win, text="Betreff als Titel übernehmen", variable=take).grid(row=2, column=0, sticky="w", **PAD)

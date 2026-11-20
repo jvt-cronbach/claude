@@ -6,14 +6,16 @@ import json
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, tzinfo
 from pathlib import Path
 from typing import Protocol
 
 from callrec.calendar.ics import load_ics_file
 from callrec.calendar.selection import (
     candidate_events,
+    demotion,
     events_for_recording,
+    local_day,
     nearest_event,
     select_current_event,
 )
@@ -44,7 +46,9 @@ class CalendarService:
         tolerance_before: timedelta,
         tolerance_after: timedelta,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        local_tz: tzinfo | None = None,
     ) -> None:
+        self.local_tz = local_tz  # None = the PC's zone (tests pass Europe/Berlin)
         self.source = source
         self.cache_file = cache_file
         self.tol_before = tolerance_before
@@ -78,12 +82,33 @@ class CalendarService:
         self._save_cache(events)
         return events
 
+    def fetch_day(self) -> list[CalendarEvent]:
+        """All events of today (local midnight to midnight; around midnight widened by the
+        tolerances), refreshes the cache (raises on failure)."""
+        if self.source is None:
+            raise RuntimeError("Kein Kalender konfiguriert")
+        now = self.clock()
+        lo, hi = local_day(now, self.local_tz)
+        lo, hi = min(lo, now - self.tol_after), max(hi, now + self.tol_before)
+        events = self.source.calendar_view(lo, hi)
+        self._log_events(events, now)
+        self._save_cache(events)
+        return events
+
+    def _log_events(self, events: list[CalendarEvent], now: datetime) -> None:
+        log.info("Kalender: %d Termin(e) heute", len(events))
+        for e in events:
+            why = demotion(e)
+            if why:
+                log.info("Termin %r (%s–%s) nachrangig: %s", e.subject, e.start.astimezone(self.local_tz),
+                         e.end.astimezone(self.local_tz), why)
+
     def suggest(self) -> Suggestion:
         now = self.clock()
         message = ""
         if self.source is not None:
             try:
-                events = self.fetch_window()
+                events = self.fetch_day()
                 ev = select_current_event(events, now, self.tol_before, self.tol_after)
                 if ev:
                     return Suggestion(ev, ev.participants(), source="graph")
@@ -98,21 +123,30 @@ class CalendarService:
         return Suggestion(None, [], (message + "Bitte Titel und Teilnehmende eingeben oder .ics importieren.").strip())
 
     def candidates(self) -> tuple[list[CalendarEvent], str, str]:
-        """(current meetings best first, info text, source) for the event picker of the main window.
+        """(all of today's events best first, info text, source) for the event picker of the main window.
 
-        Same rules and tolerances as :meth:`suggest`; falls back to the cache when offline."""
+        Running/starting meetings first (the same choice as :meth:`suggest`), then the others of the
+        day by distance, all-day entries and blockers last; falls back to the cache when offline."""
         now = self.clock()
         if self.source is None:
             return [], "Kein Microsoft-Kalender verbunden (optional) – Titel und Teilnehmende beim Start eingeben.", "manual"
+        lo, hi = local_day(now, self.local_tz)
         try:
-            events = self.fetch_window()
+            events = self.fetch_day()
             found = candidate_events(events, now, self.tol_before, self.tol_after)
-            return found, "" if found else "Kein laufender Termin im Kalender gefunden.", "graph"
+            return found, "" if found else "Heute stehen keine Termine im Kalender.", "graph"
         except Exception as exc:  # offline, not signed in, ...
             log.info("Kalender nicht verfügbar: %s", exc)
-            found = candidate_events(self._load_cache(), now, self.tol_before, self.tol_after)
+            cached = [e for e in self._load_cache() if e.end >= lo and e.start <= hi]
+            found = candidate_events(cached, now, self.tol_before, self.tol_after)
             return found, f"Kalender nicht verfügbar ({exc})." + (" Termine aus dem Zwischenspeicher." if found else ""), \
                 "cache"
+
+    def is_current(self, ev: CalendarEvent) -> bool:
+        """Running now / within the tolerances and a real meeting (may be pre-selected)."""
+        from callrec.calendar.selection import is_candidate
+
+        return is_candidate(ev, self.clock(), self.tol_before, self.tol_after)
 
     def suggest_from_ics(self, path: Path) -> Suggestion:
         now = self.clock()
@@ -135,7 +169,11 @@ class CalendarService:
         if self.source is None:
             raise RuntimeError("Kein Microsoft-Kalender verbunden – erst unter „Einrichtung“ anmelden.")
         margin = timedelta(minutes=15)
-        events = self.source.calendar_view(start - timedelta(hours=1), end + timedelta(hours=1))
+        # every event of the recording's date (and of the next day when it ran past midnight)
+        lo, _ = local_day(start, self.local_tz)
+        _, hi = local_day(end, self.local_tz)
+        events = self.source.calendar_view(min(lo, start - margin), max(hi, end + margin))
+        self._log_events(events, start)
         return events_for_recording(events, start, end, margin)
 
     def preview(self) -> tuple[CalendarEvent | None, str]:

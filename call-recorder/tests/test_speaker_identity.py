@@ -394,3 +394,141 @@ def test_old_identification_hint_and_capture_warning_in_library(tmp_path: Path):
                                                        "trackcheck": {"warnings": ["Mikro kaputt"]}})
     text = status_description(read_info(rec.folder))
     assert "neu prüfen" not in text and "Mikrofon prüfen: Mikro kaputt" in text
+
+
+# -- speaker count bounded by the participants ----------------------------------------------------
+def test_two_participant_call_has_one_remote_speaker_named_after_the_participant(tmp_path: Path, store: ProfileStore):
+    _two_known_voices(tmp_path, store)  # profiles of Anna and Bernd from an earlier call
+    rec = recording_with_voices(tmp_path / "r2", 550, 330)  # the diarizer finds two clusters
+    set_participants(rec, [Person("Ich Selbst", "ich@firma.de"), Person("Kunde, Karl", "karl@kunde.de")])
+    pipeline, _, summ = make_pipeline(store)
+    res = pipeline.run(rec)
+    sp = rec.load_speakers()
+    remote = {sid: s for sid, s in sp.items() if sid != "ME"}
+    assert list(remote) == ["S1"] and remote["S1"].name == "Kunde, Karl" and remote["S1"].source == "auto"
+    assert res.unassigned_speakers == 0 and any("begrenzt" in m for m in res.messages)
+    md = rec.transcript_path.read_text(encoding="utf-8")
+    assert "Anna Beispiel" not in md and "Bernd Muster" not in md and "Sprecher 2" not in md
+    assert any("Kunde, Karl:" in line for line in summ.seen[-1])
+    meta = rec.load_meta()["processing"]["diarization"]["bound"]
+    assert meta["bound"] == 1 and meta["raw_speakers"] == 2 and meta["speakers"] == 1
+    karl = store.find("Karl Kunde", "karl@kunde.de", "fake-embedder")  # min_learn_speech_s = 0 in the fake
+    assert karl is not None and karl.contributions[0].source == "sole"
+    # "Weitere Sprecher zulassen": back to the unbounded diarization (cached, no audio)
+    rec.update_meta(["speaker_limit"], {"lifted": True})
+    pipeline.run(rec, {"identify", "render"})
+    assert {sid for sid in rec.load_speakers() if sid != "ME"} == {"S1", "S2"}
+    assert store.find("Karl Kunde", "karl@kunde.de", "fake-embedder") is None  # the "sole" sample is undone
+
+
+def test_bound_is_participants_minus_one_and_no_list_keeps_the_count():
+    from callrec.speakers.bound import merge_to_bound
+
+    turns = [SpeakerTurn(i * 10.0, i * 10.0 + 9, f"S{i + 1}") for i in range(5)]
+    emb = {f"S{i + 1}": onehot(i % 3, 0.05, i) for i in range(5)}
+    speech = {k: 9.0 for k in emb}
+    for n_participants in (2, 3, 4):  # incl. the user
+        res = merge_to_bound(turns, emb, speech, n_participants - 1)
+        assert len({t.speaker for t in res.turns}) <= n_participants - 1
+    res = merge_to_bound(turns, emb, speech, 3)
+    assert res.mapping["S1"] == res.mapping["S4"] and res.mapping["S2"] == res.mapping["S5"]  # same voices merge
+    assert len({t.speaker for t in merge_to_bound(turns, emb, speech, None).turns}) == 5
+    # clusters you named differently are never merged; your own voice is not counted
+    res = merge_to_bound(turns, emb, speech, 1, keep_apart={"S1": "Anna", "S4": "Bernd"}, exclude={"S5"})
+    assert res.mapping["S1"] != res.mapping["S4"] and res.mapping["S5"] not in (res.mapping["S1"], res.mapping["S4"])
+
+
+def test_no_participants_keeps_automatic_speaker_count(tmp_path: Path, store: ProfileStore):
+    rec = recording_with_voices(tmp_path / "r", 550, 330)
+    set_participants(rec, [])
+    pipeline, _, _ = make_pipeline(store)
+    pipeline.run(rec)
+    assert {sid for sid in rec.load_speakers() if sid != "ME"} == {"S1", "S2"}
+
+
+def test_recheck_fixes_an_old_recording_with_foreign_names(tmp_path: Path, store: ProfileStore):
+    _two_known_voices(tmp_path, store)
+    rec = recording_with_voices(tmp_path / "r2", 550, 330)
+    set_participants(rec, [Person("Kunde, Karl", "karl@kunde.de")])
+    pipeline, _, _ = make_pipeline(store)
+    pipeline.run(rec)
+    # simulate the state an earlier version left: two clusters auto-assigned to people of earlier calls
+    import json as _json
+
+    raw = _json.loads(rec.raw_turns_path.read_text(encoding="utf-8"))
+    rec.turns_path.write_text(_json.dumps(raw), encoding="utf-8")
+    rec.raw_turns_path.unlink()
+    rec.raw_embeddings_path.unlink()
+    emb, model = rec.load_embeddings()
+    rec.save_speakers({"ME": SpeakerInfo("ME", "Ich", name="Ich", source="self"),
+                       "S1": SpeakerInfo("S1", "Sprecher 1", name="Bernd Muster", source="auto", score=0.6),
+                       "S2": SpeakerInfo("S2", "Sprecher 2", name="Anna Beispiel", source="auto", score=0.6)})
+    from callrec.speakers.diarize import speaker_embeddings  # noqa: F401  (embeddings stay cached)
+
+    rec.save_embeddings({"S1": onehot(11), "S2": onehot(6)}, "fake-embedder")
+    rec.update_meta(["processing", "identification"], None)
+    changes = pipeline.preview_identification(rec)
+    assert ("Sprecher 1", "Bernd Muster", "Kunde, Karl") in changes
+    pipeline.run(rec, {"identify", "render"})
+    assert {s.name for sid, s in rec.load_speakers().items() if sid != "ME"} == {"Kunde, Karl"}
+    assert rec.load_raw_diarization() is not None  # the original diarization is kept for "Weitere Sprecher"
+    from callrec.library import read_info, status_description
+
+    assert "alten Sprechernamen" in status_description(read_info(rec.folder))
+    pipeline.run(rec, {"summarize"})
+    assert "alten Sprechernamen" not in status_description(read_info(rec.folder))
+
+
+def test_only_remaining_participant_is_preselected(tmp_path: Path, store: ProfileStore):
+    _two_known_voices(tmp_path, store)
+    rec = recording_with_voices(tmp_path / "r2", 550, 330)
+    set_participants(rec, [Person("Bernd Muster", "bernd@firma.de"), Person("Neu, Nora")])
+    pipeline, _, _ = make_pipeline(store)
+    pipeline.run(rec)
+    sp = rec.load_speakers()
+    assert sp["S1"].name == "Bernd Muster"
+    assert sp["S2"].name == "" and sp["S2"].preselect_name == "Neu, Nora"
+    assert sp["S2"].suggested_name == "Anna Beispiel"  # the voice suggestion stays visible in the list
+
+
+def test_old_manual_assignments_of_non_participants_can_be_reset(tmp_path: Path, store: ProfileStore):
+    from callrec.review import foreign_old_assignments, reset_speakers
+
+    rec = recording_with_voices(tmp_path / "r", 550, 330)
+    pipeline, _, _ = make_pipeline(store)
+    pipeline.run(rec)
+    sp = rec.load_speakers()
+    sp["S1"].name, sp["S1"].source = "Fremd, Franz", "manual"
+    sp["S2"].name, sp["S2"].source = "Anna Beispiel", "manual"  # a participant: stays
+    rec.save_speakers(sp)
+    assert foreign_old_assignments(rec, pipeline._participants(rec)) == []  # identified by this version
+    rec.update_meta(["processing", "identification"], None)
+    foreign = foreign_old_assignments(rec, pipeline._participants(rec))
+    assert foreign == [("S1", "Sprecher 1", "Fremd, Franz")]
+    reset_speakers(rec, ["S1"], store)
+    pipeline.run(rec, {"identify", "render"})
+    sp = rec.load_speakers()
+    assert sp["S1"].name == "" and sp["S2"].name == "Anna Beispiel"
+
+
+# -- summary prompt --------------------------------------------------------------------------------
+def test_prompt_defaults_leave_out_private_talk_and_upgrade_unchanged_files(tmp_path: Path):
+    from callrec import userfiles as uf
+    from callrec.summary import missing_sections
+
+    assert "Smalltalk und Privates" in uf.SUMMARY_SYSTEM_TEMPLATE and uf.PRIVATE_CALL_LINE in uf.SUMMARY_FINAL_TEMPLATE
+    d = tmp_path / "prompts"
+    d.mkdir()
+    prev_sys = uf._PREVIOUS_DEFAULTS["summary_system.txt"][0]
+    assert "Smalltalk" not in prev_sys
+    (d / "summary_system.txt").write_text(prev_sys, encoding="utf-8")  # unchanged earlier default
+    (d / "summary_final.txt").write_text("Mein eigenes Format\n{material}\n", encoding="utf-8")  # customised
+    uf._ensure_prompt(d, "summary_system.txt", uf.SUMMARY_SYSTEM_TEMPLATE)
+    uf._ensure_prompt(d, "summary_final.txt", uf.SUMMARY_FINAL_TEMPLATE)
+    assert (d / "summary_system.txt").read_text(encoding="utf-8") == uf.SUMMARY_SYSTEM_TEMPLATE
+    assert (d / "summary_final.txt").read_text(encoding="utf-8") == "Mein eigenes Format\n{material}\n"
+    assert missing_sections(uf.PRIVATE_CALL_LINE) == []
+    assert uf.validate_prompt("final", uf.SUMMARY_FINAL_TEMPLATE) == []
+    warn = uf.validate_prompt("final", "Fasse zusammen: {transkript}")
+    assert any("{material}" in w for w in warn) and any("{transkript}" in w for w in warn)
+    assert uf.validate_prompt("chunk", "Teil {i}") and uf.default_prompt("chunk") == uf.SUMMARY_CHUNK_TEMPLATE

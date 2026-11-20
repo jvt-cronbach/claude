@@ -683,6 +683,21 @@ zugeordnet. Ohne Teilnehmerliste wird nichts automatisch zugeordnet („Sprecher
 - Ihre eigene Identität (Name/E-Mail, auch Varianten wie „Nachname, Vorname“) wird nie einem Sprecher
   der Gegenseite zugeordnet.
 
+**Anzahl der Sprecher.** Die Sprechertrennung teilt eine Stimme gelegentlich in mehrere „Sprecher“
+auf. Die Teilnehmerliste begrenzt deshalb die Zahl der Sprecher der Gegenseite auf die Teilnehmenden
+ohne Sie (`speakers.limit_to_participants`, plus `extra_remote_speakers` nicht eingeladene Gäste,
+Standard 0): ähnliche Stimmen werden zusammengeführt – anhand der gespeicherten Stimmmerkmale, ohne das
+Audio neu auszuwerten; Stimmen, die Sie verschiedenen Personen zugeordnet haben, nie. Bei einem Gespräch
+mit **einer** eingeladenen Person ist die ganze Gegenseite diese Person – auch ohne Stimmprofil; dabei
+lernt deren Profil (ab 20 s Sprache) mit. Bleibt genau eine Stimme und eine Teilnehmende offen, ist sie
+im Dialog vorausgewählt. Saßen nicht eingeladene Personen mit am Gerät: im Dialog bzw. unter
+*Weitere … → Weitere Sprecher zulassen / begrenzen*. Ohne Teilnehmerliste bleibt die automatische
+Sprecherzahl.
+
+Ändern sich Sprechernamen, nachdem die Zusammenfassung erstellt wurde, zeigt das Hauptfenster
+„Die Zusammenfassung beruht auf alten Sprechernamen“ – dann „Zusammenfassung neu erstellen“ und ggf.
+erneut an SharePoint übergeben.
+
 Namen werden robust verglichen: per E-Mail, wenn beide Seiten eine haben, sonst nach Namen ohne Titel
 („Dr.“, „Herr“ …), Klammerzusatz, mit umgestelltem „Nachname, Vorname“ und Umlauten (ä = ae).
 `speakers.match_scope = "all_profiles"` stellt das frühere Verhalten (alle bekannten Profile,
@@ -700,8 +715,12 @@ Versionen, deren Herkunft unbekannt ist).
 
 **Ältere Aufnahmen.** Aufnahmen, die nach dem früheren Verfahren automatisch zugeordnet wurden, zeigen
 im Hauptfenster einen Hinweis. *Weitere … → Sprecherzuordnung neu prüfen …* zeigt zuerst, was sich ändern
-würde, und ändert nach Bestätigung nur automatische Zuordnungen (die bisherige `speakers.json` wird unter
-`data\archive` gesichert); manuelle bleiben. Ohne diesen Klick wird kein altes Transkript verändert.
+würde (inklusive Zusammenführung zu vieler Sprecher auf die Teilnehmenden), und ändert nach Bestätigung nur
+automatische Zuordnungen. Bei Aufnahmen früherer Versionen werden zusätzlich Zuordnungen zu Personen, die
+nicht eingeladen waren, zum Zurücksetzen angeboten – frühere Versionen haben vorausgefüllte automatische
+Namen beim „Übernehmen“ als bestätigt gespeichert; deren Profile werden dann aus Ihren übrigen
+Zuordnungen neu aufgebaut. Die bisherige `speakers.json` wird unter `data\archive` gesichert;
+manuelle Zuordnungen bleiben sonst unverändert. Ohne diesen Klick wird kein altes Transkript verändert.
 
 **Mikrofonspur prüfen.** Nach der Sprechertrennung prüft CallRecorder, ob die Mikrofonspur plausibel
 Ihre Stimme enthält, und warnt im Transkriptkopf, im Hauptfenster und im Dialog, wenn

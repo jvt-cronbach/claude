@@ -42,8 +42,11 @@ ITEM = {
 def test_parse_datetime():
     dt = parse_graph_datetime({"dateTime": "2026-11-19T13:00:00.1234567", "timeZone": "UTC"})
     assert dt == datetime(2026, 11, 19, 13, 0, 0, 123456, tzinfo=UTC)
-    with pytest.raises(GraphError):
-        parse_graph_datetime({"dateTime": "2026-11-19T13:00:00", "timeZone": "W. Europe Standard Time"})
+    # Prefer header not honoured: Windows zone names are converted instead of dropping the event (DST aware)
+    summer = parse_graph_datetime({"dateTime": "2026-07-01T13:00:00", "timeZone": "W. Europe Standard Time"})
+    winter = parse_graph_datetime({"dateTime": "2026-11-19T13:00:00", "timeZone": "Europe/Berlin"})
+    assert summer.astimezone(UTC).hour == 11 and winter.astimezone(UTC).hour == 12
+    assert parse_graph_datetime({"dateTime": "2026-11-19T13:00:00", "timeZone": "Mars Time"}).tzinfo == UTC
 
 
 def test_parse_event():

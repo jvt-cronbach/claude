@@ -513,3 +513,34 @@ def test_settings_autostart_checkbox_and_handoff_without_asking(root, tmp_path: 
     assert reg.value is not None and "--minimized" in reg.value
     cfg = load_config(path)
     assert cfg.processing.after_recording == "full" and cfg.autostop.countdown_s == 45
+
+
+def test_prompt_editor_validates_restores_and_tests(root, tmp_path: Path):
+    from callrec import paths
+    from callrec.ui import settings as st
+    from callrec.userfiles import SUMMARY_FINAL_TEMPLATE
+
+    tested: list[int] = []
+    asked: list[str] = []
+
+    def drive():
+        win = toplevel(root)
+        nb = find(win, ttk.Notebook)
+        nb.select(1)
+        texts = [w for w in walk(win) if isinstance(w, tk.Text)]
+        texts[1].delete("1.0", "end")
+        texts[1].insert("1.0", "Nur {title}")
+        from tkinter import messagebox
+
+        messagebox.askyesno = lambda title, msg, **k: asked.append(msg) or False  # type: ignore[assignment]
+        find(win, ttk.Button, "Mit dieser Aufnahme testen").invoke()  # refused: {material} missing
+        assert tested == [] and "{material}" in asked[-1]
+        messagebox.askyesno = lambda *a, **k: True  # type: ignore[assignment]
+        find(win, ttk.Button, "Standard wiederherstellen").invoke()
+        find(win, ttk.Button, "Mit dieser Aufnahme testen").invoke()
+        assert tested == [1]
+        find(win, ttk.Button, "Speichern").invoke()
+
+    root.after(200, drive)
+    assert st.edit_summary_prompts(root, test=lambda: tested.append(1)) is True
+    assert (paths.prompts_dir() / "summary_final.txt").read_text(encoding="utf-8").strip() == SUMMARY_FINAL_TEMPLATE.strip()

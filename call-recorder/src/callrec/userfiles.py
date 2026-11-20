@@ -47,12 +47,14 @@ Regeln:
 - Verantwortliche und Fristen nur, wenn sie im Gespräch ausdrücklich genannt wurden. Sonst schreibe genau "offen". Rate keine Namen und keine Daten.
 - Übernimm Fristen und Termine so, wie sie genannt wurden (z. B. "bis Freitag"); rechne sie nicht in Kalenderdaten um.
 - Verwende genau die vorgegebenen Überschriften in der vorgegebenen Reihenfolge, auch wenn ein Abschnitt leer bleibt (dann "Keine").
+- Protokolliere nur geschäftliche Inhalte. Lass Smalltalk und Privates bewusst weg: Begrüßung und Verabschiedung, private Gespräche, persönliche Neuigkeiten, Gesundheit, Familie, Urlaub und Gerede über Dritte - auch nicht andeutungsweise.
+- Ist das ganze Gespräch privat (keine geschäftlichen Inhalte), antworte nur mit genau einer Zeile: "Privates Gespräch – keine geschäftlichen Inhalte protokolliert."
 - Das Transkript wurde automatisch erstellt und kann Erkennungsfehler enthalten.
 - Antworte nur mit dem Protokoll in Markdown, ohne Vorrede und ohne Schlussbemerkung.
 """
 
 SUMMARY_FINAL_TEMPLATE = """\
-Erstelle das Ergebnisprotokoll mit genau diesen sechs Abschnitten, in dieser Reihenfolge und mit genau diesen Überschriften:
+Erstelle das Ergebnisprotokoll nur über die geschäftlichen Inhalte (Smalltalk und Privates weglassen) mit genau diesen sechs Abschnitten, in dieser Reihenfolge und mit genau diesen Überschriften. War das Gespräch ausschließlich privat, antworte stattdessen nur mit der einen Zeile "Privates Gespräch – keine geschäftlichen Inhalte protokolliert."
 
 ## Kurzfassung
 (3-6 Sätze: Anlass des Gesprächs und wichtigste Ergebnisse)
@@ -87,7 +89,7 @@ Teilnehmende: {participants}
 
 SUMMARY_CHUNK_TEMPLATE = """\
 Das folgende ist Teil {i} von {n} eines Gesprächstranskripts.
-Fasse diesen Teil in Stichpunkten zusammen, gegliedert nach: besprochene Themen, Entscheidungen, Aufgaben (mit verantwortlicher Person und Frist nur, wenn genannt, sonst "offen"), Projektstand und Updates (je Projekt/Thema), offene Fragen, genannte nächste Termine. Nur Inhalte aus diesem Teil, nichts erfinden.
+Fasse diesen Teil in Stichpunkten zusammen, gegliedert nach: besprochene Themen, Entscheidungen, Aufgaben (mit verantwortlicher Person und Frist nur, wenn genannt, sonst "offen"), Projektstand und Updates (je Projekt/Thema), offene Fragen, genannte nächste Termine. Nur geschäftliche Inhalte aus diesem Teil, nichts erfinden; Smalltalk und Privates (Begrüßung, persönliche Neuigkeiten, Gesundheit, Familie, Gerede über Dritte) weglassen. Ist der Teil ganz privat, schreibe nur "(privat)".
 
 {chunk}
 """
@@ -96,6 +98,7 @@ Fasse diesen Teil in Stichpunkten zusammen, gegliedert nach: besprochene Themen,
 # a customised file is never touched (the new default is written next to it as *.default.txt).
 _PREVIOUS_DEFAULTS = {
     "summary_system.txt": [
+        'Du bist ein sorgfältiger Protokollführer. Du erstellst aus dem Transkript eines Gesprächs ein sachliches Ergebnisprotokoll auf Deutsch.\nDas Protokoll wird später automatisch weiterverarbeitet (Aufgabenlisten, Projektstände). Halte deshalb die vorgegebene Gliederung exakt ein.\nRegeln:\n- Verwende ausschließlich Informationen aus dem Transkript. Erfinde nichts.\n- Nenne Personen mit den Namen aus dem Transkript. "Sprecher N" bleibt "Sprecher N".\n- Verantwortliche und Fristen nur, wenn sie im Gespräch ausdrücklich genannt wurden. Sonst schreibe genau "offen". Rate keine Namen und keine Daten.\n- Übernimm Fristen und Termine so, wie sie genannt wurden (z. B. "bis Freitag"); rechne sie nicht in Kalenderdaten um.\n- Verwende genau die vorgegebenen Überschriften in der vorgegebenen Reihenfolge, auch wenn ein Abschnitt leer bleibt (dann "Keine").\n- Das Transkript wurde automatisch erstellt und kann Erkennungsfehler enthalten.\n- Antworte nur mit dem Protokoll in Markdown, ohne Vorrede und ohne Schlussbemerkung.\n',
         "Du bist ein sorgfältiger Protokollführer. Du erstellst aus dem Transkript eines Gesprächs ein kurzes, sachliches Ergebnisprotokoll auf Deutsch.\n"
         "Regeln:\n"
         "- Verwende ausschließlich Informationen aus dem Transkript. Erfinde nichts.\n"
@@ -105,6 +108,7 @@ _PREVIOUS_DEFAULTS = {
         "- Antworte nur mit dem Protokoll in Markdown, ohne Vorrede.\n",
     ],
     "summary_final.txt": [
+        'Erstelle das Ergebnisprotokoll mit genau diesen sechs Abschnitten, in dieser Reihenfolge und mit genau diesen Überschriften:\n\n## Kurzfassung\n(3-6 Sätze: Anlass des Gesprächs und wichtigste Ergebnisse)\n\n## Entscheidungen\n- (eine Entscheidung pro Zeile; "Keine" wenn es keine gab)\n\n## Aufgaben\n| Aufgabe | Verantwortlich | Frist |\n|---|---|---|\n| (konkrete Aufgabe) | (Name aus dem Transkript oder "offen") | (Frist wie genannt oder "offen") |\n(Gab es keine Aufgaben, genau eine Zeile: | Keine | - | - |)\n\n## Projektstand und Updates\n### (Name des Projekts oder Themas, wie im Gespräch genannt)\n- (Stand, Fortschritt, Probleme, Änderungen)\n(Ein Unterabschnitt pro Projekt/Thema; "Keine" wenn keine Projekte besprochen wurden)\n\n## Offene Fragen\n- (eine Frage pro Zeile; "Keine" wenn es keine gab)\n\n## Nächste Termine\n- (Termin wie genannt: wann, was, mit wem; "Keine genannt" wenn keine)\n\nGespräch: {title}\nDatum: {date}\nTeilnehmende: {participants}\n\n{material_label}:\n{material}\n',
         "Erstelle das Ergebnisprotokoll mit genau diesen Abschnitten:\n\n## Kurzfassung\n(3-6 Sätze)\n\n"
         "## Entscheidungen\n(Aufzählung; \"Keine\" wenn es keine gab)\n\n## Aufgaben\n"
         "| Aufgabe | Verantwortlich | Frist |\n|---|---|---|\n\n## Offene Punkte\n"
@@ -112,11 +116,15 @@ _PREVIOUS_DEFAULTS = {
         "Teilnehmende: {participants}\n\n{material_label}:\n{material}\n",
     ],
     "summary_chunk.txt": [
+        'Das folgende ist Teil {i} von {n} eines Gesprächstranskripts.\nFasse diesen Teil in Stichpunkten zusammen, gegliedert nach: besprochene Themen, Entscheidungen, Aufgaben (mit verantwortlicher Person und Frist nur, wenn genannt, sonst "offen"), Projektstand und Updates (je Projekt/Thema), offene Fragen, genannte nächste Termine. Nur Inhalte aus diesem Teil, nichts erfinden.\n\n{chunk}\n',
         "Das folgende ist Teil {i} von {n} eines Gesprächstranskripts.\n"
         "Fasse diesen Teil in Stichpunkten zusammen: besprochene Themen, Entscheidungen, Aufgaben (mit verantwortlicher "
         "Person und Frist, falls genannt) und offene Fragen. Nur Inhalte aus diesem Teil.\n\n{chunk}\n",
     ],
 }
+
+# The one line a summary of an entirely private call consists of (no sections expected then)
+PRIVATE_CALL_LINE = "Privates Gespräch – keine geschäftlichen Inhalte protokolliert."
 
 # Section headings the summary is expected to contain (checked tolerantly, see summary.missing_sections)
 SUMMARY_SECTIONS = ("Kurzfassung", "Entscheidungen", "Aufgaben", "Projektstand und Updates", "Offene Fragen", "Nächste Termine")
@@ -284,3 +292,31 @@ def render_template(template: str, values: dict[str, str], required: str | None 
         log.warning("Vorlage ohne {%s} - Inhalt wird angehängt", required)
         out = out.rstrip() + "\n\n" + values.get(required, "")
     return out
+
+
+PROMPT_PLACEHOLDERS = {
+    "system": {},
+    "final": {"title": "Titel des Gesprächs", "date": "Datum und Uhrzeit", "participants": "Teilnehmende/Sprechende",
+              "material_label": "„Transkript“ bzw. „Teilzusammenfassungen“", "material": "das Transkript (Pflicht)"},
+    "chunk": {"i": "Nummer des Teils", "n": "Anzahl der Teile", "chunk": "der Transkriptteil (Pflicht)"},
+}
+
+
+def validate_prompt(key: str, text: str) -> list[str]:
+    """German warnings for a prompt template (empty list = fine)."""
+    out: list[str] = []
+    if not text.strip():
+        return ["Die Vorlage ist leer – es wird die Standardvorlage verwendet."]
+    req = REQUIRED_PLACEHOLDER.get(key)
+    if req and "{" + req + "}" not in text:
+        out.append(f"Der Platzhalter {{{req}}} fehlt – ohne ihn sieht das Modell das Gespräch nicht (es würde nur "
+                   "angehängt).")
+    known = PROMPT_PLACEHOLDERS.get(key, {})
+    unknown = sorted({m.group(1) for m in _PLACEHOLDER.finditer(text)} - set(known))
+    if unknown:
+        out.append("Unbekannte Platzhalter (bleiben wörtlich stehen): " + ", ".join("{" + u + "}" for u in unknown))
+    return out
+
+
+def default_prompt(key: str) -> str:
+    return PROMPT_FILES[key][1]

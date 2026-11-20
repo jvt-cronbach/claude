@@ -631,11 +631,11 @@ class Pipeline:
         remaining = [p for p in participants
                      if not any(persons_match(p, Person(s.name, s.email)) for s in taken)]
         still_open = [sid for sid in remote_ids if not speakers[sid].name]
-        if len(still_open) == 1 and len(remaining) == 1 and not speakers[still_open[0]].suggested_name:
+        if len(still_open) == 1 and len(remaining) == 1:
             info = speakers[still_open[0]]
-            info.suggested_name, info.suggested_email = remaining[0].name or remaining[0].email, remaining[0].email
-            info.preselect = True
-            info.note = info.note or "einzige noch nicht zugeordnete Person des Termins"
+            info.preselect_name = remaining[0].name or remaining[0].email
+            info.note = "vorausgewählt: einzige noch nicht zugeordnete Person des Termins" + (
+                f"; {info.note}" if info.note else "")
         ident = {
             "rule": IDENTIFY_RULE,
             "scope": sc.match_scope,

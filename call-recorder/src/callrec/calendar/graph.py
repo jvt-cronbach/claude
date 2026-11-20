@@ -142,10 +142,41 @@ def parse_graph_datetime(obj: dict[str, Any]) -> datetime:
     dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
     tz = str(obj.get("timeZone", "UTC"))
     if dt.tzinfo is None:
-        if tz.upper() not in ("UTC", "Z", "COORDINATED UNIVERSAL TIME"):
-            raise GraphError(f"Unerwartete Zeitzone {tz!r} (Prefer-Header nicht beachtet?)")
-        dt = dt.replace(tzinfo=UTC)
+        if tz.upper() in ("UTC", "Z", "COORDINATED UNIVERSAL TIME", "ETC/UTC"):
+            return dt.replace(tzinfo=UTC)
+        zone = _zone(tz)
+        if zone is None:
+            # dropping the event would make the meeting vanish from the picker; keep it, assume UTC
+            log.warning("Unbekannte Zeitzone %r in einem Termin (Prefer-Header nicht beachtet?) - als UTC gelesen", tz)
+            return dt.replace(tzinfo=UTC)
+        dt = dt.replace(tzinfo=zone)
     return dt
+
+
+# Windows time-zone names Graph may return when the Prefer header is not honoured (most common ones)
+_WINDOWS_ZONES = {
+    "w. europe standard time": "Europe/Berlin", "central europe standard time": "Europe/Budapest",
+    "romance standard time": "Europe/Paris", "central european standard time": "Europe/Warsaw",
+    "gmt standard time": "Europe/London", "greenwich standard time": "Atlantic/Reykjavik",
+    "e. europe standard time": "Europe/Chisinau", "fle standard time": "Europe/Kiev",
+    "eastern standard time": "America/New_York", "pacific standard time": "America/Los_Angeles",
+    "central standard time": "America/Chicago", "mountain standard time": "America/Denver",
+    "india standard time": "Asia/Kolkata", "china standard time": "Asia/Shanghai",
+    "tokyo standard time": "Asia/Tokyo", "aus eastern standard time": "Australia/Sydney",
+}
+
+
+def _zone(name: str) -> Any:
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    for candidate in (_WINDOWS_ZONES.get(name.strip().lower()), name.strip()):
+        if not candidate:
+            continue
+        try:
+            return ZoneInfo(candidate)
+        except (ZoneInfoNotFoundError, ValueError):
+            continue
+    return None
 
 
 def _email_person(obj: dict[str, Any] | None, role: str) -> Person | None:
@@ -170,15 +201,22 @@ def parse_graph_event(item: dict[str, Any]) -> CalendarEvent:
     online = item.get("onlineMeeting") or {}
     provider = str(item.get("onlineMeetingProvider") or "")
     response = str((item.get("responseStatus") or {}).get("response") or "").lower()
+    all_day = bool(item.get("isAllDay"))
+    start, end = parse_graph_datetime(item["start"]), parse_graph_datetime(item["end"])
+    if all_day:
+        # all-day entries are dates, not instants: midnight of the LOCAL day (Graph sends 00:00 in the
+        # requested zone, i.e. UTC midnight = 01:00 in Berlin otherwise)
+        start = start.replace(tzinfo=None).astimezone()
+        end = end.replace(tzinfo=None).astimezone()
     return CalendarEvent(
         id=str(item.get("id", "")),
         subject=str(item.get("subject") or "").strip(),
-        start=parse_graph_datetime(item["start"]),
-        end=parse_graph_datetime(item["end"]),
+        start=start,
+        end=end,
         organizer=_email_person(item.get("organizer"), "organizer"),
         attendees=attendees,
         is_online=bool(item.get("isOnlineMeeting")) or provider.lower() in ("teamsforbusiness", "skypeforbusiness"),
-        is_all_day=bool(item.get("isAllDay")),
+        is_all_day=all_day,
         is_cancelled=bool(item.get("isCancelled")),
         declined=response == "declined",
         show_as=str(item.get("showAs") or ""),
@@ -256,4 +294,8 @@ class GraphClient:
             url = data.get("@odata.nextLink")
             params = None  # nextLink already contains the query
             pages += 1
+        if url:
+            log.warning("Kalender: mehr als %d Seiten - weitere Termine nicht abgerufen", max_pages)
+        log.info("Kalender: %d Termin(e) zwischen %s und %s (%d Seite(n))", len(events), _iso_utc(start),
+                 _iso_utc(end), pages)
         return events

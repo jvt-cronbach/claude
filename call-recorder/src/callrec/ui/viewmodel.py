@@ -257,10 +257,23 @@ def version_choices(folder: Path, kind: str, versions: list[dict[str, Any]]) -> 
     return out
 
 
-def event_label(ev: Any) -> str:
+def event_label(ev: Any, now: Any = None) -> str:
+    from callrec.calendar.selection import demotion
+
     start, end = ev.start.astimezone(), ev.end.astimezone()
     online = " (Teams)" if getattr(ev, "is_online", False) else ""
-    return f"{start:%H:%M}–{end:%H:%M}  {ev.subject}{online}"
+    times = "ganztägig" if getattr(ev, "is_all_day", False) else f"{start:%H:%M}–{end:%H:%M}"
+    if not getattr(ev, "is_all_day", False) and start.date() != end.date():
+        times = f"{start:%d.%m. %H:%M}–{end:%d.%m. %H:%M}"
+    marks = []
+    why = demotion(ev)
+    if why and why != "ganztägig":
+        marks.append(why)
+    if now is not None and ev.end < now:
+        marks.append("vorbei")
+    n = len(ev.participants()) if hasattr(ev, "participants") else 0
+    people = f", {n} Pers." if n else ""
+    return f"{times}  {ev.subject}{online}{people}" + (f"  [{', '.join(marks)}]" if marks else "")
 
 
 MANUAL_EVENT = "Ohne Termin – Titel und Teilnehmende selbst eingeben"

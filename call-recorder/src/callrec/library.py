@@ -62,6 +62,7 @@ class RecordingInfo:
     error: str = ""  # meta.json unreadable etc.
     chain_stage: str = ""  # guided processing after the recording (processing.chain.stage)
     handoff_skipped: str = ""  # why the chain did not hand over
+    summary_outdated: bool = False  # the summary names speakers that were re-assigned since
     old_identification: bool = False  # speakers matched automatically under the rule of earlier versions
     capture_warnings: list[str] = field(default_factory=list)  # mic track checks (processing.identification)
 
@@ -183,6 +184,7 @@ def read_info(folder: Path) -> RecordingInfo:
     smeta = proc.get("summary") or {}
     if not info.has_summary and smeta.get("skipped"):
         info.summary_problem = str(smeta["skipped"])
+    info.summary_outdated = info.has_summary and bool(smeta.get("speakers_outdated"))
     sp = proc.get("speakers")
     if isinstance(sp, dict) and "unassigned" in sp:
         info.speakers_unassigned = int(sp.get("unassigned") or 0)
@@ -200,7 +202,8 @@ def read_info(folder: Path) -> RecordingInfo:
         info.capture_warnings = [str(w) for w in ((ident.get("trackcheck") or {}).get("warnings") or [])]
     elif rec.speakers_path.exists():
         try:
-            info.old_identification = any(s.source == "auto" for s in rec.load_speakers().values())
+            info.old_identification = any(s.source in ("auto", "manual") and s.name
+                                          for s in rec.load_speakers().values())
         except (OSError, ValueError, KeyError):
             pass
     handoffs = meta.get("handoffs") or []
@@ -382,9 +385,12 @@ def status_description(info: RecordingInfo) -> str:
     if info.speakers_state() == OPEN:
         n = info.speakers_unassigned
         parts.append(f"{n} Stimme(n) noch keiner Person zugeordnet („Sprecher zuordnen“).")
+    if info.summary_outdated:
+        parts.append("Die Zusammenfassung beruht auf alten Sprechernamen – „Zusammenfassung neu erstellen“"
+                     + (" und danach erneut an SharePoint übergeben." if info.handoff else "."))
     if info.old_identification:
-        parts.append("Stimmen wurden nach dem früheren Verfahren automatisch erkannt (auch Personen, die nicht "
-                     "eingeladen waren) – „Weitere … → Sprecherzuordnung neu prüfen“.")
+        parts.append("Die Sprecher wurden von einer früheren Version zugeordnet, die auch nicht eingeladene Personen "
+                     "erkannt hat – „Weitere … → Sprecherzuordnung neu prüfen“.")
     for w in info.capture_warnings:
         parts.append(f"Mikrofon prüfen: {w}")
     return " ".join(parts)

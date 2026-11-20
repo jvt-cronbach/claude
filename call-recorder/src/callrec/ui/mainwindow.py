@@ -258,6 +258,8 @@ class MainWindow:
         extras.add_command(label="Bei Microsoft anmelden …", underline=4,
                            command=lambda: app.login(done=lambda text: self.post(self.run_checks)))
         extras.add_command(label="Einrichtung prüfen", underline=10, command=self.open_setup)
+        extras.add_command(label="Zusammenfassungs-Prompt bearbeiten …", underline=0,
+                           command=lambda: app.edit_prompts(self.selected_recording()))
         hilfe = tk.Menu(bar, tearoff=False)
         hilfe.add_command(label="Anleitung (README) öffnen", underline=0, command=app.open_readme)
         bar.add_cascade(label="Datei", menu=datei, underline=0)
@@ -589,6 +591,7 @@ class MainWindow:
             "participants": self._a(self.app.edit_participants),
             "recheck": self._a(self.app.recheck_speakers),
             "rerender": self._a(self.app.rerender),
+            "speaker_limit": self._a(self.app.toggle_speaker_limit),
             "process_now": self._a(self.app.process_now),
             "reprocess": self.reprocess_selected,
             "rename": self.rename_selected,
@@ -614,6 +617,7 @@ class MainWindow:
             ("participants", "Teilnehmende bearbeiten …"),
             ("recheck", "Sprecherzuordnung neu prüfen …"),
             ("rerender", "Transkript neu darstellen"),
+            ("speaker_limit", "Weitere Sprecher zulassen / begrenzen"),
             ("retranscribe", "Neu transkribieren …"),
             ("reprocess", "Komplett neu verarbeiten …"),
             ("rename", "Umbenennen …"),
@@ -1081,12 +1085,19 @@ class MainWindow:
         previous = self.event_var.get()
         self._events = list(events)
         self._event_source = source
-        labels = [event_label(e) for e in self._events] + [MANUAL_EVENT]
+        from datetime import UTC, datetime
+
+        now = datetime.now(UTC)
+        labels = [event_label(e, now) for e in self._events] + [MANUAL_EVENT]
         self.event_combo.configure(values=labels)
-        self.event_var.set(previous if previous in labels else labels[0])
+        # pre-select only a real meeting running now (never a blocker/all-day entry or a past meeting)
+        is_current = getattr(self.controller.calendar, "is_current", None)
+        current = bool(self._events) and (is_current(self._events[0]) if callable(is_current) else True)
+        self.event_var.set(previous if previous in labels else (labels[0] if current else MANUAL_EVENT))
         consent = "Vor dem Start kommt immer die Einwilligungsabfrage (Titel/Teilnehmende dort änderbar)."
-        if not message and len(self._events) > 1:
-            message = f"{len(self._events)} passende Termine, der erste ist vorausgewählt."
+        if not message and self._events:
+            message = (f"{len(self._events)} Termin(e) heute" + (", der laufende ist vorausgewählt." if current
+                       else " – zurzeit läuft keiner; bitte wählen."))
         self.event_info.set(f"{message} {consent}".strip() if message else consent)
 
     # ------------------------------------------------------------------
@@ -1252,6 +1263,7 @@ class MainWindow:
             "participants": not busy,
             "recheck": not busy and info.speakers_unassigned is not None,
             "rerender": not busy and info.has_transcript,
+            "speaker_limit": not busy and info.speakers_unassigned is not None,
             "folder": True,
             "play": not recording_now and (info.folder / "audio").is_dir(),
             "delete": not busy,

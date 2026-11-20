@@ -63,6 +63,85 @@ def edit_text_file(parent: tk.Misc, path: Path, title: str, hint: str = "") -> b
     return saved["v"]
 
 
+PROMPT_TABS = (("system", "System-Anweisung"), ("final", "Protokoll-Vorlage"),
+               ("chunk", "Teilzusammenfassung (lange Gespräche)"))
+
+
+def edit_summary_prompts(parent: tk.Misc, test: Callable[[], object] | None = None) -> bool:
+    """Editor for the summary templates in %APPDATA%\\CallRecorder\\prompts: placeholders explained,
+    "Standard wiederherstellen", validation, and (from the main window) "Mit dieser Aufnahme testen",
+    which saves and regenerates the selected recording's summary as a new version."""
+    from tkinter import messagebox
+
+    from callrec.userfiles import PROMPT_PLACEHOLDERS, default_prompt, validate_prompt
+
+    ensure_user_files()
+    win = tk.Toplevel(parent)
+    win.title("Zusammenfassungs-Prompt bearbeiten")
+    ttk.Label(win, text="Vorlagen für die Zusammenfassung. Änderungen gelten für künftige Zusammenfassungen; bestehende "
+              "bleiben als Version erhalten. Gespeichert in " + str(paths.prompts_dir()), wraplength=720,
+              foreground="#444").pack(anchor="w", **PAD)
+    nb = ttk.Notebook(win)
+    nb.pack(fill="both", expand=True, **PAD)
+    texts: dict[str, tk.Text] = {}
+    for key, label in PROMPT_TABS:
+        f = ttk.Frame(nb)
+        nb.add(f, text=label)
+        ph = PROMPT_PLACEHOLDERS.get(key) or {}
+        hint = ("Platzhalter: " + "; ".join(f"{{{k}}} = {v}" for k, v in ph.items())) if ph else \
+            "Keine Platzhalter. Die Sprache des Protokolls wird automatisch ergänzt."
+        ttk.Label(f, text=hint, wraplength=700, foreground="#555").pack(anchor="w", **PAD)
+        txt = tk.Text(f, width=100, height=22, wrap="word", undo=True)
+        path = paths.prompts_dir() / PROMPT_FILES[key][0]
+        txt.insert("1.0", path.read_text(encoding="utf-8") if path.exists() else default_prompt(key))
+        txt.pack(fill="both", expand=True, **PAD)
+        texts[key] = txt
+    status = tk.StringVar(value="")
+    ttk.Label(win, textvariable=status, foreground="#b00020", wraplength=720).pack(anchor="w", **PAD)
+    saved = {"v": False}
+
+    def current_key() -> str:
+        return PROMPT_TABS[nb.index(nb.select())][0]
+
+    def save(close: bool = True) -> bool:
+        problems = [f"{label}: {w}" for key, label in PROMPT_TABS for w in validate_prompt(key, texts[key].get("1.0", "end-1c"))]
+        if problems and not messagebox.askyesno("Vorlage prüfen", "\n".join(problems) + "\n\nTrotzdem speichern?",
+                                                parent=win):
+            status.set("\n".join(problems))
+            return False
+        for key, _label in PROMPT_TABS:
+            p = paths.prompts_dir() / PROMPT_FILES[key][0]
+            p.write_text(texts[key].get("1.0", "end-1c").rstrip() + "\n", encoding="utf-8")
+        saved["v"] = True
+        if close:
+            win.destroy()
+        return True
+
+    def restore() -> None:
+        key = current_key()
+        if messagebox.askyesno("Standard wiederherstellen", "Diese Vorlage durch die Standardvorlage ersetzen? "
+                               "(Erst „Speichern“ übernimmt sie.)", parent=win):
+            texts[key].delete("1.0", "end")
+            texts[key].insert("1.0", default_prompt(key))
+
+    def do_test() -> None:
+        if test is not None and save(close=False):
+            test()
+            status.set("Gespeichert – die Zusammenfassung der gewählten Aufnahme wird als neue Version erstellt.")
+
+    bar = ttk.Frame(win)
+    bar.pack(fill="x", **PAD)
+    ttk.Button(bar, text="Standard wiederherstellen", command=restore).pack(side="left", padx=4)
+    if test is not None:
+        ttk.Button(bar, text="Mit dieser Aufnahme testen", command=do_test).pack(side="left", padx=4)
+    ttk.Button(bar, text="Speichern", command=save).pack(side="right", padx=4)
+    ttk.Button(bar, text="Abbrechen", command=win.destroy).pack(side="right", padx=4)
+    win.transient(parent.winfo_toplevel())
+    win.grab_set()
+    parent.wait_window(win)
+    return saved["v"]
+
+
 class SettingsDialog:
     def __init__(
         self,
@@ -659,15 +738,7 @@ class SettingsDialog:
         self._bg(lambda: p.pull(model, progress), done)
 
     def edit_prompts(self) -> None:
-        names = {"System-Anweisung": "system", "Protokoll-Vorlage": "final", "Teilzusammenfassung (lange Gespräche)": "chunk"}
-        choice = simpledialog.askstring(
-            "Vorlage wählen", "Welche Vorlage? " + " / ".join(names), initialvalue="Protokoll-Vorlage", parent=self.win
-        )
-        if not choice or choice not in names:
-            return
-        fname = PROMPT_FILES[names[choice]][0]
-        edit_text_file(self.win, paths.prompts_dir() / fname, choice,
-                       "Platzhalter: {title} {date} {participants} {material_label} {material} bzw. {i} {n} {chunk}.")
+        edit_summary_prompts(self.win)
 
     def _handoff(self) -> None:
         t = self._tab("SharePoint")
