@@ -61,6 +61,12 @@ class CloudNotConfirmed(LlmUnavailable):
     pass
 
 
+VPN_HINT = (
+    "Ein aktives VPN (z. B. NordVPN) kann die Verbindung zu api.anthropic.com blockieren: VPN kurz pausieren "
+    "oder CallRecorder (python.exe/pythonw.exe im Ordner .venv\\Scripts) per Split-Tunneling vom VPN ausnehmen."
+)
+TEST_TIMEOUT_S = 20.0  # "Verbindung testen" / `callrec anthropic test` fail fast instead of hanging
+
 NO_KEY_MESSAGE = (
     "Kein Anthropic-API-Schlüssel hinterlegt. Bitte unter Einstellungen > Zusammenfassung eintragen "
     "oder 'callrec anthropic set-key' ausführen (alternativ Umgebungsvariable ANTHROPIC_API_KEY)."
@@ -294,11 +300,12 @@ class AnthropicProvider:
                 "Bitte später erneut versuchen (Zusammenfassung neu erstellen)."
             )
         if isinstance(exc, anthropic.APITimeoutError):
-            return AnthropicError("Zeitüberschreitung bei der Verbindung zu api.anthropic.com. Bitte später erneut versuchen.")
+            return AnthropicError("Zeitüberschreitung bei der Verbindung zu api.anthropic.com. " + VPN_HINT
+                                  + " Sonst später erneut versuchen.")
         if isinstance(exc, anthropic.APIConnectionError):
             return AnthropicError(
-                "Keine Verbindung zu api.anthropic.com (Internet, Proxy oder Firewall prüfen). "
-                "Die Zusammenfassung kann später neu erstellt werden."
+                "Keine Verbindung zu api.anthropic.com (Internet, Proxy oder Firewall prüfen). " + VPN_HINT
+                + " Die Zusammenfassung kann später neu erstellt werden."
             )
         if isinstance(exc, anthropic.APIStatusError) and getattr(exc, "type", None) in _RETRYABLE_STREAM_ERROR_TYPES:
             return AnthropicError(
@@ -310,7 +317,7 @@ class AnthropicProvider:
         if _transport_error(exc):
             return AnthropicError(
                 "Die Verbindung zu api.anthropic.com wurde während der Antwort unterbrochen "
-                f"({exc.__class__.__name__}). Die Zusammenfassung kann später neu erstellt werden."
+                f"({exc.__class__.__name__}). {VPN_HINT} Die Zusammenfassung kann später neu erstellt werden."
             )
         if isinstance(exc, RemoteEndpointRefused):
             return AnthropicError(str(exc))
@@ -442,13 +449,19 @@ class AnthropicProvider:
             text += "\n\n_(Hinweis: Die Antwort wurde wegen der Längenbegrenzung abgeschnitten.)_"
         return text
 
-    def test_connection(self) -> str:
-        """Check key, network, model access and credit with a minimal request (costs a fraction of a cent)."""
+    def test_connection(self, timeout_s: float = TEST_TIMEOUT_S) -> str:
+        """Check key, network, model access and credit with a minimal request (costs a fraction of a cent).
+
+        Short timeout, no retries: a blocked connection (VPN) is reported after ~20 s instead of hanging.
+        ``with_options`` keeps the same HTTP client, i.e. the host guard and the redirect refusal.
+        """
         anthropic = _sdk()
+        client = self.client.with_options(timeout=anthropic.Timeout(timeout_s, connect=min(timeout_s, 10.0)),
+                                          max_retries=0)
         try:
-            info = self.client.models.retrieve(self.model)
+            info = client.models.retrieve(self.model)
             name = str(getattr(info, "display_name", "") or self.model)
-            msg = self.client.messages.create(
+            msg = client.messages.create(
                 model=self.model, max_tokens=256,
                 messages=[{"role": "user", "content": "Antworte nur mit: OK"}],
                 **({"output_config": {"effort": "low"}} if self.effort else {}),

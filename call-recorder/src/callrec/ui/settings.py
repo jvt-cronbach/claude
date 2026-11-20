@@ -486,10 +486,13 @@ class SettingsDialog:
             from callrec.llm_anthropic import AnthropicProvider
 
             key = typed or apikey.load_key()[0]
+            from callrec.llm_anthropic import TEST_TIMEOUT_S
+
             provider = AnthropicProvider(key, cfg.summary.anthropic_model, effort=cfg.summary.anthropic_effort,
-                                         max_attempts=1, timeout_s=60.0)
+                                         max_attempts=1, timeout_s=TEST_TIMEOUT_S)
         self.test_btn.state(["disabled"])
-        self.key_status.set("Teste Verbindung zu api.anthropic.com … (sendet nur „Antworte nur mit: OK“)")
+        self.key_status.set("Teste Verbindung zu api.anthropic.com … (sendet nur „Antworte nur mit: OK“, "
+                            "höchstens ca. 20 s)")
 
         def done(res: Any) -> None:
             self.test_btn.state(["!disabled"])

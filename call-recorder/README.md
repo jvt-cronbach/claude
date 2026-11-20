@@ -382,8 +382,14 @@ empfangenen Zeichen.
 5. **Technik:** Verbindungen nur zu `https://api.anthropic.com` (fest eingestellt, keine
    konfigurierbare Adresse, `ANTHROPIC_BASE_URL` wird ignoriert, Weiterleitungen werden nicht
    befolgt). Bei Überlastung (529), Ratenlimit (429) oder Netzproblemen wird mit Wartezeit
-   mehrfach wiederholt; danach wird die Zusammenfassung übersprungen und kann später neu erstellt
-   werden. Sehr lange Transkripte werden automatisch in Teile zerlegt
+   wiederholt (`anthropic_max_retries` = 4 Versuche); ein neuer Versuch startet nur innerhalb von
+   `anthropic_retry_budget_s` (300 s) ab dem ersten Versuch. Die gesamte Wartezeit je Anfrage ist
+   damit begrenzt auf Budget + Verbindungsaufbau + max. Funkstille (300 + 15 + 180 s ≈ 8 min;
+   vorher konnten es bei schlechtem Netz über 10 min werden). Der Status zeigt immer den aktuellen
+   Stand („Versuch 1/4 fehlgeschlagen (Zeitüberschreitung), neuer Versuch 2/4 in 20 s – noch 12 s“,
+   „Versuch 2/4 läuft – 35 s“). Danach wird die Zusammenfassung übersprungen – **das Transkript ist
+   trotzdem fertig**, die Aufnahme gilt nicht als fehlgeschlagen, und die Meldung nennt, wie die
+   Zusammenfassung später nachgeholt wird. Sehr lange Transkripte werden automatisch in Teile zerlegt
    (`anthropic_max_chunk_chars`). Fehlermeldungen (Schlüssel ungültig, kein Guthaben,
    Ausgabenlimit, keine Verbindung) erscheinen auf Deutsch im Tray und in `meta.json`.
 6. **Ältere Aufnahmen** (Einwilligung ohne Anthropic-Hinweis) werden erst nach einer gesonderten
@@ -411,6 +417,8 @@ Start über **Startmenü → CallRecorder**. Das Symbol erscheint im Infobereich
 - *Aufnahme starten … / Aufnahme beenden*
 - *Letzte Aufnahme: Sprecher zuordnen …*
 - *Letzte Aufnahme: Zusammenfassung neu erstellen*
+- *Letzte Aufnahme: neu transkribieren in Sprache* → *Deutsch* / *Englisch* / *Sprache automatisch erkennen*
+  (ein Klick; erzeugt eine neue Transkript-Version, Abschnitt 9)
 - *Letzte Aufnahme: komplett neu verarbeiten*
 - *Laufende Verarbeitung abbrechen* (Transkription bzw. Modell-Download)
 - *Aufnahmeordner öffnen*
@@ -498,6 +506,60 @@ auf die neue Gliederung aktualisiert. **Selbst angepasste Vorlagen bleiben unver
 neue Standardvorlage liegt daneben als `summary_final.default.txt` (bzw. `summary_system…`,
 `summary_chunk…`). Übernehmen: eigene Datei löschen (wird beim nächsten Start aus der Standardvorlage
 neu angelegt) oder Inhalt der `.default.txt` hineinkopieren und eigene Ergänzungen wieder einfügen.
+
+### Sprache des Gesprächs
+
+Standard ist `transcription.language = "auto"`: CallRecorder misst die Sprache **je Aufnahme** –
+an bis zu sechs 30-Sekunden-Abschnitten **Sprache** (nach der Pausenerkennung) je Spur, verteilt
+über das ganze Gespräch, nicht nur am Anfang – und wählt nur unter `language_candidates`
+(Standard `["de", "en"]`). Die erste Sprache der Liste gilt bei Zweifel: Eine andere wird nur
+gewählt, wenn sie über beide Spuren gewichtet mindestens `language_switch_threshold` (0,75) erreicht
+und mindestens `language_min_speech_s` (20 s) Sprache gemessen wurden. Ein kurzer, leiser oder
+englischer Gruß am Anfang macht also kein deutsches Gespräch zu einem englischen. Beide Spuren
+werden gemeinsam bewertet (ein Gespräch hat normalerweise eine Sprache); nur wenn **jede** Spur für
+sich eindeutig eine andere Sprache zeigt (z. B. Sie Deutsch, Gegenseite Englisch), wird jede Spur in
+ihrer eigenen Sprache transkribiert. Ergebnis, Wahrscheinlichkeiten und Begründung stehen im
+Transkriptkopf („**Sprache:** Englisch (automatisch erkannt: de 0,04 / en 0,96; 9 Abschnitte, 270 s
+Sprache)“), im Protokoll und in `meta.json` (`processing.transcription.language_detection`, Rohwerte
+in `data\language_detect.json`). Die Messung kostet einmal Laden des Modells plus wenige Sekunden je
+Abschnitt.
+
+**Fest einstellen:** `language = "de"` (oder `"en"` …) erzwingt die Sprache. **Ältere
+Konfigurationen:** Frühere Versionen schrieben `language = "de"` als Standardwert in jede
+`config.toml` (auch beim Speichern der Einstellungen) – das war keine bewusste Wahl. Eine Datei mit
+`language = "de"` **ohne** `language_candidates` wird deshalb beim ersten Start einmalig auf
+`"auto"` mit `["de", "en"]` umgestellt (nur diese Zeile; Kommentare bleiben; einmaliger Hinweis im
+Tray). Wer immer Deutsch will, stellt danach `language = "de"` wieder ein – jetzt mit
+`language_candidates` in der Datei gilt das als bewusste Wahl. Andere Werte (`"en"` …) werden nie
+umgestellt. Ältere Presets mit `language = "de"` schalten die Erkennung ebenfalls nicht mehr ab.
+
+**Falsche Sprache erwischt?** Tray *Letzte Aufnahme: neu transkribieren in Sprache → Englisch*
+bzw. `callrec retranscribe <Ordner> --language en` (oder `--language auto` = neu erkennen). Es
+entsteht eine neue Version, die alte bleibt.
+
+**Sprachwechsel innerhalb einer Spur** (echte Mischgespräche): `multilingual = true`
+(*Einstellungen → Sprache & Qualität*, experimentell). Das nutzt die Option `multilingual` von
+faster-whisper 1.2.1: Sie erkennt die Sprache je 30-s-Fenster neu, allerdings **unter allen rund 100
+Sprachen** (nicht nur den Kandidaten) und ohne die Sprache je Abschnitt auszugeben – deshalb nicht
+Standard. Ohne diese Option wird jede Spur in einer Sprache transkribiert; englische Einschübe in
+einem deutschen Gespräch werden dann meist trotzdem verstanden, können aber eingedeutscht werden.
+
+**Schutz vor Wiederholungsschleifen** (*Einstellungen → Sprache & Qualität*): Whisper dekodiert einen
+Abschnitt mit höherer „Temperatur“ neu, wenn der Text zu gleichförmig ist
+(`compression_ratio_threshold`, 2,4) oder zu unsicher (`log_prob_threshold`, −1,0); dazu
+`no_speech_threshold`, `temperature_fallback`, `repetition_penalty` und `no_repeat_ngram_size`
+(Standardwerte = die von faster-whisper; die beiden letzten sind aus, weil sie auch echte
+Wiederholungen unterdrücken können). Zusätzlich prüft CallRecorder nach der Transkription, ob sich eine
+Wortfolge auffällig oft hintereinander wiederholt („mit Ihnen, mit Ihnen, mit Ihnen …“, ab
+`repetition_warn_min_repeats` = 4 Wiederholungen, einzelne Wörter ab 8). Gefundene Stellen werden
+**nicht gelöscht**, sondern im Transkriptkopf („**Warnung:** Gegenseite: mögliche
+Wiederholungsschleife – [00:12:34] „mit Ihnen“ ×14 …“), im Protokoll und in `meta.json`
+(`processing.transcription.<spur>.quality`) gemeldet. Häufigste Ursache ist eine falsche Sprache.
+
+**Sprache der Zusammenfassung:** `summary.language` (Standard `de`). Die Zusammenfassung wird immer in
+dieser Sprache geschrieben, auch bei englischen Gesprächen; CallRecorder teilt dem Sprachmodell dazu
+die erkannte Gesprächssprache mit (zusätzlich zu den Vorlagen, gilt also auch für angepasste
+Vorlagen). Die Überschriften bleiben die deutschen aus der Vorlage.
 
 **Was wirkt worauf?**
 
@@ -614,6 +676,7 @@ wird in `meta.json` unter `handoffs` vermerkt.
     ├── diarization.json                 Sprecherabschnitte der Gegenseite
     ├── speakers.json                    Zuordnung Sprecher → Name
     ├── utterances.json                  zusammengeführte Äußerungen
+    ├── language_detect.json             gemessene Sprachwahrscheinlichkeiten je Spur und Abschnitt
     ├── archive\                         frühere Whisper-Ergebnisse
     └── speaker_embeddings.npz           Stimm-Embeddings dieses Gesprächs (biometrisch!)
 ```
@@ -632,8 +695,8 @@ Umgebung):
 |---|---|
 | `tray` (oder ohne Argument) | Tray-Anwendung starten |
 | `record [--title T] [--participants "A <a@x>; B"] [--ics F] [--no-calendar] [--no-process]` | Aufnahme in der Konsole (Einwilligung durch Eintippen von `ja` im Konsolenfenster; umgeleitete Eingabe wird nicht akzeptiert) |
-| `process <Ordner> [--steps …] [--model M] [--device cuda\|cpu] [--language de\|auto] [--preset P]` | (Neu-)Verarbeitung; Schritte: `finalize,transcribe,diarize,identify,render,summarize` oder Presets `all`, `retranscribe`, `rediarize`, `resummarize`, `render` |
-| `retranscribe <Ordner> [--preset P]` | mit aktuellen Einstellungen neu transkribieren (neue Version, alte bleibt) |
+| `process <Ordner> [--steps …] [--model M] [--device cuda\|cpu] [--language de\|en\|auto] [--preset P]` | (Neu-)Verarbeitung; Schritte: `finalize,transcribe,diarize,identify,render,summarize` oder Presets `all`, `retranscribe`, `rediarize`, `resummarize`, `render` |
+| `retranscribe <Ordner> [--preset P] [--language en\|de\|auto]` | mit aktuellen Einstellungen neu transkribieren (neue Version, alte bleibt); `--language` erzwingt die Sprache für diesen Lauf (`auto` = neu erkennen) |
 | `versions <Ordner>` | Versionen von Transkript und Zusammenfassung mit Einstellungen |
 | `handoff <Ordner> [--yes]` | **nur** die Zusammenfassung an SharePoint übergeben (mit Vorschau/Rückfrage) |
 | `llm models \| version \| pull [Modell]` | Sprachmodelle anzeigen, Ollama-Version, Modell laden/aktualisieren |
@@ -650,7 +713,9 @@ Umgebung):
 | `login`, `logout`, `whoami` | Microsoft-Anmeldung |
 | `event [--ics F]` | zeigt den Termin, der jetzt gewählt würde |
 | `devices` | Audiogeräte und aktuelle Auswahl |
-| `models [download] [--whisper] [--model M]` | Modelle vorab laden; Whisper mit Fortschritt (MB/%), Abbruch mit Strg+C, erneuter Aufruf setzt fort |
+| `models [download] [--whisper] [--model M]` | Modelle vorab laden; Whisper mit Fortschritt, Abbruch mit Strg+C, erneuter Aufruf setzt fort. „Fertig.“ erscheint nur, wenn das Modell danach vollständig und offline ladbar ist – sonst Fehlermeldung und Exit-Code ≠ 0 |
+| `models list` | installierte Whisper-Modelle mit Größe, Vollständigkeit und Resten abgebrochener Downloads; `*` = wird verwendet |
+| `models remove <Name> [--yes]` | ein Whisper-Modell löschen (z. B. `large-v3`, wenn nur noch `large-v3-turbo` genutzt wird) |
 | `list` | Aufnahmen und Status |
 | `config path \| check \| files` | Konfigurationsdatei anzeigen/prüfen; `files` legt Glossar, Korrekturliste und Vorlagen an |
 
@@ -670,7 +735,14 @@ Wichtige Einstellungen:
 | `audio.format` | `flac` | `flac` oder `opus` |
 | `transcription.model` | `auto` | `auto` = `large-v3` mit NVIDIA-GPU, sonst `large-v3-turbo`; oder fest z. B. `large-v3`, `medium` |
 | `transcription.device` | `auto` | `auto` (NVIDIA-GPU nur wenn nutzbar, sonst direkt CPU), `cuda` (mit CPU-Rückfall) oder `cpu` |
-| `transcription.language` | `de` | oder `auto` für automatische Erkennung |
+| `transcription.language` | `auto` | je Aufnahme erkennen; `de`, `en` … erzwingt die Sprache (Abschnitt 9, „Sprache des Gesprächs“) |
+| `transcription.language_candidates` | `["de", "en"]` | mögliche Sprachen, die erste gilt bei Zweifel |
+| `transcription.language_switch_threshold` / `language_min_speech_s` / `language_detection_windows` | `0.75` / `20.0` / `6` | Erkennung: Schwelle für eine andere Sprache, Mindestsprache, Messabschnitte je Spur |
+| `transcription.multilingual` | `false` | Sprachwechsel innerhalb einer Spur (experimentell) |
+| `transcription.compression_ratio_threshold` / `log_prob_threshold` / `no_speech_threshold` / `temperature_fallback` | `2.4` / `-1.0` / `0.6` / `true` | Schutz vor Wiederholungsschleifen (0 = aus) |
+| `transcription.repetition_penalty` / `no_repeat_ngram_size` / `repetition_warn_min_repeats` | `1.0` / `0` / `4` | Wiederholungs-Strafe, n-Gramm-Sperre, Warnung ab so vielen Wiederholungen |
+| `summary.language` | `de` | Sprache der Zusammenfassung, unabhängig von der Gesprächssprache |
+| `summary.anthropic_connect_timeout_s` / `anthropic_read_timeout_s` / `anthropic_retry_budget_s` / `anthropic_max_retries` | `15` / `180` / `300` / `4` | Claude: Verbindungsaufbau, max. Funkstille während der Antwort, Zeitbudget für Wiederholungen, Versuche |
 | `diarization.cluster_threshold` | `0.4` | kleiner = Stimmen werden feiner getrennt |
 | `diarization.num_speakers` | `0` | feste Sprecheranzahl der Gegenseite (0 = automatisch) |
 | `speakers.match_threshold` | `0.55` | Schwelle für die Wiedererkennung |
@@ -762,18 +834,49 @@ probieren. `callrec gpu` zeigt den Stand.
 
 **Modell-Download scheint zu hängen.** Der erste Start lädt das Whisper-Modell (1,5–3 GB). Tray
 und Konsole zeigen „Modell wird heruntergeladen: … MB von … GB (… %)“, danach „Modell wird
-geladen“. Vorab laden: `callrec models --whisper` (Abbruch mit Strg+C, im Tray „Laufende
+geladen“. Meldet die Download-Bibliothek (Xet) keinen Byte-Fortschritt, steht dort ehrlich
+„Modell wird heruntergeladen … 3:20 min, bisher 900 MB auf der Festplatte (genauer Fortschritt
+nicht verfügbar)“ – gemessen am Modellordner und am Xet-Zwischenspeicher. Nach dem Download wird
+das Modell offline geprüft; nur dann erscheint „Modell vollständig heruntergeladen und geprüft“. Vorab laden: `callrec models --whisper` (Abbruch mit Strg+C, im Tray „Laufende
 Verarbeitung abbrechen“). Ein erneuter Start lädt nur fehlende Dateien; eine abgebrochene große
 Datei beginnt neu, wobei der Xet-Zwischenspeicher von Hugging Face bereits geladene Teile
-wiederverwenden kann (`%USERPROFILE%\.cache\huggingface\xet`). Der Modellordner wächst erst,
-wenn eine Datei vollständig ist – das ist kein Zeichen für einen Stillstand.
+wiederverwenden kann (`%USERPROFILE%\.cache\huggingface\xet`). Die eigentliche Modelldatei
+erscheint erst, wenn sie vollständig ist; bis dahin wachsen Zwischendateien und der Xet-Zwischenspeicher.
+
+**Alte Modelle belegen Platz** (z. B. `large-v3` mit 5,75 GB nach einem abgebrochenen Download, obwohl
+nur noch `large-v3-turbo` genutzt wird): `callrec models list` zeigt alle Modelle mit Größe und Resten
+abgebrochener Downloads, `callrec models remove large-v3` löscht eines; ebenso unter *Einstellungen →
+Transkription → Installierte Whisper-Modelle*.
+
+**Transkript in der falschen Sprache / Wiederholungen** („mit Ihnen, mit Ihnen …“): Im Transkriptkopf
+stehen erkannte Sprache und ggf. eine Warnung. Neu transkribieren: Tray *Letzte Aufnahme: neu
+transkribieren in Sprache → Englisch* bzw. `callrec retranscribe <Ordner> --language en`. Steht in der
+Konfiguration `language = "de"`, wird immer Deutsch erzwungen – für die automatische Erkennung
+`"auto"` eintragen.
+
+**„Ohne Text: Sprecher 6“ im Transkriptkopf.** Die Sprechertrennung hat eine Stimme gefunden, deren
+Abschnitte zu kurz für ein erkanntes Wort waren (Räuspern, „mhm“). Sie wird nicht als sprechend und
+nicht als „noch nicht zugeordnet“ gezählt, aber genannt, damit die Nummerierung nachvollziehbar bleibt.
+
+**Konsole: Statuszeilen.** Im Konsolenfenster wird die Statuszeile an Ort und Stelle aktualisiert
+(auf Fensterbreite gekürzt). Wird die Ausgabe in eine Datei umgeleitet, erscheint eine Zeile nur bei
+einem neuen Schritt oder geänderten Prozenten, höchstens alle 30 s.
 
 **Umlaute im Protokoll falsch.** Seit dieser Version ist `callrec.log` UTF-8 mit BOM; eine ältere
 Datei ohne BOM wird beim Start einmalig zu `callrec.log.1` rotiert.
 
 **Zusammenfassung mit Claude fehlt.** Meldung in Tray/`meta.json` lesen: Schlüssel ungültig
 → neu eintragen; kein Guthaben / Ausgabenlimit → in der Anthropic-Konsole aufladen bzw. Limit
-erhöhen; keine Verbindung → Internet/Proxy/Firewall (`api.anthropic.com:443`). Danach
+erhöhen; keine Verbindung → Internet/Proxy/Firewall (`api.anthropic.com:443`).
+
+**Claude: nur Zeitüberschreitungen / keine Verbindung, oft mit VPN.** Ein aktives VPN (beobachtet mit
+NordVPN) kann Anfragen an `api.anthropic.com` bis zur Zeitüberschreitung hängen lassen; mit pausiertem
+VPN klappt es sofort. Abhilfe: VPN für die Zusammenfassung kurz pausieren oder CallRecorder per
+**Split-Tunneling** vom VPN ausnehmen (in der VPN-App die Programme `python.exe` und `pythonw.exe` aus
+`<Installationsordner>\.venv\Scripts` als „nicht über VPN“ eintragen). Prüfen mit `callrec anthropic test`
+bzw. *Einstellungen → Verbindung testen* – beide brechen nach etwa 20 s ab, statt zu hängen. Auch in
+Zügen/Mobilfunk sind Zeitüberschreitungen häufig; die Zusammenfassung lässt sich jederzeit später
+nachholen. Danach
 „Zusammenfassung neu erstellen“. `callrec anthropic test` prüft alles mit einer Mini-Anfrage.
 
 **Transkription läuft nur auf der CPU, obwohl eine NVIDIA-GPU vorhanden ist.** Im Protokoll steht dann
@@ -837,7 +940,16 @@ kein `thinking`-Parameter), kein `temperature`, Refusal-Fallback (`server-side-f
 den installierten SDK-Quelltext (dort u. a.: API-Schlüssel wird als `Authorization: Bearer`
 gesendet, `anthropic-version: 2026-10-21`, Standard-HTTP-Client folgt Weiterleitungen – daher
 eigener Client mit `follow_redirects=False`). Hugging Face: Fortschritt über `tqdm_class` von
-`snapshot_download` – geprüft gegen den Quelltext von huggingface_hub 2.4.0.
+`snapshot_download` – geprüft gegen den Quelltext von huggingface_hub 2.4.0 (Weg `snapshot_download` →
+`xet_get` → `XetDownloadProgressReporter` → `_AggregatedTqdm`; ein Test treibt genau diesen Code mit
+einer nachgebildeten Xet-Sitzung) und hf_xet 1.8.0 (`progress_callback(GroupProgressReport, dict)`);
+Prüfung danach mit `faster_whisper.utils.download_model(local_files_only=True)`.
+faster-whisper 1.2.1 (`transcribe.py`): Parameter `compression_ratio_threshold`, `log_prob_threshold`,
+`no_speech_threshold`, `temperature` (Liste = Rückfall), `repetition_penalty`, `no_repeat_ngram_size`,
+`hallucination_silence_threshold`, `multilingual` (erkennt je 30-s-Fenster mit
+`model.detect_language` unter allen Sprachen, ohne Sprache je Segment), `language_detection_segments`
+(nur aufeinanderfolgende Fenster ab Beginn der Sprache) – deshalb eigene Messung über
+`feature_extractor` → `pad_or_trim` → `encode` → `model.detect_language` an verteilten Stellen.
 
 Aufbau (`src/callrec/`):
 
