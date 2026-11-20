@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "callrec"
-version = "0.2.0"
+version = "0.3.0"
 description = "Lokaler Gesprächsrekorder für Teams-Anrufe mit Transkript, Sprechererkennung und Zusammenfassung (Windows 11)"
 readme = "README.md"
 requires-python = ">=3.12"  # numpy 2.5.x has no wheels for 3.11
@@ -32,6 +32,7 @@ dependencies = [
     "PyAudioWPatch==0.2.12.9; sys_platform == 'win32'",
     "pycaw==20260927; sys_platform == 'win32'",
     "comtypes==1.5.0; sys_platform == 'win32'",
+    "pywebview==6.2.1",  # new interface (preview), Edge WebView2 on Windows
 ]
 
 [project.optional-dependencies]
@@ -56,6 +57,9 @@ callrec-tray = "callrec.cli:main_tray"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+callrec = ["ui/web/*.html", "ui/web/*.css", "ui/web/*.js"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

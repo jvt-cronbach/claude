@@ -186,7 +186,7 @@ def test_review_dialog_shows_own_track_and_profile_origins(root, tmp_path: Path)
 
     root.after(200, drive_profiles)
     dialogs.manage_profiles(root, store, rebuild=lambda pid: "ok")
-    assert seen["origins"][0][0] == f"Jour fixe ({rec.folder.name})" and seen["origins"][0][2] == "von Ihnen zugeordnet"
+    assert seen["origins"][0][0] == f"Jour fixe ({rec.folder.name})" and seen["origins"][0][2] == "selbst zugeordnet"
 
     def drive_participants():
         win = toplevel(root)

@@ -239,7 +239,7 @@ class WebDialogPort:
                 return False
             fut: Future[Any] = Future()
 
-            def work() -> None:
+            def work(fut: Future[Any] = fut) -> None:
                 try:
                     fut.set_result(perform(doc.sha256))
                 except Exception as exc:  # shown to the user

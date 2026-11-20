@@ -119,12 +119,12 @@ class AppLoop:
         for fn in self._due():
             self._safe(fn)
         try:
-            fn = self._q.get(timeout=self._next_timeout(max_wait))
+            item = self._q.get(timeout=self._next_timeout(max_wait))
         except queue.Empty:
             return True
-        if fn is None:
+        if item is None:
             return False
-        self._safe(fn)
+        self._safe(item)
         return True
 
     @staticmethod
@@ -147,11 +147,11 @@ class AppLoop:
             n += 1
         while n < max_items:
             try:
-                fn = self._q.get_nowait()
+                item = self._q.get_nowait()
             except queue.Empty:
                 break
-            if fn is not None:
-                self._safe(fn)
+            if item is not None:
+                self._safe(item)
                 n += 1
         return n
 

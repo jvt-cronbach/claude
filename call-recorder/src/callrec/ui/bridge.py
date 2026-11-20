@@ -95,11 +95,11 @@ class Bridge:
 
     # ------------------------------------------------------------------ page lifecycle
     @safe
-    def ready(self, window: str = "main") -> dict[str, Any]:
+    def ready(self, which: str = "main") -> dict[str, Any]:
         """The page loaded (again): state to start from, open dialogs to show again."""
         core = self._core
-        core.events.set_ready(window if window in ("main", "indicator", "toast") else "main")
-        if window == "main":
+        core.events.set_ready(which if which in ("main", "indicator", "toast") else "main")
+        if which == "main":
             core.page_ready.set()
         from callrec.updater import version_text
 

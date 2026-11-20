@@ -137,7 +137,9 @@ def schedule_daily_update_check(cfg: Config, root: Any, actions: Any) -> None:
     root.after(5 * 60 * 1000, tick)
 
 
-def run_tray_app(cfg: Config | None = None, start_minimized: bool = False) -> int:
+def run_tray_app(cfg: Config | None = None, start_minimized: bool = False, frontend: str | None = None) -> int:
+    """``frontend``: "web" (new interface, preview) or "tk" (classic); default from ``[ui] frontend``.
+    The web UI falls back to the classic window when it cannot start (with a notice)."""
     log_file = setup_logging(console=sys.stderr is not None)
     if not acquire_single_instance():
         log.error("CallRecorder läuft bereits")
@@ -146,6 +148,22 @@ def run_tray_app(cfg: Config | None = None, start_minimized: bool = False) -> in
     from callrec.updater import version_text
 
     log.info("Start: %s, Python %s", version_text(), sys.version.split()[0])
+    fallback_notice = ""
+    if (frontend or cfg.ui.frontend) == "web":
+        enable_dpi_awareness(per_monitor=True)
+        from callrec.ui.webapp import FALLBACK, run_web_app
+
+        reasons: list[str] = []
+        rc = run_web_app(cfg, log_file, start_minimized, notify_fallback=reasons.append)
+        if rc != FALLBACK:
+            return rc
+        fallback_notice = ("Die neue Oberfläche (Vorschau) konnte nicht starten: " + " ".join(reasons) +
+                           " Das klassische Fenster wird verwendet; Umschalten: Einstellungen › Allgemein bzw. "
+                           "callrec tray --ui web|classic.")
+    return _run_tk(cfg, log_file, start_minimized, fallback_notice)
+
+
+def _run_tk(cfg: Config, log_file: Any, start_minimized: bool, fallback_notice: str = "") -> int:
     from callrec.audio.wasapi import WasapiBackend
     from callrec.ui.actions import AppActions
     from callrec.ui.mainwindow import MainWindow
@@ -244,6 +262,8 @@ def run_tray_app(cfg: Config | None = None, start_minimized: bool = False) -> in
 
     for w in cfg.warnings:
         ui.notify("Konfiguration", w)
+    if fallback_notice:
+        ui.notify("Neue Oberfläche nicht verfügbar", fallback_notice)
 
     # "Mit Windows starten": repair an entry that points at a moved/old installation
     try:
@@ -287,7 +307,7 @@ def run_tray_app(cfg: Config | None = None, start_minimized: bool = False) -> in
     return 0
 
 
-def enable_dpi_awareness() -> None:
+def enable_dpi_awareness(per_monitor: bool = False) -> None:
     """Sharp text at 125-150 % scaling. Must run before the first Tk window exists.
 
     Per-monitor v2 would need Tk to rescale on WM_DPICHANGED, which Tk 8.6 does not do; the
@@ -298,7 +318,8 @@ def enable_dpi_awareness() -> None:
     import ctypes
 
     try:
-        ctypes.windll.shcore.SetProcessDpiAwareness(1)  # type: ignore[attr-defined]  # PROCESS_SYSTEM_DPI_AWARE
+        # the web UI (WebView2/WinForms) rescales itself per monitor; Tk 8.6 cannot (see above)
+        ctypes.windll.shcore.SetProcessDpiAwareness(2 if per_monitor else 1)  # type: ignore[attr-defined]
     except Exception:
         try:
             ctypes.windll.user32.SetProcessDPIAware()  # type: ignore[attr-defined]

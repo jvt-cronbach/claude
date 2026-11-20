@@ -319,7 +319,7 @@ class ProfileStore:
             contrib = Contribution(recording, speaker, source, emb, SOURCE_WEIGHT[source], seconds, now, title, folder)
             if existing is None:
                 if source not in CREATING_SOURCES:
-                    raise ValueError("Ein Stimmprofil wird nur aus einer Zuordnung durch Sie angelegt")
+                    raise ValueError("Ein Stimmprofil wird nur aus einer eigenen Zuordnung angelegt")
                 prof = VoiceProfile(
                     id=uuid.uuid4().hex, name=name, email=email, model_id=model_id,
                     embedding=emb, samples=1, created_at=now, updated_at=now, contributions=[contrib],

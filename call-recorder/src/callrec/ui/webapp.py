@@ -12,6 +12,7 @@ the ``func`` of ``webview.start``): a failing ``webview.start`` leaves no worker
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import subprocess
@@ -39,9 +40,9 @@ def preflight() -> str:
         return f"pywebview ist nicht installiert ({exc})."
     if sys.platform == "win32":
         try:
-            from webview import guilib
+            import importlib
 
-            guilib.initialize("edgechromium")
+            importlib.import_module("webview.guilib").initialize("edgechromium")
             import webview.platforms.winforms as wf
         except Exception as exc:
             return f"WebView2/.NET nicht verfügbar ({exc})."
@@ -49,9 +50,9 @@ def preflight() -> str:
             return "Die Microsoft-Edge-WebView2-Laufzeit wurde nicht gefunden."
         return ""
     try:
-        from webview import guilib
+        import importlib
 
-        guilib.initialize()
+        importlib.import_module("webview.guilib").initialize()
     except Exception as exc:
         return f"Keine Web-Oberfläche auf diesem System ({exc})."
     return ""
@@ -444,17 +445,18 @@ def run_web_app(cfg: Config, log_file: Path | None, start_minimized: bool = Fals
         pass
     from callrec.updater import version_text
 
-    main = webview.create_window(version_text(), url=server.url("index.html"), js_api=Bridge(core), width=1280,
+    main = webview.create_window(version_text(), url=server.url("index.html") + f"?theme={cfg.ui.theme}", js_api=Bridge(core), width=1280,
                                  height=820, min_size=(900, 600), hidden=True, background_color=bg,
                                  text_select=True)
-    indicator = webview.create_window("CallRecorder – Aufnahme", url=server.url("indicator.html"),
+    indicator = webview.create_window("CallRecorder – Aufnahme", url=server.url("indicator.html") + f"?theme={cfg.ui.theme}",
                                       js_api=CompanionApi(core, "indicator"), width=380, height=64, frameless=True,
                                       easy_drag=True, on_top=True, focus=False, hidden=True, resizable=False,
                                       background_color=bg, shadow=True)
-    toast = webview.create_window("CallRecorder – Call erkannt", url=server.url("toast.html"),
+    toast = webview.create_window("CallRecorder – Call erkannt", url=server.url("toast.html") + f"?theme={cfg.ui.theme}",
                                   js_api=CompanionApi(core, "toast"), width=400, height=252, frameless=True,
                                   easy_drag=False, on_top=True, focus=False, hidden=True, resizable=False,
                                   background_color=bg, shadow=True)
+    assert main is not None
     windows = WebWindows(main, indicator, toast)
     core.windows = windows
     for name, w in (("main", main), ("indicator", indicator), ("toast", toast)):
@@ -476,7 +478,7 @@ def run_web_app(cfg: Config, log_file: Path | None, start_minimized: bool = Fals
             started.set()
         except Exception:
             log.exception("Start der neuen Oberfläche fehlgeschlagen")
-            core.restart_args = ["tray", "--ui", "classic"]
+            core.restart_args = ["tray", "--ui", "classic", "--once"]
             windows.destroy_all()
 
     try:
@@ -618,12 +620,12 @@ def _boot(core: WebCore, start_minimized: bool) -> None:
     controller.after_stop = actions.after_recording
     for rec, kind in startup_work(cfg.recordings_path()):
         if kind == "resume":
-            core.loop.post(lambda rec=rec: actions.chain.resume(rec))
+            core.loop.post(functools.partial(actions.chain.resume, rec))
         elif kind == "ask":
             ui.notify("Aufnahme noch nicht verarbeitet", rec.folder.name)
-            core.loop.post(lambda rec=rec: actions.ask_after_recording(rec))
+            core.loop.post(functools.partial(actions.ask_after_recording, rec))
         else:
-            core.loop.post(lambda rec=rec: controller.process(rec))
+            core.loop.post(functools.partial(controller.process, rec))
     if cfg.detection.enabled and sys.platform == "win32":
         threading.Thread(target=detection_loop, args=(cfg, controller, ui, core.stop_event), name="detect",
                          daemon=True).start()
@@ -664,9 +666,9 @@ def _boot(core: WebCore, start_minimized: bool) -> None:
         if not core.page_ready.wait(PAGE_TIMEOUT_S) and not windows.quitting:
             log.error("Die neue Oberfläche hat nicht geladen - Wechsel zum klassischen Fenster")
             if core.tray is not None:
-                core.tray.notify("Neue Oberfläche nicht verfügbar", "Sie hat nicht geladen. CallRecorder startet "
+                core.tray.notify("Neue Oberfläche nicht verfügbar", "Die neue Oberfläche hat nicht geladen. CallRecorder startet "
                                  "neu mit dem klassischen Fenster (Umschalten: Einstellungen › Allgemein).")
-            core.restart_args = ["tray", "--ui", "classic"]
+            core.restart_args = ["tray", "--ui", "classic", "--once"]
             core.loop.post(actions.quit)
 
     threading.Thread(target=watchdog, name="page-watchdog", daemon=True).start()

@@ -1,31 +1,32 @@
 # CallRecorder – Design-System
 
-Stand: 20.11.2026 · gilt für die neue Oberfläche (HTML/CSS/JS in pywebview, Edge WebView2, Windows 11).
-Referenz-Implementierung: `design/prototype.html` (alle Tokens als CSS-Variablen in Abschnitt 1 dort).
+Stand: 20.11.2026 (Revision 2: Fluent 2 wie in Teams, entpersonalisierte Texte) · gilt für die neue Oberfläche
+(HTML/CSS/JS in pywebview, Edge WebView2, Windows 11). Referenz: `design/prototype.html`; die App nutzt dieselben
+Tokens und Komponenten in `src/callrec/ui/web/app.css` (Abschnitte 1–6 identisch, Abschnitt 7 = App-Ergänzungen).
 Bilder: `design/screenshots/` (`<screen>_<Breite>x<Höhe>[_z125|_z150]_<light|dark>.png`).
 
 ---
 
 ## 1. Richtung
 
-**Eine ruhige Windows-11-Arbeitsfläche, auf der man immer sieht, was gerade passiert und was als Nächstes zu tun ist.**
+**Eine ruhige Arbeitsfläche im Fluent-2-Stil, wie Teams ihn verwendet – damit CallRecorder neben Teams vertraut
+wirkt, ohne sich als Teams auszugeben.**
 
-- **Natives Gefühl statt Web-Look.** Segoe UI Variable, neutraler Mica-ähnlicher Hintergrund, 4/8-px-Radien,
-  flache Karten mit Haarlinie, keine Verläufe, keine Glas-Effekte, keine Illustrationen. Das Programm soll neben
-  Outlook und Teams wie ein Teil von Windows wirken.
-- **Eine Akzentfarbe (Petrol) für alles Normale, Rot nur für „Aufnahme“.** Rot erscheint ausschließlich am
-  Aufnahme-Knopf, am laufenden Aufnahmezustand und beim Löschen. So ist eine laufende Aufnahme unverwechselbar,
-  ohne dass die übrige Oberfläche alarmiert.
-- **Aufgaben vor Daten.** Die Startseite beantwortet drei Fragen: *Was kommt jetzt?* (nächster Termin mit
-  Teilnehmenden und einem Klick zum Aufnehmen), *Was wartet auf mich?* (je Aufnahme genau eine Entscheidung mit
-  genau einem Knopf), *Was läuft gerade?* (Verarbeitung als sichtbare Kette). Die Liste aller Aufnahmen ist die
-  zweite Ebene.
-- **Lesen ist die Hauptarbeit.** Zusammenfassung und Transkript werden wie ein Dokument gesetzt (16 px, 26 px
-  Zeilenabstand, max. 74 Zeichen Zeilenlänge, Sprecherfarben, Zeitstempel in eigener Spalte).
-- **Erklären statt Fachbegriffe.** Jede Einstellung hat einen Satz Klartext; technische Stellschrauben stehen
-  eingeklappt unter „Für Fortgeschrittene“ bzw. „Feineinstellung“.
-
----
+- **Teams-Familie, eigene Marke.** Fluent-2-Bausteine so, wie Teams sie einsetzt: Titelleiste mit Suche in der
+  Mitte, schmale App-Leiste links (Symbol über kurzer Beschriftung, Auswahl als Akzentbalken und Akzentfarbe),
+  Liste/Detail-Bereiche, Pillen-Zähler, Karten mit weichem Schatten, 4-px-Radien für Bedienelemente und 8 px für
+  Karten/Dialoge, Segoe UI Variable, Teams-typische Grauwerte in Hell und Dunkel. **Keine** Microsoft- oder
+  Teams-Logos, -Namen oder -Grafiken in der Oberfläche; CallRecorder behält seinen Namen und ein eigenes,
+  neutrales Symbol (Mikrofon im abgerundeten Quadrat mit rotem Aufnahmepunkt).
+- **Indigo für alles Normale, Rot nur für „Aufnahme“.** Der Akzent ist ein Teams-ähnliches Indigo (`#5B5FC7`).
+  Rot erscheint ausschließlich am Aufnahme-Knopf, am laufenden Aufnahmezustand und beim Löschen/Verwerfen.
+  Zähler (Badges) sind deshalb Indigo bzw. Bernstein – nicht rot wie in Teams.
+- **Aufgaben vor Daten.** Die Startseite beantwortet drei Fragen: *Als Nächstes* (Termin mit Teilnehmenden und
+  einem Klick zum Aufnehmen bzw. die laufende Aufnahme), *Wartet* (je Aufnahme genau eine Entscheidung mit genau
+  einem Knopf), *In Arbeit* (Verarbeitung als sichtbare Kette). Die Liste aller Aufnahmen ist die zweite Ebene.
+- **Lesen ist die Hauptarbeit.** Zusammenfassung und Transkript wie ein Dokument (15/24, max. 74 Zeichen,
+  Sprecherfarben, Zeitstempel in eigener Spalte).
+- **Erklären statt Fachbegriffe** und **keine persönliche Anrede** (Abschnitt 6).
 
 ## 2. Woher die Entscheidungen kommen (UI/UX Pro Max)
 
@@ -59,51 +60,53 @@ lässt sich in der Navigation umschalten (System → Hell → Dunkel). Komponent
 
 ### 3.1 Farben
 
-Kontrast nach WCAG 2.1, berechnet (Skript im Arbeitsverzeichnis, Formel relative Luminanz).
-AA verlangt 4,5:1 für Text, 3:1 für Bedienelement-Grenzen und große Schrift.
+Kontrast nach WCAG 2.1, berechnet mit dem Prüfskript (`tests/test_web_bridge.py::test_token_contrast`, relative
+Luminanz) gegen die Werte in `app.css`. AA: 4,5:1 für Text, 3:1 für Bedienelement-Grenzen und Markierungen.
 
-**Neutrale Flächen und Text**
+**Neutrale Flächen und Text (Teams-Grauwerte)**
 
 | Token | Hell | Dunkel | Verwendung | Kontrast hell / dunkel |
 |---|---|---|---|---|
-| `--bg` | `#F3F3F3` | `#1F1F1F` | Fensterhintergrund, Navigation, Liste | – |
-| `--surface` | `#FFFFFF` | `#2A2A2A` | Karten, Detailbereich, Dialoge | – |
-| `--surface-2` | `#F7F7F7` | `#303030` | Flächen in Karten (Hinweise, Kopf von Transkripten) | – |
-| `--surface-hover` / `-pressed` | `#EFEFEF` / `#E7E7E7` | `#353535` / `#3B3B3B` | Hover/Druck | – |
-| `--border` | `#E3E3E3` | `#3A3A3A` | dekorative Trennlinien | (dekorativ) |
-| `--border-control` | `#858585` | `#8C8C8C` | Rahmen von Eingabefeldern, Checkboxen, Schaltern | 3,69 / 4,27 auf surface |
-| `--text` | `#1B1B1B` | `#F2F2F2` | Fließtext, Titel | 17,2 / 12,8 (auf bg 15,5 / 14,7) |
-| `--text-2` | `#565656` | `#C4C4C4` | Sekundärtext, Beschreibungen | 7,34 / 8,23 (auf bg 6,61) |
-| `--text-3` | `#6B6B6B` | `#A3A3A3` | Metadaten, Zeitstempel, Hinweise | 5,33 / 5,69 (auf bg 4,80; dunkel auf surface-2 5,23) |
+| `--frame` | `#EBEBEB` | `#141414` | Titelleiste, App-Leiste | – |
+| `--bg` | `#F5F5F5` | `#1F1F1F` | Inhaltshintergrund, Listenbereich | – |
+| `--surface` | `#FFFFFF` | `#292929` | Karten, Detailbereich, Dialoge | – |
+| `--surface-2` | `#FAFAFA` | `#2E2E2E` | Flächen in Karten | – |
+| `--surface-hover` / `-pressed` | `#F0F0F0` / `#E0E0E0` | `#333333` / `#3D3D3D` | Hover/Druck | – |
+| `--surface-selected` | `#E8EBFA` | `#2F2F4A` | ausgewählte Optionen | Text 13,1 / 12,9 |
+| `--border` / `--border-strong` | `#E0E0E0` / `#D1D1D1` | `#3D3D3D` / `#4D4D4D` | dekorative Linien, Knopfrand | (dekorativ) |
+| `--border-control` | `#858585` | `#8F8F8F` | Rahmen von Feldern, Checkboxen, Schaltern | 3,69 / 4,50 auf surface |
+| `--text` | `#242424` | `#FFFFFF` | Fließtext, Titel | 15,5 / 14,6 (auf bg 14,2 / 16,5) |
+| `--text-2` | `#424242` | `#D6D6D6` | Sekundärtext | 10,1 / 10,0 |
+| `--text-3` | `#616161` | `#ADADAD` | Metadaten, Zeitstempel | 6,19 / 6,48 (auf frame 5,20 / 8,21) |
 
-**Akzent (Petrol) – alles Normale: Primärknöpfe, Auswahl, Links, Fortschritt**
-
-| Token | Hell | Dunkel | Kontrast |
-|---|---|---|---|
-| `--accent` | `#0F6E68` | `#5CCFC2` | als Text auf surface 6,09 / 7,63; auf bg 5,48 |
-| `--text-on-accent` | `#FFFFFF` | `#062523` | Text auf Primärknopf 6,09 / 8,61 |
-| `--accent-text` | `#0B5753` | `#7EDDD2` | auf `--accent-subtle` 7,28 / 7,56 |
-| `--accent-subtle` | `#E3F2F0` | `#1E3B39` | ausgewählte Zeilen/Optionen, Chips |
-
-**Aufnahme (Rot) – nur Aufnahme-Knopf, laufende Aufnahme, Löschen bestätigen**
+**Akzent (Indigo)** – zwei Rollen, damit der Kontrast in beiden Modi stimmt
 
 | Token | Hell | Dunkel | Kontrast |
 |---|---|---|---|
-| `--rec` | `#C42B1C` | `#C42B1C` | Weiß auf Rot 5,66 (beide Modi gleich, damit der Knopf überall gleich aussieht); als Text hell 5,66 |
-| `--rec-text` | `#A1251A` | `#FF9C94` | auf `--rec-subtle` 6,57 / 8,34; dunkel auf surface 7,13 |
-| `--rec-subtle` | `#FDECEA` | `#46201D` | Aufnahme-Leiste, Status-Chip |
+| `--accent-fill` | `#5B5FC7` | `#4F52B2` | Primärknopf, gesetzte Checkbox/Schalter; Weiß darauf 5,38 / 6,60 |
+| `--accent` | `#5B5FC7` | `#7F85F5` | Markierungen: Auswahlbalken, Fortschritt, Fokus in Feldern; 5,38 / 4,56 auf surface |
+| `--accent-text` | `#4F52B2` | `#A6A9F8` | Links, ausgewählte Leisteneinträge; 6,60 / 6,69 auf surface, 5,54 / 8,47 auf frame |
+| `--accent-subtle` (+ `-text`) | `#E8EBFA` (`#3D3E78`) | `#2F2F4A` (`#C5C7FA`) | Chips, Auswahlflächen; 8,20 / 7,95 |
 
-**Status (immer zusammen mit Icon und Text, nie nur Farbe)**
+**Aufnahme (Rot)** – nur Aufnahme-Knopf, laufende Aufnahme, Löschen/Verwerfen
 
-| Rolle | Text hell | Fläche hell | Text dunkel | Fläche dunkel | Kontrast Text auf Fläche hell / Text auf surface dunkel |
-|---|---|---|---|---|---|
-| ok (`--ok…`) | `#0E6B0E` | `#E6F4E3` | `#8EDB82` | `#1F3A1C` | 5,89 / 7,58 |
-| Hinweis (`--warn…`) | `#7A4800` | `#FFF4D6` | `#F7CD6A` | `#3D3216` | 6,96 / 8,34 (auf Fläche) |
-| Fehler (`--err…`) | `#9E2119` | `#FDECEA` | `#FFB4AD` | `#46201D` | 6,84 / 7,13 |
-| Info (`--info…`) | `#00539A` | `#E5F0FA` | `#9AD2FF` | `#1A3247` | 6,72 / 7,65 |
-| Markierung `--warn-mark` | `#C77A00` | `#F5C451` | – | – | nur für Icons/Ringe/Rahmen (≥ 3:1 nicht-textlich) |
+| Token | Hell | Dunkel | Kontrast |
+|---|---|---|---|
+| `--rec` | `#C4314B` | `#C4314B` | Weiß darauf 5,40 (in beiden Modi gleich) |
+| `--rec-text` | `#A4262C` | `#FF9CA8` | auf `--rec-subtle` 6,15 / 7,41 |
+| `--rec-subtle` | `#FDE7E9` | `#3E1F25` | Aufnahme-Leiste, Status-Chip |
 
-**Sprecherfarben** (Namen im Transkript, Stimmkarten; Sie selbst = `--accent-text`)
+**Status (immer mit Symbol und Text, nie nur Farbe)**
+
+| Rolle | Text hell / Fläche | Text dunkel / Fläche | Kontrast hell / dunkel |
+|---|---|---|---|
+| ok | `#0E700E` / `#F1FAF1` | `#9FD89F` / `#052505` | 5,89 / 10,05 |
+| Hinweis | `#7A4A00` / `#FFF4CE` | `#F8D57A` / `#3D3216` | 6,80 / 8,88 |
+| Fehler | `#9E1B1B` / `#FDE7E9` | `#FFA8AF` / `#3E1F25` | 6,77 / 8,04 |
+| Info | `#115EA3` / `#EBF3FC` | `#96C6FA` / `#0E2A47` | 5,95 / 8,16 |
+| `--warn-mark` | `#C77A00` | `#F5C451` | nur Symbole/Ringe/Zähler (3,38 / 8,93) |
+
+**Sprecherfarben** (Namen im Transkript, Stimmkarten; eigene Spur = `--accent-text`)
 
 | Token | Hell | Kontrast | Dunkel | Kontrast |
 |---|---|---|---|---|
@@ -114,7 +117,8 @@ AA verlangt 4,5:1 für Text, 3:1 für Bedienelement-Grenzen und große Schrift.
 | `--sp-5` Grün | `#2E7031` | 6,04 | `#8CD38F` | 8,09 |
 | `--sp-6` Schiefer | `#4A5B6E` | 6,97 | `#AFC0D3` | 7,73 |
 
-Farbe ist bei Sprechern nie das einzige Merkmal: Name steht immer daneben, „Sie“ trägt zusätzlich ein Etikett.
+Farbe ist bei Sprechern nie das einzige Merkmal: Name steht immer daneben, die eigene Spur trägt zusätzlich das
+Etikett „eigene Spur“.
 
 **Fokus:** `--focus` (`#1B1B1B` / `#FFFFFF`) als 2-px-Rahmen mit 2 px Abstand plus 2-px-Innenring
 `--focus-inner` – sichtbar auf jeder Fläche, auch auf farbigen Knöpfen.
@@ -130,12 +134,13 @@ Zahlen, die sich ändern (Laufzeit, Prozent, Zeiten), immer `font-variant-numeri
 | Stufe | Größe / Zeile | Gewicht | Einsatz |
 |---|---|---|---|
 | Caption | 12 / 16 | 400–600 | Metadaten, Chips, Eyebrow (600, Versalien, +0,02em) |
-| Body | 14 / 20 | 400, stark 600 | gesamte Bedienung |
-| Lesen | 16 / 26 | 400 | Zusammenfassung, Transkript (Kurzfassung 17 / 28) |
-| Subtitle | 18 / 24 | 600 | Kartentitel, Abschnitte in Einstellungen |
-| Title | 22 / 28 | 600 | Titel in Liste/Detail |
-| Display | 28 / 36 | 600 | Seitentitel |
-| Timer | 40 / 1 | 600 | Laufzeit der Aufnahme |
+| Body | 14 / 20 | 400; Knöpfe 600 (Fluent) | gesamte Bedienung |
+| Leiste | 10 / 12 | 400, ausgewählt 600 | Beschriftung der App-Leiste |
+| Lesen | 15 / 24 | 400 | Zusammenfassung, Transkript |
+| Subtitle | 16 / 22 | 600 | Kartentitel, Abschnitte in Einstellungen |
+| Title | 20 / 28 | 600 | Titel in Liste/Detail |
+| Display | 24 / 32 | 700 | Seitentitel (wie Teams) |
+| Timer | 36 / 1 | 600 | Laufzeit der Aufnahme |
 
 Lesetext: max. 74 Zeichen (`max-width: 74ch`), Transkript 80 Zeichen. Datum/Uhrzeit mit geschütztem Leerzeichen
 („2.&nbsp;Dezember“, „63&nbsp;%“, „30&nbsp;s“).
@@ -143,9 +148,10 @@ Lesetext: max. 74 Zeichen (`max-width: 74ch`), Transkript 80 Zeichen. Datum/Uhrz
 ### 3.3 Abstände, Radien, Höhen
 
 - Raster 4 px: `--s-1` 4 · `--s-2` 8 · `--s-3` 12 · `--s-4` 16 · `--s-5` 20 · `--s-6` 24 · `--s-8` 32 · `--s-10` 40.
-- Seitenrand `--page-pad` 28 px (≤ 1279 px: 24, ≤ 1099 px: 20). Kartenabstand 20 px. Karte innen 20 px.
-- Radien: `--r-sm` 4 (Knöpfe, Felder) · `--r-md` 6 (Navigationseinträge, Listenzeilen) · `--r-lg` 8 (Karten,
-  Hinweise) · `--r-xl` 12 (Dialoge) · `--r-pill` (Chips, Avatare, Filter).
+- Seitenrand `--page-pad` 24 px (≤ 1099 px: 20). Kartenabstand 20 px. Karte innen 20 px. Titelleiste 48 px,
+  App-Leiste 72 px.
+- Radien (Fluent 2): `--r-sm`/`--r-md` 4 (Knöpfe, Felder, Leisten- und Listeneinträge) · `--r-lg`/`--r-xl` 8
+  (Karten, Hinweise, Dialoge, Inhaltsecke oben links) · `--r-pill` (Chips, Zähler, Avatare, Filter).
 - Höhen: Knopf 32 (klein 28, groß 44 für die wichtigste Aktion je Ansicht), Eingabefeld 32, Navigationseintrag 40,
   Aufnahme-Leiste ≥ 44.
 
@@ -184,22 +190,25 @@ Text haben `aria-label` und `title`. Keine Emojis.
 
 ## 4. Layout
 
-- **App-Rahmen:** Navigationsleiste links (232 px; ≤ 1099 px nur Symbole, 64 px) mit Übersicht, Aufnahmen,
-  Einrichtung, Einstellungen; unten Aufnahme-Knopf (außer auf der Übersicht, dort ist er groß im Termin), Darstellung,
-  Begleitfenster, Hilfe, Bereitschaft/Version. Rechts der Inhalt.
+- **App-Rahmen (wie Teams):** Titelleiste (48 px, Farbe `--frame`) mit eigenem Symbol und Namen links, Suche
+  „Aufnahmen durchsuchen“ in der Mitte (Strg+F), rechts der rote Knopf **„Aufnehmen“** bzw. während der Aufnahme
+  eine rote Pille mit Laufzeit und „Beenden“, dazu Hilfe. Darunter links die App-Leiste (72 px): *Übersicht,
+  Aufnahmen, Einrichtung, Einstellungen* (Symbol über Beschriftung, Zähler als Pille), unten *Ausblenden*
+  (Fenster schließen, läuft im Infobereich weiter). Rechts der Inhalt mit abgerundeter Ecke oben links.
 - **Aufnahme-Leiste:** Läuft eine Aufnahme, steht auf jeder Seite außer der Übersicht oben eine rote Leiste
-  (Punkt, „Aufnahme läuft“, Laufzeit, Titel, „Beenden“); beim Countdown wird sie gelb mit Countdown und beiden Knöpfen.
-- **Übersicht:** Spalten werden per JS befüllt (keine Lücken durch Zeilenhöhen):
-  ≥ 1560 px drei Spalten (*Termin + In Arbeit* | *Wartet auf Sie* | *Heute + Zuletzt*),
-  1100–1559 px zwei Spalten (*Termin, In Arbeit, Zuletzt* | *Wartet auf Sie, Heute*), darunter eine Spalte.
-- **Aufnahmen:** Liste (300–380 px) + Detail. Die Aktionsleiste des Details bleibt beim Scrollen oben stehen; ab
-  1080 px Detailbreite (Container-Query) erscheint rechts „Auf einen Blick“ (Sprechzeit, Zahl der Entscheidungen/
-  Aufgaben, Dateien). Unter 1000 px: nur Liste *oder* Detail mit „‹ Alle Aufnahmen“.
-- **Einstellungen:** Bereichsliste links (220 px), Inhalt max. 880 px; unter 900 px Bereiche als Kachelraster oben.
-- **Prüfgrößen:** 1366×768 und 1920×1080 bei 100 %, 1366×768 bei 125 % (1093×614 CSS-px) und 150 % (911×512).
-  Kein waagerechtes Scrollen, Dialoge scrollen innen (`max-height: 100vh − 48px`).
-
----
+  (Punkt, „Aufnahme läuft“, Laufzeit, Titel, „Beenden“); beim Countdown wird sie gelb mit beiden Knöpfen.
+- **Übersicht:** ≥ 1560 px drei Spalten (*Als Nächstes + In Arbeit* | *Wartet* | *Heute + Zuletzt*), 1100–1559 px
+  zwei Spalten, darunter eine.
+- **Aufnahmen:** Listenbereich (300–380 px, `--bg`) + Detail (`--surface`) wie Chat-Liste/Unterhaltung in Teams.
+  Die Aktionsleiste bleibt oben stehen; ab 1080 px Detailbreite erscheint rechts „Auf einen Blick“. Unter 1000 px
+  nur Liste *oder* Detail mit „‹ Alle Aufnahmen“. Lange Transkripte werden in Abschnitten zu 300 Beiträgen
+  angezeigt und beim Scrollen nachgeladen.
+- **Einstellungen:** Bereichsliste links (220 px), Inhalt max. 880 px, Speichern-Leiste unten; unter 900 px
+  Bereiche als Kachelraster.
+- **Begleitfenster:** *Aufnahme-Anzeige* (380 × 64, beim Countdown 156 hoch) oben rechts, *Call erkannt*
+  (400 × 252) unten rechts – rahmenlos, immer im Vordergrund, ohne Tastaturfokus.
+- **Prüfgrößen:** 1366×768 und 1920×1080 bei 100 %, 1366×768 bei 125 % (1093×614 CSS-px) und 150 % (911×512);
+  hell und dunkel. Kein waagerechtes Scrollen, Dialoge scrollen innen (automatisch geprüft, `tests/web/e2e.js`).
 
 ## 5. Komponenten
 
@@ -225,7 +234,8 @@ Text haben `aria-label` und `title`. Keine Emojis.
 | Kette (Entscheidung) | `.pipe`, `.pipe-step` | an/aus (`.off`) | 4 Schritte mit Nummer und Schalter |
 | Kette (Fortschritt) | `.vsteps`, `.vstep` | `done`, `active`, `wait`, `err` | senkrecht, mit Erklärung je Schritt |
 | Mini-Kette | `.mini-steps`, `.ms` | `done`, `busy`, `open`, `changed`, `err`, `none` | Stand einer Aufnahme in einer Zeile |
-| Aufgabenliste | `.att` | Icon-Ton warn/ok/err/info | „Wartet auf Sie“: Titel, Zeit, ein Satz, ein Knopf |
+| Aufgabenliste | `.att` | Icon-Ton warn/ok/err/info | „Wartet“: Titel, Zeit, ein Satz, ein Knopf |
+| Titelleiste / App-Leiste | `.topbar`, `.top-search`, `.rail`, `.rail-item` | ausgewählt (Akzentbalken links, Akzenttext, gefülltes Symbol), Zähler | Teams-Muster; eigenes Symbol `BRAND` |
 | Tagesplan | `.agenda`, `.ag`, `.nowline` | vergangen, jetzt, künftig | „Heute“ |
 | Aufnahmeliste | `.rec-item` (`role="option"`) | ausgewählt | Titel, Datum·Dauer, Status-Chip |
 | Übergabe-Karte | `.handoff` | aktuell / `.changed` | wann, wohin (voller Pfad), welche Version, ob geändert |
@@ -241,27 +251,27 @@ Text haben `aria-label` und `title`. Keine Emojis.
 
 ## 6. Ton der deutschen Texte
 
-1. **Sie-Form, kurze Hauptsätze, Aktiv.** „Ordnen Sie jede Stimme einer Person zu.“ – nicht „Die Zuordnung der
-   Stimmen ist vorzunehmen.“
-2. **Knöpfe sagen, was passiert** (Verb, Infinitiv): „Aufnahme starten …“, „Übergeben …“, „Jetzt beenden“,
-   „Weiter aufnehmen“. Kein „OK“, kein „Ja/Nein“ ohne Inhalt.
-3. **„…“ nur, wenn danach noch eine Rückfrage oder ein Dialog kommt** (Windows-Konvention).
-4. **Fehler = was passiert ist + was trotzdem fertig ist + was Sie jetzt tun**, mit Knopf:
-   „Zusammenfassung nicht erstellt: keine Verbindung zu Claude. Das Transkript ist fertig. Häufigste Ursache ist
-   ein aktives VPN …“ – nie Fehlercodes oder Stacktraces in der Oberfläche (die stehen im Protokoll).
-5. **Datenschutz offen benennen, ohne Angst zu machen:** „Transkript verlässt den Rechner“, „bleibt auf diesem
+1. **Keine persönliche Anrede.** Kein „Sie“, kein „du“, keine Begrüßung mit Namen. Neutrale Imperative und
+   Infinitive („Jede Stimme einer Person zuordnen.“, „VPN kurz pausieren.“), Nominalphrasen („Wartet“ statt
+   „Wartet“, „Eigener Name“ statt „Ihr Name“, „eigene Spur“ statt „Sie“). Die Übersicht heißt
+   „Übersicht“ – kein „Guten Tag, …“. Ausnahme: die Wahl „Das bin ich“ (eine Aussage der Person selbst).
+2. **Kurze Hauptsätze, Aktiv.**
+3. **Knöpfe sagen, was passiert** (Verb, Infinitiv): „Aufnehmen“, „Nicht aufnehmen“, „Übergeben …“, „Jetzt
+   beenden“, „Weiter aufnehmen“. Kein „OK“, kein „Ja/Nein“ ohne Inhalt (Ausnahme: generische Rückfragen aus
+   älteren Programmteilen).
+4. **„…“ nur, wenn danach noch eine Rückfrage oder ein Dialog kommt** (Windows-Konvention).
+5. **Fehler = was passiert ist + was trotzdem fertig ist + nächster Schritt**, mit Knopf; nie Fehlercodes oder
+   Stacktraces (die stehen im Protokoll, auch Fehler der Oberfläche selbst).
+6. **Datenschutz offen benennen, ohne Angst zu machen:** „Transkript verlässt den Rechner“, „bleibt auf diesem
    Rechner“, „nur die Zusammenfassung – nie Audio oder Transkript“.
-6. **Feste Begriffe** (nicht mischen): Aufnahme · Transkript · Zusammenfassung · Sprecher/Stimme · Teilnehmende ·
-   Übergabe / übergeben (an SharePoint) · Einwilligung · Einrichtung · Einstellungen · Version.
-   Nicht: Recording, Meeting, Protokoll (für die Zusammenfassung), Upload, Speaker, Prompt (in der Oberfläche:
-   „Anweisungen“).
-7. **Zahlen und Zeiten:** „52 Min“, „1 Std 3 Min“, „63 %“, „heute, 14:00“, „Fr 13.11.“; Laufzeit `00:23:41`.
-8. **Keine Ausrufezeichen, keine Emojis, kein Marketington** („Super!“, „Ups“). Erfolg: kurze Bestätigung
-   („Übergeben – SharePoint › Geschäftsführung › Protokolle“).
-9. **Gendergerecht über neutrale Formen** („Teilnehmende“), keine Sternchen.
-10. **Technik nur, wo nötig, dann erklärt:** „Split-Tunneling (python.exe und pythonw.exe im Programmordner)“.
-
----
+7. **Feste Begriffe:** Aufnahme · Transkript · Zusammenfassung · Sprecher/Stimme · Teilnehmende · Übergabe /
+   übergeben (an SharePoint) · Einwilligung · Einrichtung · Einstellungen · Version. Nicht: Recording, Meeting,
+   Protokoll (für die Zusammenfassung), Upload, Speaker, Prompt (in der Oberfläche: „Anweisungen“).
+8. **Einwilligung wahrheitsgemäß:** Im Modus „Eine Frage vor der Aufnahme“ heißt es „Hinweis angezeigt“ /
+   „vom Nutzer gestartet“, nie „bestätigt“; „bestätigt“ nur im Modus „Ausdrückliche Bestätigung“.
+9. **Zahlen und Zeiten:** „52 min“, „63 %“, „Heute, 14:00“, „Fr 13.11.“; Laufzeit `00:23:41`.
+10. **Keine Ausrufezeichen, keine Emojis, kein Marketington.** Gendergerecht über neutrale Formen
+    („Teilnehmende“).
 
 ## 7. Angewandte UX-Prinzipien
 
@@ -298,9 +308,9 @@ Text haben `aria-label` und `title`. Keine Emojis.
 
 | Route | Inhalt |
 |---|---|
-| `#home` | Übersicht: nächster Termin + Aufnehmen, Wartet auf Sie, In Arbeit, Heute, Zuletzt |
+| `#home` | Übersicht: Als Nächstes + Aufnehmen, Wartet, In Arbeit, Heute, Zuletzt |
 | `#toast` | „Call erkannt: … – aufnehmen?“ als Begleitfenster unten rechts |
-| `#consent` | Aufnahme vorbereiten: Titel, Teilnehmende, .ics, Einwilligung (§ 201 StGB, Claude-Hinweis) |
+| `#consent` | Startfrage: Hinweis (§ 201 StGB, Claude-Hinweis), Titel, Teilnehmende, .ics; Modus „ask“ ohne, Modus „confirm“ mit Häkchen |
 | `#recording` / `#countdown` | Aufnahme läuft (Laufzeit, Pegel, automatisches Ende) / „Call scheint beendet – Aufnahme endet in 30 s“ |
 | `#rec-library` | laufende Aufnahme auf anderer Seite (rote Leiste) |
 | `#postcall` | „Aufnahme beendet – jetzt vollständig verarbeiten?“ mit Kette und Schaltern; Verwerfen / Später |
@@ -316,3 +326,16 @@ Text haben `aria-label` und `title`. Keine Emojis.
 
 URL-Parameter: `?theme=light|dark`, `?static=1` (keine Live-Animation, für Screenshots), `?clean=1` (ohne
 Prototyp-Zustandsmenü).
+
+
+---
+
+## 9. Teams-Anlehnung – was übernommen ist und was bewusst nicht
+
+| Übernommen (Fluent 2 wie in Teams) | Bewusst anders |
+|---|---|
+| Titelleiste mit Suche in der Mitte, App-Leiste links mit Symbol über Beschriftung | eigenes Symbol und eigener Name statt Teams-Logo; keine Teams-Bezeichnungen in der Oberfläche |
+| Indigo-Akzent `#5B5FC7`, Grauwerte `#EBEBEB/#F5F5F5/#FFFFFF` bzw. `#141414/#1F1F1F/#292929` | Zähler nicht rot (Rot bleibt der Aufnahme vorbehalten) |
+| Liste/Detail wie Chats, Pillen-Filter, Pillen-Zähler, Karten mit Fluent-Schatten | – |
+| Knöpfe 32 px, Radius 4, halbfett; Dialoge Radius 8 | Hauptaktion je Ansicht weiterhin genau ein Primärknopf |
+| Hell/Dunkel | folgt dem Windows-App-Modus (Teams' eigene Einstellung ist von außen nicht verlässlich lesbar); in den Einstellungen System / Hell / Dunkel |

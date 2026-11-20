@@ -34,7 +34,7 @@ geschieht nie automatisch.
    (6a. [Claude über die Anthropic-API](#6a-claude-über-die-anthropic-api-cloud))
 7. [Erster Start und Bedienung](#7-erster-start-und-bedienung)
    (7a. [Das Hauptfenster](#7a-das-hauptfenster), 7b. [Automatisches Ende einer Aufnahme](#7b-automatisches-ende-einer-aufnahme),
-   7c. [Nach der Aufnahme](#7c-nach-der-aufnahme))
+   7c. [Nach der Aufnahme](#7c-nach-der-aufnahme), 7d. [Neue Oberfläche (Vorschau)](#7d-neue-oberfläche-vorschau))
 8. [Sprecher zuordnen und Stimmprofile](#8-sprecher-zuordnen-und-stimmprofile)
 9. [Transkript schrittweise verbessern](#9-transkript-schrittweise-verbessern)
 10. [Zusammenfassung an SharePoint übergeben](#10-zusammenfassung-an-sharepoint-übergeben)
@@ -55,11 +55,22 @@ Teilnehmenden vorher informiert wurden und **ausdrücklich zugestimmt** haben �
 zu Beginn des Gesprächs, sodass die Zustimmung auch in der Aufnahme enthalten ist. Wenn Sie
 Zusammenfassungen an SharePoint übergeben (Abschnitt 10), sollten die Teilnehmenden auch
 darüber informiert sein.
-CallRecorder fragt vor **jeder** Aufnahme nach dieser Bestätigung. Ohne Häkchen startet
-keine Aufnahme; die Abfrage lässt sich bewusst nicht per Konfiguration abschalten.
-Die Bestätigung wird mit Zeitstempel, Ihrem Namen, der Teilnehmerliste und dem zu diesem Zeitpunkt
-eingestellten Zusammenfassungs-Anbieter (`summary_provider`) in `meta.json` gespeichert. Die
-Verantwortung, dass die Zustimmung tatsächlich vorliegt, bleibt bei Ihnen.
+CallRecorder fragt vor **jeder** Aufnahme; eine Aufnahme startet nie ohne Ihren Klick für genau diese
+Aufnahme, und die Frage lässt sich nicht abschalten. Wie gefragt wird, legt `[consent] mode` fest
+(*Einstellungen → Aufnahme → Vor der Aufnahme*, nie per Preset):
+
+- **`ask` – Eine Frage vor der Aufnahme (Standard):** Der Startdialog zeigt Titel, Teilnehmende und den
+  Hinweis „Aufnehmen nur, wenn alle Teilnehmenden informiert sind und zugestimmt haben (§ 201 StGB) …“;
+  ein Klick auf **„Aufnehmen“** startet, „Nicht aufnehmen“ bricht ab. In `meta.json` steht dann
+  wahrheitsgemäß *vom Nutzer gestartet, Hinweis angezeigt* (`"mode": "ask"`, `"confirmed": false`, der
+  angezeigte Hinweistext) – **keine** Bestätigung der Einwilligung.
+- **`confirm` – Ausdrückliche Bestätigung der Einwilligung:** ein nie vorausgewähltes Häkchen
+  „Ja, alle Teilnehmenden haben der Aufnahme zugestimmt“; ohne Häkchen startet keine Aufnahme. In
+  `meta.json` steht `"confirmed": true` mit dem Bestätigungstext.
+
+In beiden Fällen werden Zeitstempel, Ihr Name, die Teilnehmerliste und der zu diesem Zeitpunkt
+eingestellte Zusammenfassungs-Anbieter (`summary_provider`) gespeichert. Die rechtliche Verantwortung,
+dass die Zustimmung aller Teilnehmenden tatsächlich vorliegt, bleibt bei der Person, die aufnimmt.
 
 **Ende der Aufnahme.** Die Zustimmung gilt für das Gespräch, nicht für das, was danach im Raum gesagt
 oder abgespielt wird. CallRecorder erkennt deshalb das Gesprächsende und beendet die Aufnahme nach
@@ -514,13 +525,17 @@ Ihrem Benutzerkonto (keine Administratorrechte); Details und Reparatur siehe Abs
 **Aufnahmedialog:** Titel und Teilnehmende sind aus dem Kalender vorausgefüllt und können
 geändert werden (eine Person pro Zeile, optional `Name <mail@firma.de>`). Mit
 **„.ics-Einladung importieren …“** lässt sich eine Einladung aus Outlook laden
-(Termin öffnen → Datei → Speichern unter → `.ics`). Die Schaltfläche **„Aufnahme
-starten“** wird erst aktiv, wenn die Einwilligung bestätigt ist.
+(Termin öffnen → Datei → Speichern unter → `.ics`). Im Modus `ask` startet **„Aufnehmen“** sofort
+(der Hinweis steht im Dialog); im Modus `confirm` wird **„Aufnahme starten“** erst aktiv, wenn das
+Häkchen gesetzt ist (Abschnitt 1). Tastenkürzel, Tray-Menü und Startknopf öffnen denselben Dialog.
 
-**Erinnerung:** Öffnet Teams (`ms-teams.exe` bzw. klassisch `Teams.exe`) eine aktive
-Mikrofon-Sitzung oder beginnt ein Online-Termin, erscheint unten rechts die Frage
-„Gespräch aufnehmen?“. „Aufnahme vorbereiten …“ öffnet den normalen Dialog mit
-Einwilligungsabfrage; nach „Nein“ ist 10 Minuten Ruhe.
+**Erinnerung („Call erkannt“):** Öffnet Teams (`ms-teams.exe` bzw. klassisch `Teams.exe`) eine aktive
+Mikrofon-Sitzung oder beginnt ein Online-Termin, erscheint unten rechts „Call erkannt: <Termin> –
+aufnehmen?“. Im Modus `ask` ist das **die eine Frage**: **„Aufnehmen“** startet sofort mit dem erkannten
+Termin und seinen Teilnehmenden (der Hinweis steht im Fenster), „Nicht aufnehmen“ schließt, „Details …“
+öffnet den vollständigen Startdialog. Im Modus `confirm` öffnet „Aufnahme vorbereiten …“ den Dialog mit
+dem Häkchen. Das Fenster nimmt Teams nie den Tastaturfokus, reagiert nicht auf Enter und startet nach
+Ablauf (90 s) nichts; danach ist 10 Minuten Ruhe.
 
 **Absturz / Stromausfall:** Beim nächsten Start werden unterbrochene Aufnahmen automatisch
 repariert und verarbeitet (oder `callrec repair <Ordner>`).
@@ -544,8 +559,9 @@ Wahl wird gemerkt.
 - **Termin:** die gerade laufenden Termine aus dem Outlook-Kalender, der wahrscheinlichste ist
   vorausgewählt. Laufen mehrere, lässt sich hier ein anderer wählen. **„Ohne Termin …“** startet
   mit leerem Titel. Ohne Microsoft-Anmeldung gibt es nur diesen Eintrag.
-- Gestartet wird **immer über die Einwilligungsabfrage** (Abschnitt 1): Dort stehen Titel und
-  Teilnehmende des gewählten Termins und lassen sich ändern oder von Hand eintippen.
+- Gestartet wird **immer über den Startdialog** (Abschnitt 1, eine Frage bzw. Bestätigung je nach
+  Modus): Dort stehen Titel und Teilnehmende des gewählten Termins und lassen sich ändern oder von Hand
+  eintippen.
 - Darunter eine Zeile **„Automatisches Ende: …“**: was am Gesprächsende passiert (z. B. „Anruf-App
   erkannt: ms-teams.exe (PID 1234) auf Headset Mikrofon, Stille 3 min, höchstens 4 h, Stille seit 0:45“).
   Erkennt CallRecorder das Ende, erscheint hier (und im roten Balken) der gelbe Hinweis mit Countdown und
@@ -617,6 +633,40 @@ Fenstergröße, -position, Listenbreite, Reiter und Filter werden gemerkt
 (`%LOCALAPPDATA%\CallRecorder\window.json`); war das Fenster auf einem größeren oder inzwischen
 abgezogenen Bildschirm, wird es auf den sichtbaren Bereich verkleinert. Das Fenster passt auf
 1366×768 und ist für 125–150 % Skalierung ausgelegt (scharfe Schrift durch DPI-Awareness).
+
+### 7d. Neue Oberfläche (Vorschau)
+
+Seit Version 0.3 gibt es zusätzlich eine neue Oberfläche – lokales HTML/CSS/JS in einem
+Edge-WebView2-Fenster (pywebview), gestaltet im Fluent-Stil, damit sie neben Teams vertraut wirkt:
+Leiste links (*Übersicht, Aufnahmen, Einrichtung, Einstellungen*), Suche oben, Aufnahmeknopf oben rechts.
+Die **Übersicht** beantwortet drei Fragen: *Was kommt als Nächstes* (Termin mit Teilnehmenden und
+„Aufnahme starten …“, während der Aufnahme Laufzeit, Pegel und Countdown), *Was wartet* (je Aufnahme
+eine Entscheidung mit einem Knopf) und *Was läuft gerade* (Verarbeitung mit Fortschritt und „Abbrechen“).
+Alles aus dem klassischen Fenster ist erreichbar: Aufnahmen mit Suche und Filtern, Zusammenfassung und
+Transkript mit Versionen (lange Transkripte werden abschnittsweise geladen), Übergabe mit Vorschau,
+Sprecher zuordnen mit Hörprobe und „Das bin ich“, *Weitere* (neu transkribieren, Termin zuordnen,
+Teilnehmende, neu prüfen, weitere Sprecher, umbenennen, löschen …), Einrichtung, alle Einstellungen
+inkl. Anweisungen, Stimmprofile, Updates und Protokoll. Die kleine **Aufnahme-Anzeige** und „Call
+erkannt“ sind eigene, immer obenliegende Fenster ohne Tastaturfokus. Fenster schließen = weiter im
+Infobereich.
+
+**Hell/Dunkel:** Teams' eigene Einstellung lässt sich von außen nicht zuverlässig lesen. Die Oberfläche
+folgt deshalb dem Windows-App-Modus (*Windows-Einstellungen → Personalisierung → Farben*), wahlweise fest
+*Hell* oder *Dunkel* (*Einstellungen → Allgemein → Darstellung*).
+
+**Einschalten und zurück:**
+
+- *Einstellungen → Allgemein → Oberfläche* (in beiden Oberflächen; im klassischen Fenster
+  `ui.frontend = web`), gilt ab dem nächsten Start. Die neue Oberfläche hat außerdem unter
+  *Einstellungen → Über CallRecorder* „Zum klassischen Fenster wechseln …“ (startet sofort neu).
+- Kommandozeile: `callrec tray --ui web` bzw. `callrec tray --ui classic` (wird gemerkt;
+  mit `--once` nur für diesen Start).
+- Startet die neue Oberfläche nicht (WebView2-Laufzeit fehlt, pywebview-Fehler, Seite lädt nicht), öffnet
+  sich automatisch das klassische Fenster mit einem Hinweis; die Einstellung bleibt unverändert.
+
+**Sicherheit:** Die Seiten kommen aus dem Programmordner über einen nur lokal erreichbaren Server
+(127.0.0.1, zufälliger Port, Schlüssel je Sitzung); fremde Inhalte und Navigation sind gesperrt, Links
+öffnen im Browser. Texte aus Aufnahmen, Kalender und Transkripten werden nur als Text angezeigt.
 
 ### 7b. Automatisches Ende einer Aufnahme
 
@@ -1048,7 +1098,7 @@ Umgebung):
 
 | Befehl | Zweck |
 |---|---|
-| `tray [--minimized]` (oder ohne Argument) | Hauptfenster und Tray-Symbol starten; `--minimized` nur im Infobereich (so startet der Autostart) |
+| `tray [--minimized] [--ui web\|classic [--once]]` (oder ohne Argument) | Hauptfenster und Tray-Symbol starten; `--minimized` nur im Infobereich (so startet der Autostart); `--ui` wählt die Oberfläche und merkt sie (Abschnitt 7d), mit `--once` nur für diesen Start |
 | `record [--title T] [--participants "A <a@x>; B"] [--ics F] [--no-calendar] [--no-process]` | Aufnahme in der Konsole (Einwilligung durch Eintippen von `ja` im Konsolenfenster; umgeleitete Eingabe wird nicht akzeptiert) |
 | `process <Ordner> [--steps …] [--model M] [--device cuda\|cpu] [--language de\|en\|auto] [--preset P]` | (Neu-)Verarbeitung; Schritte: `finalize,transcribe,diarize,identify,render,summarize` oder Presets `all`, `retranscribe`, `rediarize`, `resummarize`, `render` |
 | `retranscribe <Ordner> [--preset P] [--language en\|de\|auto]` | mit aktuellen Einstellungen neu transkribieren (neue Version, alte bleibt); `--language` erzwingt die Sprache für diesen Lauf (`auto` = neu erkennen) |
@@ -1131,12 +1181,15 @@ Wichtige Einstellungen:
 | `autostop.max_duration_minutes` / `max_duration_warning_minutes` / `max_duration_extend_minutes` | `240` / `10` / `60` | Höchstdauer (0 = aus), Vorwarnung, Verlängerung |
 | `autostop.silence_safety_minutes` | `15` | Nachfrage nach so langer Stille (0 = aus), auch bei `enabled = false` |
 | `processing.after_recording` | `ask` | `ask` = nach der Aufnahme fragen, `full` = sofort vollständig verarbeiten (Abschnitt 7c) |
-| `processing.default_speakers` / `default_summary` / `default_handoff` | `true` / `true` / `false` | Vorbelegung der Häkchen in der Frage |
+| `processing.default_speakers` / `default_summary` / `default_handoff` | `true` / `true` / `true` | Vorbelegung der Häkchen in der Frage (die Übergabe läuft trotzdem erst nach „Vollständig verarbeiten“; ein `false` aus einer Konfiguration vor 0.3 gilt als alter Standardwert) |
+| `consent.mode` | `ask` | `ask` = eine Frage „Aufnehmen“ mit Hinweis (vermerkt: vom Nutzer gestartet), `confirm` = Häkchen zur Bestätigung der Einwilligung (vermerkt: bestätigt); nie per Preset (Abschnitt 1) |
+| `ui.frontend` | `tk` | `tk` = klassisches Fenster, `web` = neue Oberfläche (Vorschau, Abschnitt 7d) |
+| `ui.theme` | `system` | neue Oberfläche: `system` (Windows-App-Modus), `light`, `dark` |
 | `processing.handoff_without_asking` | `false` | nur mit `full`: Zusammenfassung ohne Rückfrage an SharePoint übergeben (nie per Preset) |
 | `hotkey.toggle` | `ctrl+alt+shift+r` | z. B. `ctrl+shift+f9`, `win+alt+r` |
 
-Eine Einstellung zum Abschalten der Einwilligungsabfrage gibt es nicht; entsprechende
-Einträge werden ignoriert und gemeldet.
+Eine Einstellung zum Abschalten der Frage vor der Aufnahme gibt es nicht (`consent.mode` wählt nur
+zwischen Frage und Bestätigung); andere Einträge dazu werden ignoriert und gemeldet.
 
 ---
 

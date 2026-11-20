@@ -563,7 +563,7 @@ def test_stop_asks_once_then_runs_the_chain_or_defers(world: World, monkeypatch)
     rec = w.controller.current
     w.actions.stop_recording()
     w.pump(lambda: len(asked) == 1)
-    assert asked[0][1] == Plan(True, True, True, False)  # pre-set from the settings
+    assert asked[0][1] == Plan(True, True, True, True)  # pre-set from the settings (hand-over ticked since 0.3)
     w.pump(lambda: chain_state(rec) is not None and chain_state(rec)["stage"] == "done")
     steps = [s for name, s, _ in w.jobs if name == rec.folder.name]
     assert steps == [frozenset({"finalize", "transcribe", "render"}), frozenset({"summarize"})]

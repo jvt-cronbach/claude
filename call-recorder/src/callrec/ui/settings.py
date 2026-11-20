@@ -300,8 +300,18 @@ class SettingsDialog:
                    "handoff_without_asking")
         self.field(t, 17, "Einmal täglich bei GitHub nach Updates sehen (nur Hinweis):", "update", "check_daily")
         ttk.Label(t, text="Die tägliche Suche fragt nur den freigegebenen Stand bei github.com ab (keine Aufnahmen, "
-                  "Namen oder Einstellungen); installiert wird nie ohne Ihren Klick.", wraplength=520,
+                  "Namen oder Einstellungen); installiert wird nie ohne Klick.", wraplength=520,
                   foreground="#555").grid(row=18, column=0, columnspan=3, sticky="w", **PAD)
+        self.field(t, 19, "Oberfläche (tk = klassisch, web = neue Oberfläche, Vorschau):", "ui", "frontend",
+                   ["tk", "web"])
+        self.field(t, 20, "Vor der Aufnahme (ask = eine Frage, confirm = ausdrückliche Bestätigung):", "consent",
+                   "mode", ["ask", "confirm"])
+        ttk.Label(t, text="Oberfläche: gilt ab dem nächsten Start; startet die neue Oberfläche nicht, öffnet sich "
+                  "automatisch dieses Fenster. Vor der Aufnahme: „ask“ = eine Frage mit Hinweis auf die nötige "
+                  "Zustimmung (vermerkt wird: vom Nutzer gestartet, Hinweis angezeigt), „confirm“ = Häkchen zur "
+                  "Bestätigung der Einwilligung (vermerkt wird: bestätigt). Die rechtliche Verantwortung für die "
+                  "Zustimmung aller Teilnehmenden bleibt bei der Person, die aufnimmt.", wraplength=520,
+                  foreground="#555").grid(row=21, column=0, columnspan=3, sticky="w", **PAD)
 
     def _autostop(self) -> None:
         t = self._tab("Aufnahme-Ende")
@@ -818,7 +828,6 @@ class SettingsDialog:
     def confirm_cloud(self, cfg: Config) -> bool:
         """Selecting Claude (Anthropic) needs an explicit confirmation; switching away revokes it."""
         from callrec.llm_anthropic import ANTHROPIC_SETTINGS_WARNING
-
         from callrec.ui.settingsmodel import needs_cloud_confirmation
 
         s = cfg.summary

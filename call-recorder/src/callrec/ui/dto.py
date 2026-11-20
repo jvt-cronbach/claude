@@ -255,9 +255,8 @@ def home(infos: list[RecordingInfo], busy_ids: set[str], recording_id: str, queu
         act = row["action"]
         if info.has_problem() and not act:
             act = {"key": "open", "label": "Ansehen"}
-        if not act or row["busy"] and act.get("key") != "review":
-            if not info.has_problem():
-                continue
+        if (not act or (row["busy"] and act.get("key") != "review")) and not info.has_problem():
+            continue
         reason = status_description(info) or row["status"]["text"]
         attention.append({**row, "reason": reason, "action": act})
         if len(attention) >= 8:

@@ -145,8 +145,7 @@ class WebUi:
         if prepared is not None:  # "Aufnehmen" was clicked in the call-detected prompt (mode "ask")
             return prepared  # type: ignore[no-any-return]
         from callrec.consent import ConsentError
-        from callrec.people import format_participants, parse_participants_text
-        from callrec.ui.dto import iso
+        from callrec.people import parse_participants_text
         from callrec.ui.startflow import build_record, start_texts
 
         provider = self.summary_provider()
@@ -154,24 +153,14 @@ class WebUi:
         texts = start_texts(mode, provider)
         import uuid
 
-        did = uuid.uuid4().hex
         ctx = {"suggestion": suggestion}
-        self.broker.context[did] = ctx
 
         def data(sugg: Suggestion, error: str = "", title: str | None = None, people: str | None = None) -> dict[str, Any]:
-            ev = sugg.event
-            return {
-                "mode": texts.mode, "statement": texts.statement, "checkbox": texts.checkbox,
-                "start_label": texts.start_label, "cancel_label": texts.cancel_label, "cloud_note": texts.cloud_note,
-                "record_note": texts.record_note, "me": me.display,
-                "title": title if title is not None else (ev.subject if ev else ""),
-                "participants_text": people if people is not None else format_participants(sugg.participants),
-                "info": suggestion_text(sugg), "event": {"subject": ev.subject, "start": iso(ev.start), "end": iso(ev.end)}
-                if ev else None, "error": error,
-            }
+            return start_dialog_data(texts, me, sugg, error, title, people)
 
         payload = data(suggestion)
         while True:
+            did = uuid.uuid4().hex  # a fresh id per question (also when asked again after an error)
             self.broker.context[did] = ctx
             res = self.broker.ask("start", payload, activate=True, dialog_id=did)
             if not isinstance(res, dict) or res.get("action") != "start":
@@ -264,6 +253,25 @@ class WebUi:
 
     def open_review(self, rec: Recording) -> None:
         self.post(lambda: self.review_handler(rec))
+
+
+def start_dialog_data(texts: Any, me: Person, sugg: Suggestion, error: str = "", title: str | None = None,
+                      people: str | None = None) -> dict[str, Any]:
+    """What the start dialog shows (``texts``: :class:`callrec.ui.startflow.StartTexts`)."""
+    from callrec.people import format_participants
+    from callrec.ui.dto import iso
+
+    ev = sugg.event
+    return {
+        "mode": texts.mode, "statement": texts.statement, "checkbox": texts.checkbox,
+        "start_label": texts.start_label, "cancel_label": texts.cancel_label, "cloud_note": texts.cloud_note,
+        "record_note": texts.record_note, "me": me.display,
+        "title": title if title is not None else (ev.subject if ev else ""),
+        "participants_text": people if people is not None else format_participants(sugg.participants),
+        "info": suggestion_text(sugg),
+        "event": {"subject": ev.subject, "start": iso(ev.start), "end": iso(ev.end)} if ev else None,
+        "error": error,
+    }
 
 
 def suggestion_text(s: Suggestion) -> str:

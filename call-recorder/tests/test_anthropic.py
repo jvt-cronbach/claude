@@ -172,7 +172,7 @@ def test_haiku_has_no_fallback_and_effort_can_be_omitted():
     (lambda: error(401, "authentication_error", "invalid x-api-key"), "lehnt den API-Schlüssel ab"),
     (lambda: error(402, "billing_error", "payment required"), "Abrechnungsproblem"),
     (lambda: error(400, "invalid_request_error", "Your credit balance is too low to access the Anthropic API."), "Guthaben"),
-    (lambda: error(404, "not_found_error", "model: claude-x"), "unbekannt oder für Ihr Konto nicht verfügbar"),
+    (lambda: error(404, "not_found_error", "model: claude-x"), "unbekannt oder für dieses Konto nicht verfügbar"),
     (lambda: error(403, "permission_error", "region"), "darf diese Anfrage nicht"),
     (lambda: error(429, "rate_limit_error", "spend cap", "enforced_spend_limit_reached"), "Ausgabenlimit"),
 ])

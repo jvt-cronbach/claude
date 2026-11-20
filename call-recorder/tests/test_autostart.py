@@ -115,7 +115,7 @@ def test_cli_tray_minimized_flag(monkeypatch):
     from callrec import cli
 
     seen = []
-    monkeypatch.setattr(cli, "main_tray", lambda minimized=False: seen.append(minimized) or 0)
+    monkeypatch.setattr(cli, "main_tray", lambda minimized=False, **_k: seen.append(minimized) or 0)
     assert cli.main(["tray", "--minimized"]) == 0 and cli.main(["tray"]) == 0
     assert seen == [True, False]
 

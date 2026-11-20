@@ -13,8 +13,6 @@ from typing import Any
 from callrec.calendar.service import CalendarService, Suggestion
 from callrec.consent import (
     ConsentError,
-    confirm_consent,
-    consent_statement,
     later_confirmation,
     record_later_confirmation,
 )

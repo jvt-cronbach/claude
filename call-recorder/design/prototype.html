@@ -350,7 +350,7 @@ details.adv[open] > summary .ico { transform: rotate(90deg); }
 @keyframes indet { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
 
 /* level meter */
-.meter { display: grid; grid-template-columns: 116px 1fr 52px; gap: var(--s-3); align-items: center; }
+.meter { display: grid; grid-template-columns: 150px 1fr 52px; gap: var(--s-3); align-items: center; }
 .meter .lv { position: relative; height: 10px; border-radius: var(--r-pill); background: var(--surface-pressed); overflow: hidden; }
 .meter .lv i { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: var(--ok); transition: width 90ms linear; }
 .meter .who { display: flex; align-items: center; gap: var(--s-2); color: var(--text-2); }
@@ -977,7 +977,7 @@ function heroIdle() {
       <div class="grow">
         <div class="eyebrow">Als Nächstes · in ${NEXT.inMin} Minuten</div>
         <h2 id="h-now">${esc(NEXT.title)}</h2>
-        <div class="when">${I("clock", "ico-sm")}<span class="num">Heute, ${NEXT.time}</span><span aria-hidden="true">·</span>${I("video", "ico-sm")}<span>Teams-Besprechung</span></div>
+        <div class="when">${I("clock", "ico-sm")}<span class="num">Heute, ${NEXT.time}</span><span aria-hidden="true">·</span>${I("video", "ico-sm")}<span>Online-Besprechung</span></div>
       </div>
       <div class="menu-wrap">
         <button class="btn btn-subtle" data-act="menu" data-menu="events" aria-haspopup="menu" aria-expanded="${S.menu === "events"}">Anderer Termin ${I("down", "ico-sm")}</button>
@@ -1641,7 +1641,7 @@ function screenMini() {
   return `<div class="page">
     <header class="page-head"><div class="grow"><h1 tabindex="-1" data-focus>Begleitfenster</h1><p class="sub" style="max-width:90ch">Diese kleinen Fenster erscheinen auch, wenn das Hauptfenster geschlossen ist (CallRecorder läuft im Infobereich). Die Fenster nehmen nie den Tastaturfokus und bleiben über Teams sichtbar.</p></div></header>
     <div class="desk" role="img" aria-label="Schematischer Windows-Desktop mit den Begleitfenstern">
-      <div class="teams-mock">${I("video", "ico-lg")}&nbsp;Teams-Besprechung</div>
+      <div class="teams-mock">${I("video", "ico-lg")}&nbsp;Online-Besprechung</div>
       <span class="lbl" style="right:24px;top:12px">1 · Aufnahme-Anzeige (immer im Vordergrund, verschiebbar)</span>
       <div class="miniwin pillwin" style="position:absolute;right:24px;top:40px"><span class="rec-dot" aria-hidden="true"></span><span class="num strong">00:23:41</span><span class="t ellipsis muted">${esc(NEXT.title)}</span><button class="btn btn-record btn-sm" aria-label="Aufnahme beenden">${I("stop", "ico-sm")}Beenden</button></div>
       <span class="lbl" style="right:24px;top:100px">2 · Dieselbe Anzeige beim Countdown</span>

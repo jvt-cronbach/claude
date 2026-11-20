@@ -544,7 +544,7 @@ def apply_preset(cfg: Config, preset: dict[str, Any], name: str) -> Config:
 
 
 LEGACY_LANGUAGE_NOTE = (
-    "Spracherkennung: Ihre Konfiguration enthielt language = \"de\" (Standardwert früherer Versionen). "
+    "Spracherkennung: Die Konfiguration enthielt language = \"de\" (Standardwert früherer Versionen). "
     "Die Sprache wird jetzt je Aufnahme automatisch erkannt (Deutsch oder Englisch, Deutsch bei Zweifel). "
     "Immer Deutsch erzwingen: Einstellungen > Transkription > Sprache \"de\"."
 )

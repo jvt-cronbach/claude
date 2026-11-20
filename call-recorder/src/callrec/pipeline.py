@@ -586,7 +586,7 @@ class Pipeline:
         for sid in open_ids:
             if sid in report.self_suspects:
                 speakers[sid].self_suspect = True
-                not_eligible[sid] = "vermutlich Ihre eigene Stimme (auf der Spur der Gegenseite)"
+                not_eligible[sid] = "vermutlich die eigene Stimme (auf der Spur der Gegenseite)"
             elif speech.get(sid, 0.0) < sc.min_match_speech_s:
                 not_eligible[sid] = (f"zu wenig Sprache für eine automatische Erkennung ({speech.get(sid, 0.0):.0f} s, "
                                      f"mindestens {sc.min_match_speech_s:.0f} s)")

@@ -87,7 +87,7 @@ def check_endpoint(url: str, allow_remote: bool) -> bool:
     if not allow_remote:
         raise RemoteEndpointRefused(
             f"Die Adresse {url!r} liegt nicht auf diesem Rechner. Gesprächsinhalte dürfen den Rechner nicht "
-            "verlassen. (Nur wenn Sie den Server vollständig kontrollieren: "
+            "verlassen. (Nur bei einem vollständig selbst kontrollierten Server: "
             "summary.allow_remote_endpoint_data_leaves_this_computer = true)"
         )
     log.warning("ACHTUNG: Zusammenfassung über entfernten Server %s - Gesprächsinhalte verlassen diesen Rechner!", url)

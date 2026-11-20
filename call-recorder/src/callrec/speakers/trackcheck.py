@@ -230,8 +230,8 @@ def check(
                    "envelope_corr": round(env_corr, 3), "lag_s": (signal or {}).get("lag_s")}
     if remote_s >= REMOTE_MIN_SPEECH_S and mic_s < max(MIC_LITTLE_ABS_S, MIC_LITTLE_FRACTION * remote_s):
         rep.warnings.append(
-            f"Die Mikrofonspur enthält kaum Sprache ({mic_s:.0f} s gegenüber {remote_s:.0f} s der Gegenseite). Falls Sie "
-            f"gesprochen haben, wurde vermutlich das falsche oder ein stummgeschaltetes Mikrofon aufgenommen – "
+            f"Die Mikrofonspur enthält kaum Sprache ({mic_s:.0f} s gegenüber {remote_s:.0f} s der Gegenseite). Wurde "
+            f"gesprochen, ist vermutlich das falsche oder ein stummgeschaltetes Mikrofon aufgenommen worden – "
             f"Mikrofon prüfen: {MIC_SETTINGS}.{device_hint}")
         rep.mic_unreliable = mic_s < 1.0
     echo = (remote_words >= MIN_WORDS and remote_dup >= ECHO_WORD_FRACTION) or env_corr >= ECHO_ENVELOPE_CORR
@@ -263,11 +263,11 @@ def check(
     if leak_n >= MIN_WORDS and leak >= LEAK_WORD_FRACTION:
         rep.warnings.append(
             f"Ein Teil der Gegenseite ist auch auf der Mikrofonspur ({leak:.0%} ihrer Wörter) – Übersprechen des Headsets "
-            f"oder Lautsprecher. Solche Stellen können im Transkript doppelt (auch unter Ihrem Namen) erscheinen. "
+            f"oder Lautsprecher. Solche Stellen können im Transkript doppelt (auch unter dem eigenen Namen) erscheinen. "
             f"Abhilfe: Headset verwenden, Lautstärke senken; {MIC_SETTINGS}.{device_hint}")
     if rep.self_suspects:
         rep.warnings.append(
-            "Ihre eigene Stimme ist vermutlich auch auf der Spur der Gegenseite (Mithören/Sidetone) und wurde dort als "
+            "Die eigene Stimme ist vermutlich auch auf der Spur der Gegenseite (Mithören/Sidetone) und wurde dort als "
             f"Sprecher erkannt ({', '.join(_label(s) for s in sorted(rep.self_suspects))}). Im Dialog „Sprecher zuordnen“ "
             f"mit „Das bin ich“ markieren; abstellen: {LISTEN_SETTINGS}.")
     return rep

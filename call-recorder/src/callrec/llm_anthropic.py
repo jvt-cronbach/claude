@@ -272,7 +272,7 @@ class AnthropicProvider:
         if isinstance(exc, anthropic.PermissionDeniedError):
             return AnthropicError(f"Der API-Schlüssel darf diese Anfrage nicht ausführen (403): {getattr(exc, 'api_message', '') or exc}")
         if isinstance(exc, anthropic.NotFoundError):
-            return AnthropicError(f"Das Modell {model!r} ist unbekannt oder für Ihr Konto nicht verfügbar (Einstellungen > Modell prüfen).")
+            return AnthropicError(f"Das Modell {model!r} ist unbekannt oder für dieses Konto nicht verfügbar (Einstellungen > Modell prüfen).")
         if isinstance(exc, anthropic.RateLimitError):
             code = str(getattr(exc, "error_code", "") or "")
             if any(c in code for c in _NON_RETRYABLE_429):
@@ -478,8 +478,8 @@ ANTHROPIC_SETTINGS_WARNING = (
     "Mit dem Anbieter „Claude (Anthropic)“ wird für jede Zusammenfassung das vollständige TRANSKRIPT "
     "(Text mit Sprechernamen und Zeitstempeln) sowie Titel, Datum und Teilnehmernamen an Anthropic "
     "(api.anthropic.com) übertragen und dort verarbeitet. Audio, Stimmprofile und E-Mail-Adressen werden "
-    "nicht übertragen. Die Kosten werden pro Token über Ihr Anthropic-Konto abgerechnet.\n\n"
-    "Vor jeder Aufnahme müssen Sie dann zusätzlich bestätigen, dass alle Teilnehmenden auch dieser "
-    "Übertragung zugestimmt haben.\n\n"
+    "nicht übertragen. Die Kosten werden pro Token über das eigene Anthropic-Konto abgerechnet.\n\n"
+    "Vor jeder Aufnahme nennt die Frage bzw. die Bestätigung dann zusätzlich diese Übertragung; alle "
+    "Teilnehmenden müssen auch ihr zugestimmt haben.\n\n"
     "Sollen Transkripte künftig an Anthropic gesendet werden?"
 )

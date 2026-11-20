@@ -20,7 +20,7 @@ from callrec.models import (
 from callrec.recording import Recording
 from callrec.speakers.profiles import ProfileStore
 
-SOURCE_TEXT = {"manual": "von Ihnen zugeordnet", "confirmed": "von Ihnen bestätigt", "auto": "automatisch",
+SOURCE_TEXT = {"manual": "selbst zugeordnet", "confirmed": "selbst bestätigt", "auto": "automatisch",
                "sole": "einzige eingeladene Person der Gegenseite", "legacy": "frühere Version (Herkunft unbekannt)"}
 SELF_CHOICE = "Das bin ich (meine Stimme auf der Spur der Gegenseite)"
 SUGGESTION_SUFFIX = " (kein Teilnehmer dieses Termins)"
@@ -218,7 +218,7 @@ def apply_assignments(
             info.name, info.email, info.profile_id, info.score = me.name or "Ich", me.email, "", None
             info.source = SOURCE_SELF_ECHO
             info.clear_hints()
-            messages.append(f"{info.label}: als Ihre eigene Stimme markiert.")
+            messages.append(f"{info.label}: als eigene Stimme markiert.")
             continue
         if not name:
             if profiles.forget(rid, a.speaker_id):
@@ -432,7 +432,7 @@ def rebuild_profile(profiles: ProfileStore, profile_id: str, recordings_root: An
             found.append(Contribution(rec.uid, sid, "manual", embeddings[sid], SOURCE_WEIGHT["manual"],
                                       speech.get(sid, 0.0), title=rec.title(), folder=rec.folder.name))
     if not found:
-        return (f"Für {prof.name} gibt es keine von Ihnen zugeordneten Stimmen mit gespeicherten Stimmmerkmalen - "
+        return (f"Für {prof.name} gibt es keine selbst zugeordneten Stimmen mit gespeicherten Stimmmerkmalen - "
                 "das Profil bleibt unverändert.")
     profiles.replace_contributions(prof.id, found)
-    return f"{prof.name}: neu aufgebaut aus {len(found)} Zuordnung(en) in Ihren Aufnahmen."
+    return f"{prof.name}: neu aufgebaut aus {len(found)} Zuordnung(en) in den eigenen Aufnahmen."

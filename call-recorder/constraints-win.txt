@@ -2,14 +2,17 @@
 # Wird von setup.ps1 als Constraints-Datei (-c) verwendet: fixiert Versionen, erzwingt aber keine Installation.
 # Pakete, die nur unter Windows per Umgebungsmarker hinzukommen (z.B. colorama), sind hier nicht enthalten.
 # anthropic und seine Abhängigkeiten: mit pip download --platform win_amd64 --python-version 3.12 gegen diese Datei geprüft.
+# pywebview 6.2.1 + pythonnet 3.2.1 (+ clr_loader, cffi, bottle, proxy_tools): für 3.12 und 3.13 geprüft.
 annotated-types==0.8.0
 anthropic==2.10.0
 anyio==4.16.0
 av==18.1.0
+bottle==0.13.4
 certifi==2026.10.23
 cffi==2.1.1
 charset-normalizer==3.5.2
 click==8.5.1
+clr_loader==0.3.1
 comtypes==1.5.0
 cryptography==50.0.2
 ctranslate2==4.9.0
@@ -37,6 +40,7 @@ opentelemetry-api==1.45.2
 packaging==26.3
 pillow==13.0.0
 protobuf==7.36.2
+proxy_tools==0.1.0
 psutil==7.2.2
 PyAudioWPatch==0.2.12.9
 pycaw==20260927
@@ -46,6 +50,8 @@ pydantic_core==2.50.5
 PyJWT==2.15.1
 pystray==0.19.5
 python-dateutil==2.9.0.post0
+pythonnet==3.2.1
+pywebview==6.2.1
 PyYAML==6.0.3
 recurring-ical-events==3.8.2
 requests==2.34.2

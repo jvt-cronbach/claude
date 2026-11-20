@@ -4,6 +4,14 @@ Ziel: Die Oberfläche aus `design/prototype.html` / `design/design-system.md` wi
 lokales HTML/CSS/JS in pywebview (Edge WebView2, Windows 11), offline, ohne Build-Werkzeuge. Die
 Fachlogik bleibt in Python und wird nicht neu geschrieben.
 
+> **Stand 20.11.2026 (Version 0.3.0, Vorschau):** Schritte 0–5 sind umgesetzt, Schritt 6 (Standard umstellen, Tk
+> entfernen) bewusst nicht. Abweichungen vom Plan: eigener Loopback-Server (`ui/webserver.py`, Token je Sitzung,
+> Whitelist, CSP) statt pywebviews Bottle-Server; Hörproben im Browser (`<audio>`, Clips nur unter zufälligem
+> Namen) statt `winsound`; `ui/app.py` bleibt die Tk-Verdrahtung, die Web-Verdrahtung steht in `ui/webapp.py`
+> (gemeinsam genutzt: `MeProvider`, `detection_loop`, Update-Prüfung, `AppActions`, `DialogPort`);
+> Dialoge laufen über `ui/dialogport.py` (Tk) bzw. `ui/webdialogs.py` (Broker). Einwilligung in zwei Modi
+> (`[consent] mode`, gemeinsamer Baustein `ui/startflow.py` für beide Oberflächen).
+
 Grundsatz: **Python entscheidet, JS zeigt an.** Einwilligung, „darf übergeben werden“, Cloud-Bestätigung,
 „darf gelöscht werden“ werden weiterhin in Python geprüft (`consent.confirm_consent`, `handoff_ready`,
 `cloud_ok`, `controller.is_busy`). Das Frontend kann nichts, was die Python-Seite nicht erlaubt.

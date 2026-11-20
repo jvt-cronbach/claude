@@ -115,13 +115,13 @@ def check_summary(cfg: Config, key_present: Callable[[], bool], tested: str | No
 
 
 MICROSOFT_STEPS = (
-    "So richten Sie es ein (einmalig, ca. 10 Minuten, README Abschnitt 5):\n"
+    "Einrichtung (einmalig, ca. 10 Minuten, README Abschnitt 5):\n"
     "1. entra.microsoft.com → App-Registrierungen → Neue Registrierung, Name z. B. „CallRecorder (lokal)“, "
     "Umleitungs-URI „Öffentlicher Client/nativ“ = http://localhost.\n"
     "2. Unter Authentifizierung „Öffentliche Clientflows zulassen“ = Ja; unter API-Berechtigungen "
     "Microsoft Graph → Delegiert → Calendars.Read (und User.Read).\n"
     "3. Anwendungs-ID (Client) und Verzeichnis-ID (Mandant) hier unter „Client-ID eintragen …“ speichern.\n"
-    "4. „Bei Microsoft anmelden …“ klicken – danach steht hier Ihr nächster Termin mit den Teilnehmenden.\n"
+    "4. „Bei Microsoft anmelden …“ klicken – danach steht hier der nächste Termin mit den Teilnehmenden.\n"
     "Damit heißen Aufnahmen wie der Termin, und die Eingeladenen werden bei der Sprechererkennung bevorzugt "
     "und in der Sprecherzuordnung vorgeschlagen."
 )
@@ -134,8 +134,8 @@ def check_microsoft(cfg: Config, signed_in_as: Callable[[], str | None],
     login = ("Bei Microsoft anmelden …", A_LOGIN)
     if not cfg.calendar.client_id.strip():
         return CheckItem("microsoft", title, OPTIONAL,
-                         "Noch nicht eingerichtet. Die App funktioniert auch ohne: Titel und Teilnehmende tippen Sie "
-                         "dann beim Start selbst ein.\n" + MICROSOFT_STEPS,
+                         "Noch nicht eingerichtet. Die App funktioniert auch ohne: Titel und Teilnehmende werden "
+                         "dann beim Start eingetippt.\n" + MICROSOFT_STEPS,
                          required=False, actions=[("Client-ID eintragen …", A_SETTINGS_MICROSOFT), ("Anleitung", A_README)])
     try:
         who = signed_in_as()
@@ -143,9 +143,9 @@ def check_microsoft(cfg: Config, signed_in_as: Callable[[], str | None],
         return CheckItem("microsoft", title, WARN, f"Anmeldestatus nicht lesbar: {exc}", required=False,
                          actions=[login, ("Einstellungen …", A_SETTINGS_MICROSOFT)])
     if not who:
-        return CheckItem("microsoft", title, WARN, "Client-ID ist eingetragen, aber Sie sind noch nicht angemeldet. "
+        return CheckItem("microsoft", title, WARN, "Client-ID ist eingetragen, aber noch keine Anmeldung. "
                          "Nächster Schritt: „Bei Microsoft anmelden …“ (öffnet den Browser; einmalig zustimmen). "
-                         "Danach erscheint hier Ihr nächster Termin mit den Teilnehmenden.",
+                         "Danach erscheint hier der nächste Termin mit den Teilnehmenden.",
                          required=False, actions=[login, ("Einstellungen …", A_SETTINGS_MICROSOFT)])
     detail = f"Angemeldet als {who}."
     state = OK
@@ -209,7 +209,7 @@ def check_autostop(cfg: Config, windows: bool | None = None) -> CheckItem:
     net_text = ("Sicherheitsnetz: " + ", ".join(nets) + ".") if nets else "Kein Sicherheitsnetz (Höchstdauer aus)."
     if not a.enabled:
         return CheckItem("autostop", title, WARN,
-                         "Aus: Eine Aufnahme endet nur, wenn Sie sie beenden – eine vergessene Aufnahme nimmt weiter "
+                         "Aus: Eine Aufnahme endet nur nach einem Klick auf „Beenden“ – eine vergessene Aufnahme nimmt weiter "
                          f"auf, was im Raum gesagt oder abgespielt wird. {net_text}", required=False, actions=actions)
     signals = []
     if a.call_app_session:

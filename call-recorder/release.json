@@ -1,14 +1,14 @@
 {
   "schema": 1,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "commit": "37407104c2f4a10e6b0667e4770a51b97f487199",
   "date": "2026-11-20",
   "notes": [
-    "Sprecher werden automatisch nur noch Teilnehmenden des Termins zugeordnet; Sprecherzahl nach Teilnehmenden begrenzt.",
-    "Eigene Spur mit Ihrem Vornamen; Prüfung der Mikrofonspur auf Echo und fehlende Sprache.",
-    "Termin-Auswahl zeigt alle Termine des Tages; Blocker und ganztägige Einträge stehen am Ende.",
-    "Zusammenfassung ohne Smalltalk und Privates; Prompt in der App bearbeitbar.",
-    "Updates direkt aus der App."
+    "Neue Oberfläche als Vorschau (Einstellungen › Allgemein › Oberfläche bzw. callrec tray --ui web): im Fluent-Stil passend neben Teams, hell/dunkel wie Windows, Übersicht mit „Als Nächstes · Wartet · In Arbeit“. Startet sie nicht, öffnet sich automatisch das klassische Fenster.",
+    "Vor der Aufnahme wahlweise eine Frage („Aufnehmen“ mit Hinweis auf die Zustimmung) oder die ausdrückliche Bestätigung der Einwilligung (Einstellungen › Aufnahme).",
+    "„Call erkannt“ fragt direkt „Aufnehmen?“ – ohne den Tastaturfokus aus Teams zu nehmen.",
+    "Nach der Aufnahme ist „an SharePoint übergeben“ vorausgewählt; übergeben wird weiterhin erst nach dem Klick auf „Vollständig verarbeiten“.",
+    "Das Update installiert zusätzlich pywebview (Edge WebView2) und dauert deshalb einige Minuten länger."
   ],
   "python": ">=3.12,<3.14"
 }

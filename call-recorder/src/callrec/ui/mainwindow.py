@@ -335,7 +335,7 @@ class MainWindow:
         self.event_btn.grid(row=0, column=2, sticky="e")
         self.view_btn = ttk.Button(ev, text="Mehr …", command=lambda: self.set_compact(not self.compact))
         self.view_btn.grid(row=0, column=3, sticky="e", padx=(self.px(4), 0))
-        self.event_info = tk.StringVar(value="Termine werden geladen … Vor dem Start kommt immer die Einwilligungsabfrage.")
+        self.event_info = tk.StringVar(value="Termine werden geladen … Vor dem Start kommt immer die Frage vor der Aufnahme.")
         self.event_info_lbl = ttk.Label(ev, textvariable=self.event_info, wraplength=self.px(520))
         self.event_info_lbl.grid(row=1, column=0, columnspan=3, sticky="w", pady=(self.px(2), 0))
         ev.bind("<Configure>", lambda e: self._rewrap(ev, e.width))
@@ -1107,7 +1107,9 @@ class MainWindow:
         is_current = getattr(self.controller.calendar, "is_current", None)
         current = bool(self._events) and (is_current(self._events[0]) if callable(is_current) else True)
         self.event_var.set(previous if previous in labels else (labels[0] if current else MANUAL_EVENT))
-        consent = "Vor dem Start kommt immer die Einwilligungsabfrage (Titel/Teilnehmende dort änderbar)."
+        consent = ("Vor dem Start kommt immer die Frage vor der Aufnahme (Titel/Teilnehmende dort änderbar)."
+                   if getattr(getattr(self.cfg, "consent", None), "mode", "") == "ask" else
+                   "Vor dem Start kommt immer die Einwilligungsabfrage (Titel/Teilnehmende dort änderbar).")
         if not message and self._events:
             message = (f"{len(self._events)} Termin(e) heute" + (", der laufende ist vorausgewählt." if current
                        else " – zurzeit läuft keiner; bitte wählen."))

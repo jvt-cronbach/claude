@@ -60,7 +60,7 @@ def test_setup_microsoft_walkthrough_and_result():
     assert item.state == setupcheck.OPTIONAL and "1. entra.microsoft.com" in item.detail and "Calendars.Read" in item.detail
     cfg.calendar.client_id = "abc"
     item = setupcheck.check_microsoft(cfg, lambda: None)
-    assert ("Bei Microsoft anmelden …", setupcheck.A_LOGIN) in item.actions and "nächster Termin" in item.detail
+    assert ("Bei Microsoft anmelden …", setupcheck.A_LOGIN) in item.actions and "nächste Termin" in item.detail
     item = setupcheck.check_microsoft(cfg, lambda: "ich@firma.de", lambda: "Nächster Termin: X\nTeilnehmende: A, B")
     assert item.state == setupcheck.OK and "Teilnehmende: A, B" in item.detail
 

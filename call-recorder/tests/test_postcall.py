@@ -215,7 +215,7 @@ def test_startup_work_and_deferred(tmp_path: Path):
 def test_default_plan_and_config():
     cfg = Config()
     assert cfg.processing.after_recording == "ask" and not cfg.processing.handoff_without_asking
-    assert default_plan(cfg) == Plan(True, True, True, False)
+    assert default_plan(cfg) == Plan(True, True, True, True)  # 0.3: hand-over box ticked by default (still a click)
     cfg.summary.enabled = False
     assert default_plan(cfg).summary is False
     with pytest.raises(ConfigError):

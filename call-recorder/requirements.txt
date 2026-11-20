@@ -21,3 +21,6 @@ pystray==0.19.5
 PyAudioWPatch==0.2.12.9; sys_platform == "win32"
 pycaw==20260927; sys_platform == "win32"
 comtypes==1.5.0; sys_platform == "win32"
+# Neue Oberfläche (Vorschau): Edge WebView2 über pywebview/pythonnet; Wheels für Python 3.12/3.13 win_amd64
+# geprüft mit pip download --platform win_amd64 (proxy_tools gibt es nur als reines Quellpaket)
+pywebview==6.2.1

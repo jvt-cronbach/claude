@@ -589,9 +589,7 @@ def cmd_record(args: argparse.Namespace) -> int:
             if suggestion.message:
                 print(suggestion.message)
             try:
-                from callrec.consent import active_summary_provider
-
-                from callrec.consent import cli_start
+                from callrec.consent import active_summary_provider, cli_start
                 from callrec.ui.startflow import consent_mode
 
                 tty = sys.stdin is not None and sys.stdin.isatty()
@@ -910,6 +908,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     t = sub.add_parser("tray", help="Tray-Anwendung starten (Standard)")
     t.add_argument("--minimized", action="store_true", help="nur im Infobereich starten (Autostart mit Windows)")
+    t.add_argument("--ui", choices=("web", "classic"), help="Oberfläche wählen und in config.toml merken: "
+                   "web = neue Oberfläche (Vorschau), classic = klassisches Fenster")
+    t.add_argument("--once", action="store_true", help="mit --ui: nur für diesen Start, nicht merken")
 
     r = sub.add_parser("record", help="Aufnahme in der Konsole (Test)")
     r.add_argument("--title")
@@ -1045,7 +1046,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.cmd in (None, "tray"):
-        return main_tray(minimized=bool(getattr(args, "minimized", False)))
+        return main_tray(minimized=bool(getattr(args, "minimized", False)), ui=getattr(args, "ui", None),
+                         once=bool(getattr(args, "once", False)))
     from callrec.logging_setup import setup_logging
 
     setup_logging(logging.DEBUG if args.verbose else logging.INFO, console=args.verbose)
@@ -1056,7 +1058,23 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
 
-def main_tray(minimized: bool = False) -> int:
+def main_tray(minimized: bool = False, ui: str | None = None, once: bool = False) -> int:
     from callrec.ui.app import run_tray_app
 
-    return run_tray_app(start_minimized=minimized)
+    frontend = {"web": "web", "classic": "tk"}.get(ui or "")
+    if frontend and not once:
+        try:
+            set_frontend(frontend)
+        except (OSError, ConfigError) as exc:
+            print(f"Oberfläche nicht gespeichert: {exc}", file=sys.stderr)
+    return run_tray_app(start_minimized=minimized, frontend=frontend)
+
+
+def set_frontend(frontend: str) -> None:
+    """Remember the interface in config.toml (``[ui] frontend``), keeping everything else."""
+    from callrec.config import load_config, save_config
+
+    cfg = load_config(preset="")
+    if cfg.ui.frontend != frontend:
+        cfg.ui.frontend = frontend
+        save_config(cfg)
