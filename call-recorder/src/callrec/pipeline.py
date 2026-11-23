@@ -469,6 +469,8 @@ class Pipeline:
         tmeta: dict[str, Any] = {**asr_meta, "run_id": run_id, "settings": self.asr_settings(rec),
                                  "language_detection": decision, "finished_at": _now_iso(),
                                  "profile": (stats.get("decoding") or {}).get("profile"),
+                                 # what the worker really used (e.g. "batched" is off without VAD)
+                                 "decoding": stats.get("decoding"),
                                  "timing": timing, "threads": stats.get("threads")}
         result.transcript_warnings = quality.warning_lines({t: asr_meta[t]["quality"] for t in ("mic", "remote")},
                                                            lambda x: fmt_ts(x))
@@ -481,7 +483,35 @@ class Pipeline:
     def _transcribe_tracks(self, rec: Recording, result: ProcessResult, progress: Callable[..., None], fa: Any,
                            transcriber: Any, prompt: str, hotwords: str) -> None:
         if callable(getattr(transcriber, "transcribe_session", None)):
-            return self._transcribe_session(rec, result, progress, fa, transcriber, prompt, hotwords)
+            from callrec.asr.transcriber import TranscriptionCancelled, TranscriptionError
+
+            try:
+                return self._transcribe_session(rec, result, progress, fa, transcriber, prompt, hotwords)
+            except TranscriptionCancelled:
+                raise
+            except (TranscriptionError, OSError, ValueError, KeyError) as exc:
+                # the 0.4 session (one process, parallel lanes) failed: transcribe this recording the
+                # conservative 0.3 way (one worker per track, faster-whisper's own VAD) instead of
+                # leaving it without a transcript
+                if self._should_cancel():
+                    raise ProcessingCancelled() from exc
+                log.warning("Transkription in einem Prozess fehlgeschlagen (%s) - %s wird Spur für Spur "
+                            "transkribiert (wie bis 0.3)", exc, rec.folder.name)
+                result.messages.append("Hinweis: schnelle Transkription fehlgeschlagen – Spur für Spur "
+                                       f"transkribiert (langsamer). Details: {exc}")
+                for track in ("mic", "remote"):
+                    p = rec.asr_path(track)
+                    if p.exists():
+                        p.unlink()
+                self._transcribe_tracks_sequential(rec, result, progress, fa, transcriber, prompt, hotwords,
+                                                   fallback=str(exc))
+                return None
+        return self._transcribe_tracks_sequential(rec, result, progress, fa, transcriber, prompt, hotwords)
+
+    def _transcribe_tracks_sequential(self, rec: Recording, result: ProcessResult, progress: Callable[..., None],
+                                      fa: Any, transcriber: Any, prompt: str, hotwords: str,
+                                      fallback: str = "") -> None:
+        """Up to 0.3 (and the fallback of the 0.4 session): language detection, then one worker per track."""
         run_id = _run_id()
         asr_meta: dict[str, Any] = {}
         selection = str(getattr(transcriber, "selection_note", "") or "")
@@ -528,6 +558,13 @@ class Pipeline:
                              asr.model, asr.device, asr.compute_type, stats.get("load_s", 0.0))
         tmeta: dict[str, Any] = {**asr_meta, "run_id": run_id, "settings": self.asr_settings(rec),
                                  "language_detection": decision, "finished_at": _now_iso()}
+        if fallback:  # the effective settings are the individual values, not the profile's
+            from callrec.asr.profiles import EIGENE, decoding_for
+
+            tmeta["settings"]["effective_profile"] = decoding_for(tcfg, EIGENE).to_dict()
+            tmeta["profile"] = EIGENE
+            tmeta["fallback"] = {"reason": fallback, "path": "per_track",
+                                 "beam_size": tcfg.beam_size, "temperature_fallback": tcfg.temperature_fallback}
         result.transcript_warnings = quality.warning_lines({t: asr_meta[t]["quality"] for t in ("mic", "remote")},
                                                            lambda x: fmt_ts(x))
         for w in result.transcript_warnings:
@@ -700,9 +737,14 @@ class Pipeline:
         fa = self._audio(rec)
         t0 = time.monotonic()
         box = self._join_parallel()
+        if box is not None and "error" in box:
+            err = box["error"]
+            if is_cancellation(err) or self._should_cancel() or not isinstance(err, Exception):
+                raise err
+            # e.g. out of memory next to the Whisper worker: once more on its own, as in 0.3
+            log.warning("Parallele Sprechertrennung fehlgeschlagen (%s) - neuer Versuch allein", err)
+            box = None
         if box is not None:
-            if "error" in box:
-                raise box["error"]
             raw = box["result"]
             parallel = True
         else:

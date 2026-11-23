@@ -64,14 +64,41 @@ def run_job(job: dict[str, Any], emit: Callable[[str], None] = lambda line: prin
     return out
 
 
+def watch_parent(stream: Any, on_gone: Callable[[], None] | None = None) -> Any:
+    """The parent holds our stdin open while it waits; its end means the app is gone (killed, crashed,
+    updater): stop instead of running on for minutes as an orphan next to the restarted app."""
+    import os
+    import threading
+
+    def gone() -> None:
+        print("App beendet - Sprechertrennung wird beendet", file=sys.stderr, flush=True)
+        os._exit(4)
+
+    def run() -> None:
+        try:
+            for _line in stream:
+                pass
+        except (OSError, ValueError):
+            pass
+        (on_gone or gone)()
+
+    t = threading.Thread(target=run, name="watch-parent", daemon=True)
+    t.start()
+    return t
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="callrec.speakers.worker")
     p.add_argument("--job", required=True)
     p.add_argument("--out", required=True)
+    p.add_argument("--watch-parent", action="store_true",
+                   help="beenden, sobald stdin endet (die App, die auf das Ergebnis wartet, ist weg)")
     args = p.parse_args(argv)
     from callrec.asr.worker import lower_priority
 
     lower_priority()
+    if args.watch_parent and sys.stdin is not None:
+        watch_parent(sys.stdin)
     job = json.loads(Path(args.job).read_text(encoding="utf-8"))
     job["out"] = args.out
     result = run_job(job)
@@ -100,6 +127,8 @@ def run_in_child(job: dict[str, Any], work_dir: Path, progress: Callable[[float]
     job_path.write_text(json.dumps(job, ensure_ascii=False), encoding="utf-8")
     cmd = (command_prefix or [console_python(), "-m", "callrec.speakers.worker"]) + [
         "--job", str(job_path), "--out", str(out_path)]
+    if command_prefix is None:
+        cmd.append("--watch-parent")
 
     def feed(line: str) -> None:
         parts = line.split()
@@ -109,7 +138,8 @@ def run_in_child(job: dict[str, Any], work_dir: Path, progress: Callable[[float]
             except ValueError:
                 pass
 
-    rc = run_child(cmd, work_dir / "diarize.log", feed)
+    # control: stdin stays open (a pipe) while we wait - the worker ends when it closes (see watch_parent)
+    rc = run_child(cmd, work_dir / "diarize.log", feed, control=lambda proc: None)
     if _CANCEL.is_set():
         raise TranscriptionCancelled("Verarbeitung abgebrochen.")
     if rc != 0 or not out_path.exists():

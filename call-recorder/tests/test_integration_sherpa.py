@@ -121,8 +121,37 @@ def test_real_diarization_and_profile_learning(tmp_path: Path):
     assert len(matches) == 3
 
 
-def test_pipeline_with_real_diarization(tmp_path: Path):
-    """Full pipeline (fake ASR, real sherpa-onnx) on a recording folder with 44.1 kHz remote track."""
+class TruthTranscriber:
+    """ASR stand-in: on the remote track one word in the middle of every true utterance (with its voice
+    as text), so that every voice the diarization finds has text in the transcript."""
+
+    def __init__(self, truth):
+        self.truth = truth
+
+    def __call__(self):
+        return self
+
+    def transcribe(self, audio: Path, out_json: Path, *, initial_prompt: str = "", hotwords: str = "",
+                   progress=lambda f: None):
+        from callrec.models import AsrResult, AsrSegment, Word
+
+        segs = []
+        if not audio.name.startswith("mic"):
+            for s, e, voice in self.truth:
+                m = (s + e) / 2
+                segs.append(AsrSegment(m - 0.3, m + 0.3, voice, [Word(m - 0.3, m + 0.3, f" {voice}")]))
+        return AsrResult("de", self.truth[-1][1], segs, "fake-large", "cpu", "int8")
+
+
+@pytest.mark.parametrize("child", [False, True], ids=["in-process", "speaker-worker-process"])
+def test_pipeline_with_real_diarization(tmp_path: Path, child: bool):
+    """Full pipeline (fake ASR, real sherpa-onnx) on a recording folder with 44.1 kHz remote track.
+
+    Up to 0.4.0 this test expected ``unassigned_speakers`` to equal the number of raw clusters. That
+    was a wrong expectation, not a defect: ``unassigned_speakers`` counts the open speakers *with text*
+    (the old fake ASR only had words in the first 6 s, i.e. one speaker), and a short fragment (here a
+    4-s second cluster of one voice) is by design not offered for naming - its text goes to the voice it
+    resembles. The checks below test exactly that with real diarization output."""
     import soxr
 
     from callrec.audio.capture import REMOTE_PART
@@ -132,7 +161,7 @@ def test_pipeline_with_real_diarization(tmp_path: Path):
     from callrec.speakers.diarize import SherpaDiarizer, SherpaEmbedder
     from callrec.speakers.profiles import PlainFilePersistence, ProfileStore
     from tests.conftest import make_recording, write_wav
-    from tests.test_pipeline import FakeSummarizer, FakeTranscriber
+    from tests.test_pipeline import FakeSummarizer
 
     models = Path(MODELS)  # type: ignore[arg-type]
     seg = models / "sherpa-onnx-pyannote-segmentation-3-0" / "model.onnx"
@@ -141,15 +170,30 @@ def test_pipeline_with_real_diarization(tmp_path: Path):
     rec = make_recording(tmp_path / "r", seconds=len(audio) / 16000)
     write_wav(rec.folder / "audio" / REMOTE_PART, soxr.resample(audio, 16000, 44100), 44100)
     store = ProfileStore(PlainFilePersistence(tmp_path / "vp.json"))
+    cfg = Config()
+    speaker_worker = None
+    if child:
+        from callrec.speakers.worker import run_in_child
+
+        d = cfg.diarization
+
+        def speaker_worker(remote, threads, work_dir, progress):
+            job = {"audio": str(remote), "segmentation": str(seg), "embedding": str(emb),
+                   "embedding_id": "wespeaker_en_voxceleb_resnet34_LM", "cluster_threshold": d.cluster_threshold,
+                   "num_speakers": d.num_speakers, "min_duration_on": d.min_duration_on,
+                   "min_duration_off": d.min_duration_off, "threads": threads}
+            return run_in_child(job, work_dir, progress)
+
     comps = Components(
-        transcriber_factory=FakeTranscriber,
+        transcriber_factory=TruthTranscriber(truth),
         diarizer_factory=lambda: SherpaDiarizer(seg, emb),
         embedder_factory=lambda: SherpaEmbedder(emb, "wespeaker_en_voxceleb_resnet34_LM"),
         profiles=store,
         summarizer_factory=FakeSummarizer,
         audio_loader=load_mono,
+        speaker_worker=speaker_worker,
     )
-    result = Pipeline(Config(), comps).run(rec)
+    result = Pipeline(cfg, comps).run(rec)
     from callrec.review import load_turns
 
     purity: dict[str, set[str]] = {}
@@ -160,8 +204,20 @@ def test_pipeline_with_real_diarization(tmp_path: Path):
     assert all(len(v) == 1 for v in purity.values())
     assert set().union(*purity.values()) == {"Thorsten", "Eva", "Karl"}
     n = len(purity)
-    assert result.unassigned_speakers == n
     embs, model_id = rec.load_embeddings()
     assert model_id == "wespeaker_en_voxceleb_resnet34_LM" and len(embs) == n
     assert all(v.shape == (256,) for v in embs.values())
     assert rec.load_meta()["processing"]["diarization"]["speakers"] == n
+    speakers = rec.load_speakers()
+    minor = {sid for sid, s in speakers.items() if s.minor}
+    # offered for naming: every cluster with text except the short fragments - one per real voice here
+    assert result.unassigned_speakers == n - len(minor) == 3
+    # no text is lost or given to a wrong voice: each utterance's word names its true voice and lands
+    # at a speaker whose cluster(s) contain only that voice
+    utts = [u for u in rec.load_utterances() if u.track == "remote"]
+    assert sorted(u.text.strip() for u in utts) == sorted(v for _s, _e, v in truth)
+    by_speaker: dict[str, set[str]] = {}
+    for u in utts:
+        by_speaker.setdefault(u.speaker, set()).add(u.text.strip())
+    assert all(len(v) == 1 for v in by_speaker.values()), by_speaker
+    assert not minor & set(by_speaker), "a fragment kept its own text instead of going to its voice"

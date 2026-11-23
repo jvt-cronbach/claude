@@ -31,6 +31,7 @@ PIECE_MAX_S = 600.0
 CLIP_MAX_S = 30.0
 DETECT_MIN_WINDOWS = 2
 DETECT_STOP_PROB = 0.9
+EARLY_STOP_WINDOWS = 3  # first, last, middle
 
 
 @dataclass
@@ -82,12 +83,18 @@ def merge_clips(chunks: list[dict[str, int]], max_s: float = CLIP_MAX_S) -> list
     clips: list[dict[str, float]] = []
     pos = 0
     start = 0
+    limit = int(max_s * SR)
     for c in chunks:
         n = int(c["end"]) - int(c["start"])
-        if pos + n - start > max_s * SR and pos > start:
+        if pos + n - start > limit and pos > start:
             clips.append({"start": start / SR, "end": pos / SR})
             start = pos
         pos += n
+        # a single chunk longer than one window (no VAD limit): the batched pipeline would only
+        # transcribe the first 30 s of the clip - cut it into windows instead of losing the rest
+        while pos - start > limit:
+            clips.append({"start": start / SR, "end": (start + limit) / SR})
+            start += limit
     if pos > start:
         clips.append({"start": start / SR, "end": pos / SR})
     return clips
@@ -128,15 +135,24 @@ class LaneGate:
             self._cond.notify_all()
 
 
-def read_control(stream: Iterable[str], gate: LaneGate) -> None:
-    """Parent -> worker commands on stdin: ``LANES <n>``."""
-    for line in stream:
-        parts = line.split()
-        if len(parts) == 2 and parts[0] == "LANES":
-            try:
-                gate.set_active(int(parts[1]))
-            except ValueError:
-                continue
+def read_control(stream: Iterable[str], gate: LaneGate, on_eof: Callable[[], None] | None = None) -> None:
+    """Parent -> worker commands on stdin: ``LANES <n>``.
+
+    The parent keeps stdin open as long as it waits for the worker; the end of the stream while the
+    worker still runs means the parent is gone (app killed, crashed, updater). ``on_eof`` then ends
+    the worker - otherwise a worker paused for a call would wait forever, holding the model in memory."""
+    try:
+        for line in stream:
+            parts = line.split()
+            if len(parts) == 2 and parts[0] == "LANES":
+                try:
+                    gate.set_active(int(parts[1]))
+                except ValueError:
+                    continue
+    except (OSError, ValueError):
+        pass
+    if on_eof is not None and not gate.closed:
+        on_eof()
 
 
 # -- language detection --------------------------------------------------------------------------
@@ -207,7 +223,14 @@ def detect_windows(model: Any, samples: Any, chunks: list[dict[str, Any]], windo
         out.append({"start": round(_original_time(start, chunks), 1), "speech_s": round(len(seg) / SR, 1),
                     "top": top, "top_prob": round(probs.get(top, 0.0), 4),
                     "probs": {k: round(v, 5) for k, v in probs.items() if v >= 0.001}})
-        if early_stop and candidates and clear_agreement(out, candidates, min_speech_s=min_speech_s):
+        # Stop early only when the windows confirm the PRIOR (first candidate) - measuring more can then
+        # only confirm it, the decision rule would not switch anyway. Windows naming another language
+        # are never enough on their own: the first and the last window of a call are often greetings
+        # in another language (0.4.0 stopped after them and transcribed a German call in English).
+        # At least first, last and middle window, so a long middle part is always looked at.
+        if early_stop and candidates and clear_agreement(out, candidates[:1], min_windows=min(EARLY_STOP_WINDOWS,
+                                                                                               len(starts)),
+                                                         min_speech_s=min_speech_s):
             break
     out.sort(key=lambda w: w["start"])
     return {"duration": round(duration, 2), "speech_s": round(len(speech) / SR, 1), "windows": out,

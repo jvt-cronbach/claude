@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -356,8 +357,12 @@ def run_session(job: dict[str, Any], gate: Any = None, model_factory: Any = None
                        timing=timing, **model_kwargs)
     emit_safe("STAGE prepare")
     dec = dict(job.get("decoding") or {})
-    batched = bool(dec.get("batched"))
     vad = dict(dec["vad"]) if job.get("vad_filter", True) and dec.get("vad") else None
+    # the batched pipeline needs speech chunks of at most one 30-s window; without the VAD
+    # (vad_filter = false) the track is one long chunk: decode it sequentially (nothing is cut)
+    batched = bool(dec.get("batched")) and vad is not None
+    if bool(dec.get("batched")) and not batched:
+        dec = {**dec, "batched": False, "batched_off": "VAD ausgeschaltet"}
     tracks: dict[str, TrackState] = {}
     for name, spec in (job.get("tracks") or {}).items():
         st = TrackState(name, str(spec["audio"]))
@@ -448,7 +453,12 @@ def session_main(job_path: str, out_path: str) -> int:
     lanes = max(1, int(job.get("lanes", 1)))
     gate = LaneGate(lanes, int(job.get("active_lanes", lanes)))
     if sys.stdin is not None and not job.get("no_control"):
-        threading.Thread(target=read_control, args=(sys.stdin, gate), name="control", daemon=True).start()
+        def parent_gone() -> None:
+            print("Steuerkanal geschlossen (App beendet) - Transkription wird beendet", file=sys.stderr, flush=True)
+            os._exit(4)
+
+        threading.Thread(target=read_control, args=(sys.stdin, gate, parent_gone), name="control",
+                         daemon=True).start()
     try:
         result = run_session(job, gate)
     finally:

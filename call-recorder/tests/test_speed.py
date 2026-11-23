@@ -221,11 +221,14 @@ def test_detect_windows_stops_early_once_clear():
     audio = np.zeros(SR * 400, dtype=np.float32)
     chunks = _chunks((0, 100), (200, 400))
     res = ses.detect_windows(Stub(), audio, chunks, 6, ["de", "en"], early_stop=True)
-    assert res["measured"] == 2 and res["planned"] == 6 and len(encoded) == 2
+    assert res["measured"] == 3 and res["planned"] == 6 and len(encoded) == 3  # first, last, middle
     assert [w["start"] for w in res["windows"]] == sorted(w["start"] for w in res["windows"])
     assert res["windows"][-1]["start"] == pytest.approx(370.0, abs=0.1)  # first and last window measured
     full = ses.detect_windows(Stub(), audio, chunks, 6, ["de", "en"], early_stop=False)
     assert full["measured"] == 6
+    # windows naming another language than the prior never stop the measurement early
+    Inner.detect_language = lambda self, enc: [[("<|en|>", 0.97), ("<|de|>", 0.02)]]
+    assert ses.detect_windows(Stub(), audio, chunks, 6, ["de", "en"], early_stop=True)["measured"] == 6
     assert ses.detect_windows(Stub(), audio, [], 6)["windows"] == []
 
 

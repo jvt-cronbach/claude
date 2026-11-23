@@ -1046,8 +1046,9 @@ fast nur der *Encoder* Zeit (gemessen mit dem Aufbau von large-v3-turbo: etwa 4 
   transkribiert; das Modell liegt dabei nur einmal im Speicher). Auf 4 Kernen gemessen: 21–29 % weniger
   Zeit als mit einer Spur und 4 Threads; auf PCs mit 6–8 Kernen deutlich mehr, weil bisher nur 4 genutzt wurden.
 - **Ein Prozess je Aufnahme:** Spracherkennung und beide Spuren laden das Modell nur noch einmal; Audio und
-  Sprachaktivitätserkennung werden je Spur nur einmal berechnet; die Spracherkennung hört auf, sobald die
-  gemessenen Abschnitte eindeutig sind; eine Spur ohne Sprache wird gar nicht transkribiert.
+  Sprachaktivitätserkennung werden je Spur nur einmal berechnet; die Spracherkennung hört auf, sobald Anfang, Ende und
+  Mitte eindeutig die Standardsprache (erster Kandidat) zeigen – deuten Abschnitte auf eine andere Sprache
+  (z. B. eine englische Begrüßung), werden wie bisher alle Abschnitte gemessen; eine Spur ohne Sprache wird gar nicht transkribiert.
 - **Sprechertrennung im eigenen Prozess** mit niedriger Priorität: Sie blockierte bisher das ganze Programm
   (Fenster, Tray, eine neue Aufnahme) für Minuten. Ab 6 Kernen (oder nach der Messung) läuft sie gleichzeitig
   mit der Transkription.

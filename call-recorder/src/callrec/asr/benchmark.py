@@ -150,6 +150,9 @@ def report_lines(result: dict[str, Any]) -> list[str]:
         lines.append(f"Gewählt: {tuned['lanes']} Spur(en) × {tuned['threads']} Threads"
                      + (f" – {result['speedup_vs_before']:.1f}× so schnell wie bisher".replace(".", ",")
                         if result.get("speedup_vs_before") else ""))
+    if result.get("not_applied"):
+        lines.append(f"Ergebnis nicht übernommen ({result['not_applied'].get('why', '')}) – die automatische "
+                     "Einstellung bleibt; bitte mit Netzteil und ohne laufende Aufnahme erneut messen.")
     if "parallel_diarization" in result:
         lines.append("Sprechertrennung: " + ("gleichzeitig mit der Transkription (schneller gemessen)"
                                              if result["parallel_diarization"] else "nach der Transkription"))
@@ -352,9 +355,31 @@ def run_benchmark(cfg: Any, folder: Path | None = None, seconds: float = DEFAULT
                 return
             super().feed(line)
 
+    aborted: list[str] = []
+
+    def control(proc: Any) -> None:
+        """A recording, a call or a processing job that starts meanwhile stops the measurement: it needs
+        the CPU (the recording must not lose audio) and the numbers would be wrong anyway."""
+        while proc.poll() is None:
+            time.sleep(BUSY_POLL_S)
+            why = interference(proc)
+            if why:
+                aborted.append(why)
+                try:
+                    proc.kill()
+                except OSError:
+                    pass
+                return
+
     started = time.monotonic()
-    rc = tr._run(tr.command_prefix + ["--benchmark", str(job_path), "--out", str(out_path)], on_progress,
-                 work / "benchmark.log", _Out(on_progress))
+    try:
+        rc = tr._run(tr.command_prefix + ["--benchmark", str(job_path), "--out", str(out_path)], on_progress,
+                     work / "benchmark.log", _Out(on_progress), control=control)
+    finally:
+        job_path.unlink(missing_ok=True)  # names the recording's files
+    if aborted:
+        out_path.unlink(missing_ok=True)
+        raise RuntimeError(f"Messung abgebrochen: {aborted[0]} – nichts gespeichert, bitte später erneut messen.")
     if rc != 0 or not out_path.exists():
         raise TranscriptionError(f"Messung fehlgeschlagen (Exit-Code {rc}), Details: {work / 'benchmark.log'}")
     result = json.loads(out_path.read_text(encoding="utf-8"))
@@ -386,7 +411,17 @@ def run_benchmark(cfg: Any, folder: Path | None = None, seconds: float = DEFAULT
             log.warning("Messung der Sprechertrennung fehlgeschlagen: %s", exc)
         finally:
             wav.unlink(missing_ok=True)
-    result.update(choose(result, cores))
+            # the speaker separation's result holds voice embeddings of the clip: nothing may stay
+            import shutil
+
+            shutil.rmtree(work / "diarize", ignore_errors=True)
+    choice = choose(result, cores)
+    if pw.slow or interference(None):
+        # measured on battery / in energy-saver mode or while the PC got busy: shown, but not used
+        # for the automatic layout (it would hold until the next measurement)
+        result["not_applied"] = {**choice, "why": pw.warning() or interference(None)}
+    else:
+        result.update(choice)
     if save:
         tmp = result_file().with_suffix(".tmp")
         tmp.write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -395,6 +430,22 @@ def run_benchmark(cfg: Any, folder: Path | None = None, seconds: float = DEFAULT
 
 
 # -- app entry points (settings pages, CLI) ---------------------------------------------------------
+BUSY_POLL_S = 2.0
+
+
+def interference(own: Any) -> str:
+    """What started during the measurement ("" = nothing): recording, call or another worker."""
+    from callrec.asr.transcriber import _ACTIVE, _ACTIVE_LOCK
+    from callrec.speakers.threads import busy_reason as call_reason
+
+    reason = call_reason()
+    if reason:
+        return reason
+    with _ACTIVE_LOCK:
+        others = [p for p in _ACTIVE if p is not own]
+    return "eine Verarbeitung hat begonnen" if own is not None and others else ""
+
+
 def busy_reason() -> str:
     """Why measuring now would give wrong numbers ("" = fine)."""
     from callrec.asr.transcriber import _ACTIVE, _ACTIVE_LOCK
