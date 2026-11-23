@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "version": "0.4.0",
-  "commit": "883db0a5376ef2e3de1f0d1fc06d2a1bdbedb352",
+  "commit": "05f5261e5ece99a2f161e80bb0c030fcfb6ec6fd",
   "date": "2026-11-23",
   "notes": [
     "Schnellere Verarbeitung auf PCs ohne NVIDIA-Grafik: Whisper nutzt jetzt alle Prozessorkerne (bisher höchstens 4) und transkribiert beide Spuren in Teilen gleichzeitig. Das Modell wird nur noch einmal je Aufnahme geladen, Spracherkennung und Sprachaktivitätserkennung werden nicht mehr doppelt gerechnet, und eine Spur ohne Sprache wird übersprungen.",
