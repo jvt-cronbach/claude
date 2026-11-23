@@ -1,17 +1,16 @@
 {
   "schema": 1,
-  "version": "0.3.1",
+  "version": "0.4.0",
   "commit": "883db0a5376ef2e3de1f0d1fc06d2a1bdbedb352",
-  "date": "2026-11-20",
+  "date": "2026-11-23",
   "notes": [
-    "Sprecher zuordnen: Sehr kurze Stimmen (unter 5 s Sprache – Husten, „mhm“, Störgeräusche) werden nicht mehr abgefragt und zählen nicht als offen. Ihr Text bleibt erhalten: bei der passenden Person oder als „Unklar“. „Kurze Fragmente anzeigen“ blendet sie bei Bedarf ein; „Sprecherzuordnung neu prüfen“ wendet das auf ältere Aufnahmen an.",
-    "„Anhören“ spielt jetzt eine längere, saubere Stelle (etwa 8–15 s, ohne Überlappung mit anderen Stimmen) mit Angabe der Länge; „Weiteres Beispiel“ spielt eine andere Stelle.",
-    "Löschen: gut sichtbar in jeder Aufnahme, per Rechtsklick und Entf, mehrere Aufnahmen auf einmal; wahlweise nur Audio, Audio und Transkript (Zusammenfassung bleibt) oder alles. „Behalten“ schützt eine Aufnahme.",
-    "Neu: Automatisches Löschen – nach 7 Tagen werden Audio und Transkript endgültig gelöscht, die Zusammenfassung bleibt (Einstellungen › Löschen). Vorher steht „wird in … Tagen gelöscht“ in der Übersicht. Sind beim Update schon ältere Aufnahmen da, wird zuerst gefragt. An SharePoint übergebene Zusammenfassungen bleiben immer.",
-    "Zusammenfassung: nur Geschäftsrelevantes – Smalltalk, Tratsch und Witze werden nicht berücksichtigt; ohne geschäftsrelevante Inhalte genügt eine Zeile. Unveränderte Vorlagen werden umgestellt, angepasste bleiben.",
-    "Eigenes Logo: CallRecorder erscheint in der Taskleiste mit eigenem Symbol und Namen und lässt sich anheften; während einer Aufnahme wird das Symbol rot.",
-    "Ein zweiter Start holt das Fenster der laufenden Instanz nach vorn. Beim Herunterfahren oder Abmelden wird eine laufende Aufnahme regulär beendet und gespeichert.",
-    "Hinweise nach einem Update (z. B. die Frage vor der Aufnahme statt des Häkchens seit 0.3) erscheinen jetzt genau einmal – auch nach „callrec tray --ui …“."
+    "Schnellere Verarbeitung auf PCs ohne NVIDIA-Grafik: Whisper nutzt jetzt alle Prozessorkerne (bisher höchstens 4) und transkribiert beide Spuren in Teilen gleichzeitig. Das Modell wird nur noch einmal je Aufnahme geladen, Spracherkennung und Sprachaktivitätserkennung werden nicht mehr doppelt gerechnet, und eine Spur ohne Sprache wird übersprungen.",
+    "Neu: „Tempo und Genauigkeit“ mit den Profilen „Schnell“, „Ausgewogen“ (Standard) und „Genau“ (wie bisher) – in den Einstellungen und bei „Neu transkribieren“ je Aufnahme wählbar. Selbst geänderte Werte bleiben als „Eigene Einstellungen“ erhalten.",
+    "Die Sprechertrennung läuft in einem eigenen Prozess mit niedriger Priorität: Fenster, Infobereich und eine neue Aufnahme bleiben währenddessen bedienbar. Auf PCs mit vielen Kernen läuft sie gleichzeitig mit der Transkription.",
+    "Während eines Teams-Anrufs oder einer Aufnahme rechnet die Verarbeitung mit etwa der Hälfte der Kerne weiter – oder pausiert auf Wunsch (Einstellungen › Transkription). Akkubetrieb und Energiesparmodus werden angezeigt, weil sie die Verarbeitung stark verlangsamen.",
+    "Neu: „Geschwindigkeit messen“ (Einstellungen › Transkription, oder „callrec benchmark“) prüft mit einem kurzen Ausschnitt einer vorhandenen Aufnahme, welche Einstellung auf diesem PC am schnellsten ist, und übernimmt sie.",
+    "Jede Aufnahme zeigt in den Details die Verarbeitungszeit je Schritt („Verarbeitung: 6 min 40 s für 38 min Gespräch …“); die Statusanzeige schätzt die Restzeit anhand der letzten Aufnahmen auf diesem PC.",
+    "Die Hörfassung (mix) entsteht erst nach dem Transkript. Das Modell „distil-large-v3.5“ wird nicht mehr angeboten (nur für Englisch trainiert und auf dem Prozessor nicht schneller)."
   ],
   "python": ">=3.12,<3.14"
 }

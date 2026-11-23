@@ -287,11 +287,12 @@ class AppActions:
         self._changed(rec)
         return True
 
-    def retranscribe(self, rec: Recording | None = None, language: str | None = None, preset: str | None = None) -> bool:
+    def retranscribe(self, rec: Recording | None = None, language: str | None = None, preset: str | None = None,
+                     profile: str | None = None) -> bool:
         rec = self._resolve(rec)
         if rec is None or not self.cloud_ok(rec, STEP_PRESETS["retranscribe"]):
             return False
-        self.controller.retranscribe(rec, language=language, preset=preset)
+        self.controller.retranscribe(rec, language=language, preset=preset, **({'profile': profile} if profile else {}))
         what = language_label(language) if language else "aktuelle Einstellungen"
         self.ui.notify("Neu-Transkription gestartet", f"{rec.folder.name}: {what}" + (f", Preset {preset}" if preset else ""))
         self._changed(rec)
@@ -522,8 +523,9 @@ class AppActions:
         choice = self.dialogs.ask_retranscribe(rec, list_presets())
         if choice is None:
             return False
-        language, preset = choice
-        return self.retranscribe(rec, language=language, preset=preset)
+        language, preset, *rest = choice
+        profile = rest[0] if rest else None
+        return self.retranscribe(rec, language=language, preset=preset, profile=profile)
 
     def settings(self, tab: str = "") -> bool:
         mics: list[str] = []

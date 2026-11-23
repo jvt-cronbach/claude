@@ -12,6 +12,7 @@ import logging
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -48,6 +49,9 @@ IDENTIFY_RULE = "participants-v2"  # meta.json processing.identification.rule of
 # below this similarity, clusters merged by the participant limit are probably different people:
 # the merged speaker is still named after the only participant, but teaches no voice profile
 SOLE_MIN_MERGE_SIMILARITY = 0.3
+PARALLEL_DIAR_THREADS = 2  # speaker separation alongside the transcription
+PARALLEL_MIN_CORES = 6  # without a benchmark: parallel only from this many physical cores
+PAUSE_POLL_S = 5.0
 STEPS = ("finalize", "transcribe", "diarize", "identify", "render", "summarize")
 ALL_STEPS = frozenset(STEPS)
 # Named step sets, shared by the CLI, the tray and the main window (one source of truth).
@@ -84,6 +88,9 @@ class Components:
     audio_loader: AudioLoader
     glossary: list[str] = field(default_factory=list)
     replacements: list[Rule] = field(default_factory=list)
+    # speaker separation in a child process: (remote audio, threads, work dir, progress) -> result of
+    # callrec.speakers.worker.run_job; None = in this process with diarizer_factory/embedder_factory
+    speaker_worker: Callable[[Any, int, Any, Callable[[float], None]], dict[str, Any]] | None = None
 
 
 @dataclass
@@ -144,7 +151,11 @@ class Pipeline:
         self.cfg = cfg
         self.c = components
         self._language: str | None = None  # one-off override for run(): "de", "en", ... or "auto"
+        self._profile: str | None = None  # one-off transcription profile for run()
         self._should_cancel: Callable[[], bool] = lambda: False
+        self._timing: dict[str, Any] = {}  # details of this run's stages (meta processing.timings)
+        self._parallel: Any = None  # speaker separation running alongside the transcription
+        self._mix_pending = False
 
     # -- settings snapshots (recorded in meta.json for before/after comparison) --
     def effective_prompt(self, rec: Recording) -> str:
@@ -163,12 +174,42 @@ class Pipeline:
     def asr_settings(self, rec: Recording) -> dict[str, Any]:
         import dataclasses
 
+        from callrec.asr.profiles import decoding_for
+
         return {
             **dataclasses.asdict(self.cfg.transcription),
             "effective_initial_prompt": self.effective_prompt(rec),
             "hotwords": self.hotwords(),
             "preset": self.cfg.active_preset,
+            "effective_profile": decoding_for(self.cfg.transcription, self._profile).to_dict(),
         }
+
+    def parallel_diarization(self) -> bool:
+        """Run the speaker separation alongside the transcription? ("auto": benchmark, else >= 6 cores)."""
+        mode = self.cfg.processing.parallel_diarization
+        if mode == "off" or self.c.speaker_worker is None or not self.cfg.diarization.enabled:
+            return False
+        if mode == "on":
+            return True
+        from callrec.asr.benchmark import parallel_decision
+        from callrec.speakers.threads import physical_cores
+
+        measured = parallel_decision()
+        return measured if measured is not None else physical_cores() >= PARALLEL_MIN_CORES
+
+    def _wait_while_busy(self, progress: ProgressFn, step: str) -> None:
+        """processing.during_call = "pause": wait before a stage while a recording/call runs."""
+        if self.cfg.processing.during_call != "pause":
+            return
+        import time
+
+        from callrec.speakers.threads import busy_reason, pc_busy
+
+        while pc_busy():
+            progress(step, -1.0, f"pausiert – {busy_reason()}")
+            if self._should_cancel():
+                raise ProcessingCancelled()
+            time.sleep(PAUSE_POLL_S)
 
     def render_settings(self) -> dict[str, Any]:
         import dataclasses
@@ -190,6 +231,7 @@ class Pipeline:
         progress: ProgressFn = lambda s, f, m: None,
         language: str | None = None,
         should_cancel: Callable[[], bool] | None = None,
+        profile: str | None = None,
     ) -> ProcessResult:
         """``language`` overrides transcription.language for this run ("auto" = detect again).
 
@@ -197,7 +239,9 @@ class Pipeline:
         worker process (language detection, each track); a running worker is stopped separately
         via ``cancel_running_workers``."""
         self._language = language or None
+        self._profile = profile or None
         self._should_cancel = should_cancel or (lambda: False)
+        self._timing, self._parallel, self._mix_pending = {}, None, False
         wanted = set(steps)
         unknown = wanted - ALL_STEPS
         if unknown:
@@ -217,31 +261,96 @@ class Pipeline:
                                     "trennen ist nicht mehr möglich.")
         result = ProcessResult()
         rec.update_meta(["processing", "status"], "running")
+        import time
+
+        from callrec.asr.transcriber import reset_cancel
+
+        reset_cancel()
+        started = time.monotonic()
+        steps_s: dict[str, float] = {}
         try:
             for step in STEPS:
                 if step not in wanted:
                     continue
                 if should_cancel is not None and should_cancel():
                     raise ProcessingCancelled()
+                if step != "finalize":
+                    self._wait_while_busy(progress, step)
+                if step == "transcribe" and "diarize" in wanted and self.parallel_diarization():
+                    self._start_parallel_diarization(rec)
                 progress(step, 0.0, "")
+                t0 = time.monotonic()
                 getattr(self, f"_step_{step}")(rec, result, lambda f, m="", s=step: progress(s, f, m))
+                steps_s[step] = round(time.monotonic() - t0, 2)
                 progress(step, 1.0, "")
                 result.steps_done.append(step)
+                if step == "render" and self._mix_pending:
+                    self._build_mix(rec)
+            if self._mix_pending:
+                self._build_mix(rec)
         except Exception as exc:
+            if self._parallel is not None:  # do not let the speaker separation run on for minutes
+                from callrec.asr.transcriber import cancel_running_workers
+
+                cancel_running_workers()
+            self._join_parallel()
             rec.update_meta(["processing", "status"], "cancelled" if is_cancellation(exc) else f"error: {exc}")
             raise
+        self._record_timings(rec, steps_s, time.monotonic() - started)
         rec.update_meta(["processing", "status"], "done")
         rec.update_meta(["processing", "last_run"], _now_iso())
         return result
 
+    def _record_timings(self, rec: Recording, steps_s: dict[str, float], total_s: float) -> None:
+        """Per-stage times of this run (meta.json, recording details, estimates for later recordings)."""
+        from callrec import proctimes
+
+        try:
+            meta = rec.load_meta()
+            entry = proctimes.make_entry(steps_s, total_s, rec.duration() or 0.0, self._timing, meta,
+                                         self._profile or self.cfg.transcription.profile)
+            rec.update_meta(["processing", "timings"], entry)
+            if {"transcribe", "diarize"} <= set(steps_s):
+                rec.update_meta(["processing", "timings_full"], entry)
+            proctimes.append_history(entry)
+            log.info("Verarbeitung %s: %s", rec.folder.name, proctimes.summary_text(entry))
+        except Exception:  # noqa: BLE001 - timings are a diagnostic
+            log.warning("Verarbeitungszeiten nicht gespeichert (%s)", rec.folder.name, exc_info=True)
+
+    def _build_mix(self, rec: Recording) -> None:
+        """The listening mix is not needed for the transcript: built after it (FLAC encoding of a
+        1-h call takes several seconds)."""
+        import time
+
+        from callrec.audio.finalize import audio_paths, build_mix
+
+        self._mix_pending = False
+        fa = find_audio(rec.folder)
+        if fa is None or fa.mix is not None:
+            return
+        fmt = "flac" if fa.mic.suffix == ".flac" else "opus"
+        t0 = time.monotonic()
+        try:
+            mix = build_mix(fa.mic, fa.remote, audio_paths(rec.folder, fmt).mic.with_name(f"mix{fa.mic.suffix}"), fmt)
+            meta = rec.load_meta()
+            files = dict((meta.get("audio") or {}).get("files") or {})
+            files["mix"] = mix.name
+            rec.update_meta(["audio", "files"], files)
+        except Exception:  # noqa: BLE001 - only for listening; the tracks are complete
+            log.warning("Hörfassung (mix) nicht erstellt (%s)", rec.folder.name, exc_info=True)
+        self._timing["mix_s"] = round(time.monotonic() - t0, 2)
+
     # -- steps ---------------------------------------------------------
     def _step_finalize(self, rec: Recording, result: ProcessResult, progress: Callable[..., None]) -> None:
-        if not has_unfinished_parts(rec.folder) and find_audio(rec.folder):
-            return
-        fa = finalize_recording(rec.folder, self.cfg.audio.format, self.cfg.audio.write_mix, self.cfg.audio.keep_wav)
+        if not has_unfinished_parts(rec.folder):
+            existing = find_audio(rec.folder)
+            if existing is not None:
+                self._mix_pending = self.cfg.audio.write_mix and existing.mix is None
+                return
+        # the listening mix follows after the transcript (see _build_mix)
+        fa = finalize_recording(rec.folder, self.cfg.audio.format, False, self.cfg.audio.keep_wav)
+        self._mix_pending = self.cfg.audio.write_mix
         files = {"mic": fa.mic.name, "remote": fa.remote.name}
-        if fa.mix:
-            files["mix"] = fa.mix.name
         rec.update_meta(["audio"], {"format": self.cfg.audio.format, "files": files})
         meta = rec.load_meta()
         if (meta.get("recording") or {}).get("status") == "recording":
@@ -290,8 +399,89 @@ class Pipeline:
         if self._should_cancel():
             raise ProcessingCancelled()
 
+    def _language_spec(self, names: list[str]) -> dict[str, Any]:
+        """What the session worker should do about the language: forced (with the decision) or detect."""
+        from callrec.asr import language as lang
+        from callrec.asr.profiles import decoding_for
+
+        tcfg = self.cfg.transcription
+        override = (self._language or "").strip().lower()
+        if override and override != "auto":
+            return {"mode": "forced", "decision": lang.forced(override, names, "für diese Verarbeitung gewählt")}
+        if not override and tcfg.language != "auto":
+            return {"mode": "forced", "decision": lang.forced(tcfg.language, names, "fest eingestellt")}
+        dec = decoding_for(tcfg, self._profile)
+        return {"mode": "auto", "candidates": list(tcfg.language_candidates),
+                "threshold": tcfg.language_switch_threshold, "min_speech_s": tcfg.language_min_speech_s,
+                "windows": dec.detection_windows, "early_stop": dec.detection_early_stop}
+
+    def _transcribe_session(self, rec: Recording, result: ProcessResult, progress: Callable[..., None], fa: Any,
+                            transcriber: Any, prompt: str, hotwords: str) -> None:
+        """0.4: one worker process for the language detection and both tracks."""
+        run_id = _run_id()
+        selection = str(getattr(transcriber, "selection_note", "") or "")
+        if selection:
+            result.messages.append(selection)
+            log.info("Transkription: %s", selection)
+        self._check_cancel()
+        tracks = {"mic": fa.mic, "remote": fa.remote}
+        spec = self._language_spec(list(tracks))
+
+        def session_progress(f: float, msg: str = "") -> None:
+            progress(-1.0 if f < 0 else f, msg)
+
+        from callrec.speakers.threads import physical_cores
+
+        reserve = PARALLEL_DIAR_THREADS if self._parallel is not None and physical_cores() > PARALLEL_DIAR_THREADS else 0
+        res = transcriber.transcribe_session(
+            tracks, {t: rec.asr_path(t) for t in tracks}, language=spec, work_dir=rec.data_dir,
+            initial_prompt=prompt, hotwords=hotwords, progress=session_progress, profile=self._profile,
+            reserve_threads=reserve, during_call=self.cfg.processing.during_call)
+        decision = dict(res.decision or {})
+        result.language_note = str(decision.get("reason") or "")
+        log.info("Sprache %s: %s", rec.folder.name, result.language_note)
+        result.messages.append(f"Sprache: {result.language_note}")
+        tcfg = self.cfg.transcription
+        asr_meta: dict[str, Any] = {}
+        stats = dict(res.stats or {})
+        for track in tracks:
+            asr: AsrResult = res.asr[track]
+            rec.save_asr(track, asr)
+            asr_meta[track] = {"model": asr.model, "device": asr.device, "compute_type": asr.compute_type,
+                               "language": asr.language}
+            q = quality.check(asr.segments, tcfg.repetition_warn_min_repeats, tcfg.compression_ratio_threshold)
+            asr_meta[track]["quality"] = q
+            for r in q["repetitions"]:
+                log.warning("Spur %s: mögliche Wiederholungsschleife bei %.0f s: %r x%d (%s)",
+                            track, r["start"], r["phrase"], r["repeats"], rec.folder.name)
+            tstats = dict((stats.get("tracks") or {}).get(track) or {})
+            if tstats:
+                asr_meta[track]["timing"] = tstats
+                if tstats.get("skipped"):
+                    result.messages.append(f"Spur {track}: {tstats['skipped']}")
+        timing = dict(stats.get("timing") or {})
+        audio_s = max((float((stats.get("tracks") or {}).get(t, {}).get("audio_s") or 0.0) for t in tracks), default=0.0)
+        if audio_s > 0 and timing.get("wall_s"):
+            timing["rtf"] = round(float(timing["wall_s"]) / audio_s, 3)  # both tracks, per second of the call
+        self._timing["transcription"] = {**timing, "threads": stats.get("threads"), "pieces": stats.get("pieces")}
+        log.info("Transkription %s: %s, Profil %s, %s", rec.folder.name, timing,
+                 (stats.get("decoding") or {}).get("profile"), (stats.get("threads") or {}))
+        tmeta: dict[str, Any] = {**asr_meta, "run_id": run_id, "settings": self.asr_settings(rec),
+                                 "language_detection": decision, "finished_at": _now_iso(),
+                                 "profile": (stats.get("decoding") or {}).get("profile"),
+                                 "timing": timing, "threads": stats.get("threads")}
+        result.transcript_warnings = quality.warning_lines({t: asr_meta[t]["quality"] for t in ("mic", "remote")},
+                                                           lambda x: fmt_ts(x))
+        for w in result.transcript_warnings:
+            result.messages.append(f"Warnung: {w}")
+        if selection:
+            tmeta["selection_note"] = selection
+        rec.update_meta(["processing", "transcription"], tmeta)
+
     def _transcribe_tracks(self, rec: Recording, result: ProcessResult, progress: Callable[..., None], fa: Any,
                            transcriber: Any, prompt: str, hotwords: str) -> None:
+        if callable(getattr(transcriber, "transcribe_session", None)):
+            return self._transcribe_session(rec, result, progress, fa, transcriber, prompt, hotwords)
         run_id = _run_id()
         asr_meta: dict[str, Any] = {}
         selection = str(getattr(transcriber, "selection_note", "") or "")
@@ -400,7 +590,9 @@ class Pipeline:
         model_id = ""
         timing: dict[str, Any] = {}
         signal: dict[str, Any] = {}
-        if self.cfg.diarization.enabled and self.c.diarizer_factory is not None:
+        if self.cfg.diarization.enabled and self.c.speaker_worker is not None:
+            turns, embeddings, self_embedding, model_id, signal, timing = self._diarize_in_child(rec, result, progress)
+        elif self.cfg.diarization.enabled and self.c.diarizer_factory is not None:
             fa = self._audio(rec)
             t0 = time.monotonic()
             samples, sr = self.c.audio_loader(fa.remote, 16000)
@@ -431,6 +623,8 @@ class Pipeline:
             if timing.get("audio_s"):
                 timing["rtf"] = round(timing["total_s"] / timing["audio_s"], 3)
             log.info("Sprechertrennung %s: %s", rec.folder.name, timing)
+        if timing:
+            self._timing["diarization"] = timing
         rec.data_dir.mkdir(parents=True, exist_ok=True)
         rec.turns_path.write_text(
             json.dumps([t.__dict__ for t in turns], ensure_ascii=False), encoding="utf-8"
@@ -461,8 +655,100 @@ class Pipeline:
             },
         )
 
+    # -- speaker separation in a child process (0.4) -----------------------------------------------
+    def _start_parallel_diarization(self, rec: Recording) -> None:
+        """Start the speaker separation now, alongside the transcription (own process, 2 threads)."""
+        import threading
+
+        fa = self._audio(rec) if find_audio(rec.folder) is not None else None
+        if fa is None or self.c.speaker_worker is None:
+            return
+        box: dict[str, Any] = {"progress": 0.0}
+        worker = self.c.speaker_worker
+
+        def run() -> None:
+            import time
+
+            t0 = time.monotonic()
+            try:
+                box["result"] = worker(fa.remote, PARALLEL_DIAR_THREADS, rec.data_dir,
+                                       lambda f: box.__setitem__("progress", f))
+            except BaseException as exc:  # noqa: BLE001 - raised again in the diarize step
+                box["error"] = exc
+            box["wall_s"] = round(time.monotonic() - t0, 2)
+
+        th = threading.Thread(target=run, name="diarize-parallel", daemon=True)
+        box["thread"] = th
+        self._parallel = box
+        log.info("Sprechertrennung startet parallel zur Transkription (%d Threads)", PARALLEL_DIAR_THREADS)
+        th.start()
+
+    def _join_parallel(self) -> dict[str, Any] | None:
+        box, self._parallel = self._parallel, None
+        if box is None:
+            return None
+        box["thread"].join()
+        return box
+
+    def _diarize_in_child(self, rec: Recording, result: ProcessResult, progress: Callable[..., None],
+                          ) -> tuple[list[SpeakerTurn], dict[str, np.ndarray], np.ndarray | None, str,
+                                     dict[str, Any], dict[str, Any]]:
+        import time
+
+        from callrec.speakers.threads import effective_threads
+
+        fa = self._audio(rec)
+        t0 = time.monotonic()
+        box = self._join_parallel()
+        if box is not None:
+            if "error" in box:
+                raise box["error"]
+            raw = box["result"]
+            parallel = True
+        else:
+            assert self.c.speaker_worker is not None
+            raw = self.c.speaker_worker(fa.remote, effective_threads(self.cfg.diarization.num_threads), rec.data_dir,
+                                        lambda f: progress(0.9 * f, "Sprechertrennung"))
+            parallel = False
+        timing: dict[str, Any] = {**dict(raw.get("timing") or {}), "parallel": parallel}
+        if box is not None:
+            timing["parallel_wall_s"] = box.get("wall_s")
+        turns = [SpeakerTurn(float(t["start"]), float(t["end"]), str(t["speaker"])) for t in raw.get("turns") or []]
+        embeddings = {k: np.asarray(v, dtype=np.float32) for k, v in (raw.get("embeddings") or {}).items()}
+        model_id = str(raw.get("model_id") or "")
+        if raw.get("silent"):
+            result.messages.append("Gegenseite ist stumm - keine Sprechertrennung.")
+        self_embedding: np.ndarray | None = None
+        signal: dict[str, Any] = {}
+        t4 = time.monotonic()
+        progress(0.92, "Mikrofonspur prüfen")
+        remote_env = None
+        env_path = raw.get("envelope")
+        if env_path:
+            try:
+                remote_env = np.load(str(env_path))
+            except (OSError, ValueError):
+                remote_env = None
+        if not raw.get("silent"):
+            embedder = self.c.embedder_factory() if self.c.embedder_factory is not None and turns else None
+            self_embedding, signal = self._track_signals(rec, fa, None, 16000, embedder, remote_env=remote_env)
+        if env_path:
+            try:
+                Path(str(env_path)).unlink()
+            except OSError:
+                pass
+        timing["trackcheck_s"] = round(time.monotonic() - t4, 2)
+        timing["total_s"] = round(time.monotonic() - t0, 2)
+        if timing.get("audio_s"):
+            timing["rtf"] = round(float(timing.get("load_audio_s", 0) or 0) / timing["audio_s"]
+                                  + float(timing.get("diarize_s", 0) or 0) / timing["audio_s"]
+                                  + float(timing.get("embed_s", 0) or 0) / timing["audio_s"], 3)
+        log.info("Sprechertrennung %s: %s", rec.folder.name, timing)
+        return turns, embeddings, self_embedding, model_id, signal, timing
+
     def _track_signals(self, rec: Recording, fa: Any, remote: np.ndarray | None, sr: int,
-                       embedder: Embedder | None) -> tuple[np.ndarray | None, dict[str, Any]]:
+                       embedder: Embedder | None, remote_env: np.ndarray | None = None,
+                       ) -> tuple[np.ndarray | None, dict[str, Any]]:
         """Loudness-envelope correlation of both tracks and the embedding of the mic track.
 
         Computed once per diarization (both need the audio) and cached in the recording; the
@@ -471,9 +757,10 @@ class Pipeline:
         from callrec.speakers.diarize import embed_spans
 
         try:
-            if remote is None:
-                remote, sr = self.c.audio_loader(fa.remote, 16000)
-            remote_env = trackcheck.envelope(remote, sr)
+            if remote_env is None:
+                if remote is None:
+                    remote, sr = self.c.audio_loader(fa.remote, 16000)
+                remote_env = trackcheck.envelope(remote, sr)
             mic, msr = self.c.audio_loader(fa.mic, 16000)
             corr, lag = trackcheck.envelope_correlation(trackcheck.envelope(mic, msr), remote_env)
             signal = {"envelope_corr": round(corr, 3), "lag_s": round(lag, 2)}
@@ -824,8 +1111,15 @@ class Pipeline:
             m = tmeta["mic"]
             note = f"faster-whisper {m.get('model', '')} ({m.get('device', '')}"
             note += f", {m['compute_type']})" if m.get("compute_type") and m.get("device") == "cpu" else ")"
+            session_rtf = (tmeta.get("timing") or {}).get("rtf")
             rtf = (m.get("timing") or {}).get("rtf")
-            if rtf is not None:
+            if session_rtf is not None:  # 0.4: both tracks in one session, per second of the call
+                note += f", Echtzeitfaktor {session_rtf:.2f} für beide Spuren"
+                if tmeta.get("profile"):
+                    from callrec.asr.profiles import label as profile_label
+
+                    note += f", Profil {profile_label(str(tmeta['profile']))}"
+            elif rtf is not None:
                 note += f", Echtzeitfaktor {rtf:.2f}"
             if tmeta.get("selection_note"):
                 note += f" – {tmeta['selection_note']}"

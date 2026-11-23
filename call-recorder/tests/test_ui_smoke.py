@@ -557,3 +557,56 @@ def test_update_dialog_offers_update_or_waiting(root):
         assert dialogs.ask_update(root, res, busy, {"previous_commit": "c" * 40}) == expected
     root.after(200, lambda: find(toplevel(root), ttk.Button, "Vorherige Version").invoke())
     assert dialogs.ask_update(root, UpdateError("GitHub nicht erreichbar"), "", {"previous_commit": "c" * 40}) == "restore"
+
+
+def test_settings_transcription_profile_and_speed_measurement(root, tmp_path: Path, monkeypatch):
+    """0.4: profile with its description, call behaviour, and "Geschwindigkeit messen" in the classic dialog."""
+    import callrec.ui.settings as st
+    from callrec.config import Config, load_config, save_config
+
+    path = tmp_path / "config.toml"
+    measured: list[str] = []
+
+    def fake_bench(cfg, progress):
+        progress(0.5, "misst ausgewogen")
+        measured.append(cfg.transcription.profile)
+        return {"runs": [], "clip": {"seconds": 90, "speech_s": 80}, "cores": 8, "model": "large-v3-turbo",
+                "at": "2026-11-23T10:00", "tuned": {"lanes": 2, "threads": 4}}
+
+    monkeypatch.setattr(st.messagebox, "askyesno", lambda *a, **k: True)
+    dlg = st.SettingsDialog(root, Config(), [], [], lambda c: save_config(c, path), benchmark_fn=fake_bench)
+    assert "Noch nicht gemessen" in dlg.speed_var.get() and "Whisper rechnet mit" in dlg.speed_var.get()
+    assert dlg.profile_info.get().startswith("Empfohlen")
+    dlg.vars[("transcription", "profile")].set("schnell")
+    assert dlg.profile_info.get().startswith("Etwa 10–20 % schneller")
+    dlg.vars[("processing", "during_call")].set("pause")
+    dlg.run_benchmark()
+
+    def wait_then_save():
+        if "Gewählt: 2 Spur(en) × 4 Threads" not in dlg.speed_var.get():
+            root.after(50, wait_then_save)
+            return
+        find(dlg.win, ttk.Button, "Speichern").invoke()
+
+    root.after(50, wait_then_save)
+    assert dlg.run() is True
+    c = load_config(path)
+    assert c.transcription.profile == "schnell" and c.processing.during_call == "pause" and measured == ["ausgewogen"]
+
+
+def test_retranscribe_dialog_offers_the_profiles(root, tmp_path: Path):
+    from callrec.ui import dialogs
+    from tests.conftest import make_recording
+
+    rec = make_recording(tmp_path / "r")
+
+    def answer():
+        win = [w for w in root.winfo_children() if isinstance(w, tk.Toplevel)][-1]
+        radios = [w for w in walk(win) if isinstance(w, ttk.Radiobutton)]
+        texts = [str(r.cget("text")) for r in radios]
+        assert "Wie in den Einstellungen" in texts and any(t.startswith("Genau – ") for t in texts)
+        next(r for r in radios if str(r.cget("text")).startswith("Genau – ")).invoke()
+        find(win, ttk.Button, "Neu transkribieren").invoke()
+
+    root.after(100, answer)
+    assert dialogs.ask_retranscribe(root, rec, []) == ("auto", None, "genau")

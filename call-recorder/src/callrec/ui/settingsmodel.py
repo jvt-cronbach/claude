@@ -14,6 +14,9 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from callrec.asr.profiles import DESCRIPTIONS as PROFILE_DESCRIPTIONS
+from callrec.asr.profiles import LABELS as PROFILE_LABELS
+from callrec.asr.profiles import PROFILE_CHOICES
 from callrec.config import (
     GRAPH_FILE_SCOPES,
     TIMESTAMP_FORMATS,
@@ -23,7 +26,18 @@ from callrec.config import (
     config_to_dict,
 )
 
-WHISPER_MODELS = ["auto", "large-v3", "large-v3-turbo", "distil-large-v3.5", "medium", "small", "base"]
+WHISPER_MODELS = ["auto", "large-v3", "large-v3-turbo", "medium", "small", "base"]
+# What each model costs on a CPU, relative to large-v3-turbo (int8): the encoder dominates there
+# (32 layers in large-v3 and turbo alike; distil-large-v3/-v3.5 keep that encoder too and are
+# trained for English only, so they are not offered). See README "Geschwindigkeit".
+WHISPER_MODEL_LABELS = {
+    "auto": "auto – large-v3 mit NVIDIA-GPU, sonst large-v3-turbo (empfohlen)",
+    "large-v3": "large-v3 – genaueste Wahl für eine NVIDIA-GPU; auf der CPU etwa 2–3× langsamer als turbo",
+    "large-v3-turbo": "large-v3-turbo – auf der CPU empfohlen, kaum ungenauer als large-v3",
+    "medium": "medium – auf der CPU nicht schneller als turbo und ungenauer",
+    "small": "small – auf der CPU nur etwa 1,5–2× schneller als turbo, aber deutlich mehr Fehler bei Deutsch",
+    "base": "base – sehr schnell, für Gespräche zu ungenau",
+}
 
 
 @dataclass(frozen=True)
@@ -125,8 +139,12 @@ PAGES: tuple[Page, ...] = (
     )),
     Page("transcription", "Transkription", "Geänderte Werte gelten für neue Aufnahmen; ältere lassen sich über „Neu "
          "transkribieren“ verbessern – die alte Fassung bleibt als Version erhalten.", (
-        Field("transcription", "model", "Whisper-Modell", "„auto“: large-v3 auf einer NVIDIA-GPU, ohne GPU "
-              "large-v3-turbo (int8).", "select", tuple((m, m) for m in WHISPER_MODELS)),
+        Field("transcription", "profile", "Tempo und Genauigkeit", "Gilt für neue Aufnahmen; „Neu transkribieren“ "
+              "fragt je Aufnahme. Den größten Gewinn bringt ohnehin die Nutzung aller Kerne – sie gilt für jedes Profil.",
+              "radio", tuple((k, f"{PROFILE_LABELS[k]} – {PROFILE_DESCRIPTIONS[k]}") for k in PROFILE_CHOICES)),
+        Field("transcription", "model", "Whisper-Modell", "Auf einem PC ohne NVIDIA-GPU ist large-v3-turbo die beste "
+              "Wahl; kleinere Modelle sind schneller, machen aber spürbar mehr Fehler.", "select",
+              tuple((m, WHISPER_MODEL_LABELS[m]) for m in WHISPER_MODELS)),
         Field("transcription", "language", "Sprache", "auto = je Aufnahme erkennen; de/en = erzwingen.", "select",
               _c(("auto", "Automatisch erkennen"), ("de", "Deutsch"), ("en", "Englisch"))),
         Field("transcription", "device", "Rechenwerk", "", "select", _c(("auto", "Automatisch"), ("cuda", "NVIDIA-GPU"),
@@ -134,26 +152,39 @@ PAGES: tuple[Page, ...] = (
         Field("transcription", "use_participant_names_as_prompt", "Namen der Teilnehmenden als Hinweis nutzen"),
         Field("transcription", "use_glossary", "Glossar als Hinweis nutzen"),
         Field("transcription", "initial_prompt", "Zusätzlicher Kontext", "Ein Satz zum Thema hilft bei Fachbegriffen."),
-        Field("transcription", "beam_size", "Beam-Größe (Genauigkeit gegen Tempo)", adv=True),
+        Field("processing", "during_call", "Während eines Anrufs oder einer Aufnahme", "Die Verarbeitung läuft "
+              "immer mit niedriger Priorität.", "radio",
+              _c(("reduce", "Langsamer weiterrechnen – etwa die Hälfte der Kerne bleibt für das Gespräch frei"),
+                 ("pause", "Anhalten – weiter, sobald das Gespräch vorbei ist"))),
+        Field("processing", "parallel_diarization", "Sprechertrennung gleichzeitig mit der Transkription", "„Automatisch“: "
+              "nach der Messung („Geschwindigkeit messen“), ohne Messung ab 6 Prozessorkernen.", "select",
+              _c(("auto", "Automatisch"), ("on", "Immer gleichzeitig"), ("off", "Immer danach"))),
+        Field("transcription", "cpu_threads", "Rechen-Threads für Whisper insgesamt (0 = automatisch)", "Automatisch: alle "
+              "physischen Kerne, während eines Gesprächs etwa die Hälfte.", adv=True),
+        Field("transcription", "parallel_lanes", "Parallele Spuren (0 = automatisch)", "Beide Spuren werden in Teilen "
+              "gleichzeitig transkribiert; automatisch 2 ab 4 Kernen bzw. der gemessene beste Wert.", adv=True),
+        Field("transcription", "beam_size", "Beam-Größe (nur bei „Eigene Einstellungen“)", adv=True),
         Field("transcription", "vad_filter", "Sprachaktivitätserkennung (VAD)", adv=True),
-        Field("transcription", "vad_threshold", "VAD-Schwelle (0..1)", adv=True),
-        Field("transcription", "vad_min_silence_ms", "VAD-Mindestpause (ms)", adv=True),
-        Field("transcription", "vad_speech_pad_ms", "VAD-Polster (ms)", adv=True),
+        Field("transcription", "vad_threshold", "VAD-Schwelle (0..1, nur bei „Eigene Einstellungen“)", adv=True),
+        Field("transcription", "vad_min_silence_ms", "VAD-Mindestpause (ms, nur bei „Eigene Einstellungen“)", adv=True),
+        Field("transcription", "vad_speech_pad_ms", "VAD-Polster (ms, nur bei „Eigene Einstellungen“)", adv=True),
         Field("transcription", "hallucination_silence_threshold", "Halluzinationsschutz in Pausen (s, 0 = aus)", adv=True),
         Field("transcription", "condition_on_previous_text", "Vorherigen Text als Kontext", adv=True),
-    ), ("glossary", "models")),
+    ), ("speed", "glossary", "models")),
     Page("language", "Sprache & Qualität", "Bei Sprache „auto“ wird je Aufnahme an mehreren Stellen beider Spuren "
          "gemessen; die erste Sprache der Liste gilt, solange keine andere eindeutig erkannt wird.", (
         Field("transcription", "language_candidates", "Mögliche Sprachen", "Kommas; die erste gilt bei Zweifel.", "list"),
         Field("summary", "language", "Sprache der Zusammenfassung", "", "select", _c(("de", "Deutsch"), ("en", "Englisch"))),
         Field("transcription", "language_switch_threshold", "Andere Sprache erst ab Wahrscheinlichkeit (0,5–1)", adv=True),
         Field("transcription", "language_min_speech_s", "Mindestens so viel Sprache für einen Wechsel (s)", adv=True),
-        Field("transcription", "language_detection_windows", "Messabschnitte je Spur (je 30 s)", adv=True),
+        Field("transcription", "language_detection_windows", "Messabschnitte je Spur (je 30 s, nur bei „Eigene "
+              "Einstellungen“)", adv=True),
         Field("transcription", "multilingual", "Sprachwechsel innerhalb einer Spur (experimentell)", adv=True),
         Field("transcription", "compression_ratio_threshold", "Schleifenschutz: max. Kompressionsrate (0 = aus)", adv=True),
         Field("transcription", "log_prob_threshold", "Schleifenschutz: min. log-Wahrscheinlichkeit (0 = aus)", adv=True),
         Field("transcription", "no_speech_threshold", "Stille-Schwelle no_speech (0 = aus)", adv=True),
-        Field("transcription", "temperature_fallback", "Neu dekodieren mit höherer Temperatur", adv=True),
+        Field("transcription", "temperature_fallback", "Neu dekodieren mit höherer Temperatur (nur bei „Eigene "
+              "Einstellungen“)", adv=True),
         Field("transcription", "repetition_penalty", "Wiederholungs-Strafe (1 = aus)", adv=True),
         Field("transcription", "no_repeat_ngram_size", "Wiederholte n-Gramme sperren (0 = aus)", adv=True),
         Field("transcription", "repetition_warn_min_repeats", "Warnung ab Wiederholungen in Folge (0 = aus)", adv=True),

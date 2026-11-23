@@ -1,4 +1,4 @@
 """callrec - local call recorder with transcription, speaker identification and summaries."""
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"
 APP_NAME = "CallRecorder"

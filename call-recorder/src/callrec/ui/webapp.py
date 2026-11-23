@@ -96,6 +96,7 @@ class WebCore:
         self._audio_item: Any = None
         self._summary_test: tuple[str, bool] | None = None
         self._download_text = ""
+        self._bench_running = False
         self.windows: Any = None
         self.server: Any = None
         self.restart_args: list[str] | None = None
@@ -284,7 +285,44 @@ class WebCore:
             "anthropic_models": [[m, d + (" – Standard" if m == DEFAULT_MODEL else "")] for m, d in MODEL_CHOICES.items()],
             "remote_allowed": bool(base.summary.allow_remote_endpoint_data_leaves_this_computer),
             "paths": {"presets": str(paths.presets_dir()), "prompts": str(paths.prompts_dir())},
+            "speed": self.speed_info(base),
         }
+
+    def speed_info(self, cfg: Config | None = None) -> dict[str, Any]:
+        from callrec.asr.benchmark import speed_overview
+
+        try:
+            return {**speed_overview(cfg or load_config(preset="")), "running": self._bench_running}
+        except Exception as exc:  # noqa: BLE001 - a settings page must open anyway
+            log.warning("Geschwindigkeitsübersicht nicht verfügbar: %s", exc)
+            return {"plan": "", "lines": [], "power": "", "measured": False, "running": self._bench_running}
+
+    def start_benchmark(self) -> dict[str, Any]:
+        """"Geschwindigkeit messen": runs in a thread, progress as ``bench`` events."""
+        from callrec.asr.benchmark import busy_reason, measure_now
+
+        if self._bench_running:
+            return {"error": "Die Messung läuft bereits."}
+        reason = busy_reason() or ("Gerade wird aufgenommen – bitte danach messen." if self.controller.is_recording else "")
+        if reason:
+            return {"error": reason}
+        self._bench_running = True
+        emit = self.events.emit
+        cfg = load_config(preset="")
+
+        def work() -> None:
+            try:
+                measure_now(cfg, lambda f, m: emit("bench", {"status": m or "misst …", "fraction": f if f >= 0 else None}))
+                emit("bench", {"status": "Messung abgeschlossen.", "fraction": 1.0, "done": True,
+                               "speed": {**self.speed_info(cfg), "running": False}})
+            except Exception as exc:  # noqa: BLE001 - shown on the page
+                log.warning("Geschwindigkeitsmessung fehlgeschlagen", exc_info=True)
+                emit("bench", {"status": str(exc), "fraction": None, "done": True, "error": True})
+            finally:
+                self._bench_running = False
+
+        threading.Thread(target=work, name="benchmark", daemon=True).start()
+        return {"ok": True}
 
     def save_settings(self, patch: dict[str, Any], confirmed: list[str], autostart: bool | None) -> dict[str, Any]:
         from callrec.ui import settingsmodel

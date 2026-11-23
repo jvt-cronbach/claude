@@ -34,6 +34,7 @@ class Job:
     on_done: Callable[[Job, ProcessResult | None, BaseException | None], None] | None = None
     language: str | None = None  # one-off transcription language ("auto" = detect again)
     preset: str | None = None  # one-off preset for this job (None = current settings)
+    profile: str | None = None  # one-off transcription profile ("schnell", "ausgewogen", "genau")
     result: ProcessResult | None = field(default=None, init=False)
     error: BaseException | None = field(default=None, init=False)
     id: int = field(default_factory=lambda: next(_ids), init=False)
@@ -41,6 +42,7 @@ class Job:
     step: str = field(default="", init=False)
     fraction: float = field(default=-1.0, init=False)  # < 0: unknown (indeterminate)
     message: str = field(default="", init=False)
+    eta_s: float | None = field(default=None, init=False)  # estimated remaining seconds (history of this PC)
     cancel_requested: bool = field(default=False, init=False)
     submitted_at: float = field(default_factory=time.time, init=False)
     finished_at: float | None = field(default=None, init=False)
@@ -54,7 +56,7 @@ class Job:
             return f"Wartet: {self.title}"
         if not self.step:
             return f"Startet … – {self.title}"
-        return status_text(self.step, self.fraction, self.message, self.title)
+        return status_text(self.step, self.fraction, self.message, self.title, self.eta_s)
 
 
 StatusFn = Callable[[str], None]
@@ -71,10 +73,16 @@ STEP_LABELS = {
 INTERRUPTIBLE_STEPS = frozenset({"transcribe"})
 
 
-def status_text(step: str, frac: float, msg: str, title: str = "") -> str:
-    """Tray/console status: a percentage, or the phase text while the fraction is unknown (< 0)."""
+def status_text(step: str, frac: float, msg: str, title: str = "", eta_s: float | None = None) -> str:
+    """Tray/console status: a percentage, or the phase text while the fraction is unknown (< 0);
+    with an estimate from earlier recordings on this PC: "… – noch etwa 12 min"."""
+    from callrec.proctimes import remaining_text
+
     label = STEP_LABELS.get(step, step)
     text = f"{label}: {msg}" if frac < 0 else f"{label} {int(frac * 100)} %" + (f" ({msg})" if msg else "")
+    eta = remaining_text(eta_s)
+    if eta:
+        text += f" – {eta}"
     return f"{text} – {title}" if title else text
 
 
@@ -114,8 +122,8 @@ class ProcessingQueue:
         self._listeners.append(fn)
 
     def submit(self, rec: Recording, steps: Iterable[str] = ALL_STEPS, on_done: Callable[..., None] | None = None,
-               language: str | None = None, preset: str | None = None) -> Job:
-        job = Job(rec, frozenset(steps), on_done, language, preset or None)
+               language: str | None = None, preset: str | None = None, profile: str | None = None) -> Job:
+        job = Job(rec, frozenset(steps), on_done, language, preset or None, profile or None)
         with self._lock:
             self._pending.append(job)
         self._q.put(job)
@@ -244,15 +252,21 @@ class ProcessingQueue:
             self.busy = True
             title = job.title
 
-            def progress(step: str, frac: float, msg: str, title: str = title, job: Job = job) -> None:
+            eta = _Estimator(job)
+
+            def progress(step: str, frac: float, msg: str, title: str = title, job: Job = job,
+                         eta: _Estimator = eta) -> None:
                 job.step, job.fraction, job.message = step, frac, msg
-                self._status(status_text(step, frac, msg, title))
+                job.eta_s = eta.update(step, frac)
+                self._status(status_text(step, frac, msg, title, job.eta_s))
 
             try:
                 pipeline = self._pipeline_factory(preset=job.preset) if job.preset else self._pipeline_factory()
                 kwargs: dict[str, object] = {}
                 if job.language:
                     kwargs["language"] = job.language
+                if job.profile and _accepts(pipeline.run, "profile"):
+                    kwargs["profile"] = job.profile
                 if _accepts(pipeline.run, "should_cancel"):
                     kwargs["should_cancel"] = lambda job=job: job.cancel_requested
                 job.result = pipeline.run(job.recording, job.steps, progress, **kwargs)  # type: ignore[arg-type]
@@ -285,3 +299,33 @@ class ProcessingQueue:
                     log.exception("Fehler im Abschluss-Callback")
             self._notify(job)
             self._q.task_done()
+
+
+class _Estimator:
+    """Remaining time of a job from the stage rates measured on this PC (None = no estimate yet)."""
+
+    def __init__(self, job: Job) -> None:
+        self.steps = job.steps
+        self.step = ""
+        self.step_started = time.monotonic()
+        try:
+            from callrec.proctimes import load_history, stage_rates
+
+            profile = job.profile or ""
+            self.audio_s = float(job.recording.duration() or 0.0)
+            self.rates = stage_rates(load_history(), profile)
+        except Exception:  # noqa: BLE001 - only an estimate
+            self.audio_s, self.rates = 0.0, {}
+
+    def update(self, step: str, frac: float) -> float | None:
+        from callrec.proctimes import estimate_remaining
+
+        if step != self.step:
+            self.step, self.step_started = step, time.monotonic()
+        if not self.rates:
+            return None
+        try:
+            return estimate_remaining(self.steps, step, frac, self.audio_s, self.rates,
+                                      time.monotonic() - self.step_started)
+        except Exception:  # noqa: BLE001
+            return None

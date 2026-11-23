@@ -999,10 +999,10 @@ Vorlagen). Die Überschriften bleiben die deutschen aus der Vorlage.
 
 **Was wirkt worauf?**
 
-- *Whisper-Modell, Sprache, Beam-Größe*: Genauigkeit vs. Geschwindigkeit. Der Echtzeitfaktor
-  (Rechenzeit ÷ Audiodauer, < 1 = schneller als Echtzeit) jeder Transkription steht im Kopf von
-  `transcript.md`, im Protokoll und in `meta.json` (`processing.transcription.mic.timing`) – zum
-  Vergleich von Modellen. Die Einstellungen zeigen das effektiv verwendete Gerät und Modell.
+- *Tempo und Genauigkeit* (Profil), *Whisper-Modell*, *Sprache*: siehe „Geschwindigkeit“ unten. Der
+  Echtzeitfaktor (Rechenzeit ÷ Gesprächsdauer, < 1 = schneller als Echtzeit; seit 0.4 für beide Spuren
+  zusammen) steht im Kopf von `transcript.md`, im Protokoll und in `meta.json`
+  (`processing.transcription.timing`). Die Einstellungen zeigen das effektiv verwendete Gerät und Modell.
 - *Zusatz-Prompt* (`initial_prompt`) und *Teilnehmernamen als Prompt*: Kontext für Whisper.
 - *Glossar*: richtige Schreibweise von Eigennamen und Fachbegriffen.
 - *VAD-Schwelle / Mindestpause / Polster*: wie Sprache und Stille erkannt werden (abgeschnittene
@@ -1033,6 +1033,58 @@ keine neue Version.
 unverändert, manuelle Zuordnungen gelten weiter. Wird die Sprechertrennung neu berechnet
 (`--steps rediarize`), werden manuelle Zuordnungen auf die neuen Sprecher übertragen, wenn
 deren Redezeiten überwiegend übereinstimmen; sonst erscheinen sie wieder als „Sprecher N“.
+
+
+### Geschwindigkeit
+
+Auf einem PC ohne NVIDIA-GPU rechnet Whisper (`large-v3-turbo`, int8) auf dem Prozessor. Dort kostet
+fast nur der *Encoder* Zeit (gemessen mit dem Aufbau von large-v3-turbo: etwa 4 s je 30-s-Abschnitt auf
+4 Kernen, das Dekodieren 0,6–1,0 s, Wortzeiten 0,1 s). Seit 0.4:
+
+- **Alle Kerne:** CTranslate2 nutzte ohne Vorgabe höchstens 4 Threads. Jetzt rechnen alle physischen
+  Kerne, aufgeteilt auf zwei *parallele Spuren* (beide Spuren des Gesprächs werden in Teilen gleichzeitig
+  transkribiert; das Modell liegt dabei nur einmal im Speicher). Auf 4 Kernen gemessen: 21–29 % weniger
+  Zeit als mit einer Spur und 4 Threads; auf PCs mit 6–8 Kernen deutlich mehr, weil bisher nur 4 genutzt wurden.
+- **Ein Prozess je Aufnahme:** Spracherkennung und beide Spuren laden das Modell nur noch einmal; Audio und
+  Sprachaktivitätserkennung werden je Spur nur einmal berechnet; die Spracherkennung hört auf, sobald die
+  gemessenen Abschnitte eindeutig sind; eine Spur ohne Sprache wird gar nicht transkribiert.
+- **Sprechertrennung im eigenen Prozess** mit niedriger Priorität: Sie blockierte bisher das ganze Programm
+  (Fenster, Tray, eine neue Aufnahme) für Minuten. Ab 6 Kernen (oder nach der Messung) läuft sie gleichzeitig
+  mit der Transkription.
+- **Hörfassung (mix) erst nach dem Transkript**, die Verarbeitung läuft immer mit niedriger Priorität.
+
+**Profile** (*Einstellungen → Transkription → Tempo und Genauigkeit*, je Neu-Transkription wählbar):
+
+| Profil | Einstellungen | Kosten an Qualität |
+|---|---|---|
+| Schnell | Beam 1, in Stapeln (8), keine Temperatur-Neuversuche, VAD-Mindestpause 1000 ms / Polster 300 ms, bis zu 3 Messabschnitte | etwa 10–20 % schneller als Ausgewogen; etwas mehr Fehler, Wiederholungsschleifen bleiben eher stehen (werden gemeldet) |
+| Ausgewogen (Standard) | Beam 2, Neuversuche bei 0,4 und 0,8 (je 3 Kandidaten), VAD 2000/400 ms, Spracherkennung mit vorzeitigem Ende | praktisch wie Genau |
+| Genau | Beam 5, alle Neuversuche 0,2 … 1,0 (je 5 Kandidaten), VAD 2000/400 ms, 6 Messabschnitte je Spur | Verhalten bis 0.3 |
+| Eigene Einstellungen | die einzelnen Werte (`beam_size`, `temperature_fallback`, `vad_*`, `language_detection_windows`) | – |
+
+Wortzeiten bleiben in allen Profilen an: Sie ordnen jedes Wort der richtigen Stimme zu (und kosten nur
+etwa 2 %). Wer vor 0.4 eigene Werte eingestellt hatte, behält sie (Profil „Eigene Einstellungen“);
+unveränderte Standardwerte wurden auf „Ausgewogen“ umgestellt.
+
+**Während eines Anrufs** (Teams nutzt das Mikrofon) oder einer Aufnahme arbeitet die Transkription mit etwa
+der Hälfte der Kerne weiter – oder hält an (`processing.during_call = "pause"`). **Akkubetrieb und
+Energiesparmodus** drosseln den Prozessor stark; die Einstellungen weisen darauf hin.
+
+**Messen:** *Einstellungen → Transkription → Geschwindigkeit messen* oder `callrec benchmark`. Ein 90-s-Ausschnitt
+der neuesten Aufnahme (die Stelle mit der meisten Sprache) läuft durch die Thread-Aufteilungen und Profile;
+gemessen wird auch die Sprechertrennung. Das Ergebnis (`benchmark.json`, ohne Inhalte) bestimmt bei
+automatischen Einstellungen die Aufteilung und ob die Sprechertrennung gleichzeitig läuft. Jede Aufnahme
+speichert die Zeiten je Schritt (`meta.json` → `processing.timings`); die Details zeigen
+„Verarbeitung: 6 min 40 s für 38 min Gespräch (…)“, und die Statusanzeige schätzt die Restzeit aus den
+letzten Aufnahmen auf diesem PC.
+
+**Modelle auf der CPU:** `large-v3-turbo` ist die beste Wahl. `small` ist nur etwa 1,5–2× schneller, macht
+aber deutlich mehr Fehler; `medium` ist auf der CPU nicht schneller als turbo. `distil-large-v3(.5)` ist nur
+für Englisch trainiert und hat denselben großen Encoder – nicht angeboten.
+
+**Grafikchip von AMD (Radeon):** CTranslate2 (die Rechenbibliothek von faster-whisper) kennt nur CPU und
+CUDA (NVIDIA; ROCm nur in eigenen Linux-Builds) – kein Vulkan, kein DirectML. Ein integrierter Radeon-Chip
+lässt sich damit nicht nutzen; das ginge nur über eine zweite Spracherkennung (z. B. whisper.cpp mit Vulkan).
 
 ---
 
@@ -1189,7 +1241,8 @@ Umgebung):
 | `tray [--minimized] [--ui web\|classic [--once]]` (oder ohne Argument) | Hauptfenster und Tray-Symbol starten; `--minimized` nur im Infobereich (so startet der Autostart); `--ui` wählt die Oberfläche und merkt sie (Abschnitt 7d), mit `--once` nur für diesen Start |
 | `record [--title T] [--participants "A <a@x>; B"] [--ics F] [--no-calendar] [--no-process]` | Aufnahme in der Konsole (Einwilligung durch Eintippen von `ja` im Konsolenfenster; umgeleitete Eingabe wird nicht akzeptiert) |
 | `process <Ordner> [--steps …] [--model M] [--device cuda\|cpu] [--language de\|en\|auto] [--preset P]` | (Neu-)Verarbeitung; Schritte: `finalize,transcribe,diarize,identify,render,summarize` oder Presets `all`, `retranscribe`, `rediarize`, `resummarize`, `render` |
-| `retranscribe <Ordner> [--preset P] [--language en\|de\|auto]` | mit aktuellen Einstellungen neu transkribieren (neue Version, alte bleibt); `--language` erzwingt die Sprache für diesen Lauf (`auto` = neu erkennen) |
+| `retranscribe <Ordner> [--preset P] [--language en\|de\|auto] [--profile schnell\|ausgewogen\|genau]` | mit aktuellen Einstellungen neu transkribieren (neue Version, alte bleibt); `--language` erzwingt die Sprache für diesen Lauf (`auto` = neu erkennen), `--profile` Tempo/Genauigkeit |
+| `benchmark [--seconds S] [--folder F] [--no-diarization] [--show]` | Transkriptionsgeschwindigkeit dieses PCs messen (Profile, Thread-Aufteilung, Sprechertrennung) und die schnellste Aufteilung übernehmen; `--show` zeigt die letzte Messung (Abschnitt 9, „Geschwindigkeit“) |
 | `versions <Ordner>` | Versionen von Transkript und Zusammenfassung mit Einstellungen |
 | `handoff <Ordner> [--yes]` | **nur** die Zusammenfassung an SharePoint übergeben (mit Vorschau/Rückfrage) |
 | `llm models \| version \| pull [Modell]` | Sprachmodelle anzeigen, Ollama-Version, Modell laden/aktualisieren |
@@ -1250,7 +1303,11 @@ Wichtige Einstellungen:
 | `transcription.initial_prompt` | leer | Zusatz-Kontext für Whisper |
 | `transcription.use_glossary` | `true` | Glossar als Hotwords |
 | `transcription.vad_threshold` / `vad_min_silence_ms` / `vad_speech_pad_ms` | `0.5` / `2000` / `400` | Sprachaktivitätserkennung |
-| `transcription.beam_size` | `5` | Suchbreite |
+| `transcription.profile` | `ausgewogen` | `schnell`, `ausgewogen`, `genau` oder `eigene` (dann gelten `beam_size`, `temperature_fallback`, `vad_*`, `language_detection_windows`) |
+| `transcription.cpu_threads` / `parallel_lanes` | `0` / `0` | Whisper-Threads insgesamt und parallele Spuren; `0` = automatisch (alle physischen Kerne, 2 Spuren ab 4 Kernen, bzw. Ergebnis von `callrec benchmark`) |
+| `processing.during_call` | `reduce` | während eines Anrufs/einer Aufnahme: `reduce` = mit etwa der Hälfte der Kerne weiter, `pause` = anhalten |
+| `processing.parallel_diarization` | `auto` | Sprechertrennung gleichzeitig mit der Transkription: `auto` (Messung, sonst ab 6 Kernen), `on`, `off` |
+| `transcription.beam_size` | `5` | Suchbreite (nur bei Profil `eigene`) |
 | `transcript.timestamp_format` | `hh:mm:ss` | `hh:mm:ss`, `mm:ss`, `none` |
 | `transcript.merge_same_speaker` / `merge_max_gap_s` | `true` / `1.5` | Beiträge zusammenfassen |
 | `transcript.apply_replacements` | `true` | Korrekturliste anwenden |
@@ -1347,8 +1404,9 @@ beenden und neu starten.
 
 **Kein NVIDIA-Grafikchip (z. B. AMD Radeon).** Normal: CallRecorder prüft einmal und
 transkribiert dann direkt auf der CPU, mit `model = "auto"` mit `large-v3-turbo`. Der
-Echtzeitfaktor steht im Transkriptkopf; ist er deutlich > 1, ein kleineres Modell (`medium`)
-probieren. `callrec gpu` zeigt den Stand.
+Echtzeitfaktor steht im Transkriptkopf, die Zeit je Schritt in den Details der Aufnahme. Dauert es zu
+lange: Netzteil anschließen (Akkubetrieb/Energiesparmodus drosseln stark), `callrec benchmark` laufen
+lassen und ggf. das Profil „Schnell“ wählen (Abschnitt 9, „Geschwindigkeit“). `callrec gpu` zeigt den Stand.
 
 **Modell-Download scheint zu hängen.** Der erste Start lädt das Whisper-Modell (1,5–3 GB). Tray
 und Konsole zeigen „Modell wird heruntergeladen: … MB von … GB (… %)“, danach „Modell wird
@@ -1486,8 +1544,8 @@ Aufbau (`src/callrec/`):
 | `audio/finalize.py` | FLAC/Opus, Mix, Laden/Resampling |
 | `calendar/` | Graph (MSAL, DPAPI-Cache), `.ics`, Terminauswahl, Offline-Cache |
 | `consent.py` | Einwilligungs-Gate |
-| `asr/` | faster-whisper im Kindprozess, CUDA-DLL-Pfade, GPU-Prüfung und Modellwahl (`gpu.py`), Download mit Fortschritt (`download.py`), CPU-Rückfall |
-| `speakers/` | sherpa-onnx-Diarisierung, Embeddings, Stimmprofile, Wort→Sprecher |
+| `asr/` | faster-whisper im Kindprozess (`worker.py`; seit 0.4 eine Sitzung je Aufnahme mit parallelen Spuren, `session.py`), Profile (`profiles.py`), Messung (`benchmark.py`), CUDA-DLL-Pfade, GPU-Prüfung und Modellwahl (`gpu.py`), Download mit Fortschritt (`download.py`), CPU-Rückfall |
+| `speakers/` | sherpa-onnx-Diarisierung (seit 0.4 im eigenen Prozess, `worker.py`), Embeddings, Stimmprofile, Wort→Sprecher, Thread-Wahl (`threads.py`) |
 | `transcript.py`, `summary.py`, `llm.py`, `llm_anthropic.py`, `apikey.py` | Zusammenführen/Markdown; Zusammenfassung über austauschbare Anbieter (Ollama, OpenAI-kompatibel, Claude); DPAPI-geschützter API-Schlüssel |
 | `userfiles.py`, `versions.py` | Glossar, Korrekturliste, Prompt-Vorlagen; versionierte Ausgaben |
 | `handoff.py` | Übergabe **nur** der Zusammenfassung (Ordner oder Graph) |

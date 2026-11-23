@@ -280,15 +280,22 @@ class WebDialogPort:
             return None
         return events[idx], res.get("take_title") is not False
 
-    def ask_retranscribe(self, rec: Recording, presets: list[str]) -> tuple[str, str | None] | None:
-        res = _as_dict(self.broker.ask("retranscribe", {"title": rec.title(), "presets": list(presets)}))
+    def ask_retranscribe(self, rec: Recording, presets: list[str]) -> tuple[str, str | None, str | None] | None:
+        from callrec.asr.profiles import DESCRIPTIONS, LABELS, PROFILE_NAMES
+
+        profiles = [{"key": k, "label": LABELS[k], "help": DESCRIPTIONS[k]} for k in PROFILE_NAMES]
+        res = _as_dict(self.broker.ask("retranscribe", {"title": rec.title(), "presets": list(presets),
+                                                        "profiles": profiles}))
         if res.get("ok") is not True:
             return None
         lang = res.get("language")
         preset = res.get("preset") or None
+        profile = res.get("profile") or None
         if lang not in ("auto", "de", "en") or (preset is not None and preset not in presets):
             return None
-        return str(lang), preset
+        if profile is not None and profile not in PROFILE_NAMES:
+            return None
+        return str(lang), preset, profile
 
     def ask_update(self, res: Any, busy: str, install_info: dict[str, Any]) -> str | None:
         from callrec.ui.dto import update_data

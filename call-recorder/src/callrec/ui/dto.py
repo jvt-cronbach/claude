@@ -119,7 +119,17 @@ def recording_detail(info: RecordingInfo, busy: bool, recording_now: bool, calen
         "summary_problem": info.summary_problem,
         "has_summary": info.has_summary, "has_transcript": info.has_transcript,
         "speakers_open": info.speakers_state() == OPEN,
+        "processing_text": _processing_text(meta),
     }
+
+
+def _processing_text(meta: dict[str, Any]) -> str:
+    from callrec.proctimes import recording_text
+
+    try:
+        return recording_text(meta)
+    except (TypeError, ValueError, AttributeError):
+        return ""
 
 
 def read_text(folder: Path, kind: str, file: str) -> dict[str, Any]:

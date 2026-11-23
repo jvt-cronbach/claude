@@ -1279,7 +1279,15 @@ class MainWindow:
                 if info.started_at else info.folder.name)
         names = [p for p in info.participants if p]
         people = ", ".join(names[:3]) + (f" und {len(names) - 3} weitere" if len(names) > 3 else "") if names else "–"
-        self.d_meta.set(f"{when} · {fmt_duration(info.duration_s)} · {fmt_language(info.language)} · {people}")
+        processing = ""
+        try:
+            from callrec.proctimes import recording_text
+
+            processing = recording_text(Recording(info.folder).load_meta())
+        except (OSError, ValueError, TypeError, AttributeError):
+            processing = ""
+        self.d_meta.set(f"{when} · {fmt_duration(info.duration_s)} · {fmt_language(info.language)} · {people}"
+                        + (f"\n{processing}" if processing else ""))
         status = status_description(info)
         due = "Behalten – wird nie automatisch gelöscht." if info.pinned else retention_due_text(info, self.cfg.retention)
         status = " ".join(x for x in (status, due) if x)

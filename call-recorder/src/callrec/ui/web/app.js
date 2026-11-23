@@ -103,7 +103,7 @@ const S = {
   home: null, calendar: null, calPick: null, list: null, filter: "all", query: "",
   selected: "", detail: null, tab: "summary", version_sel: { summary: "", transcript: "" }, text: null, textLimit: 300,
   mobileDetail: false, checks: null, checksBusy: "", settings: null, patch: {}, prompts: null, profiles: null,
-  about: null, menu: "", notices: [], dialogs: [], downloads: "", pull: null,
+  about: null, menu: "", notices: [], dialogs: [], downloads: "", pull: null, bench: null,
   multi: [], ctx: null, retention: null,
 };
 const hotkeyText = () => (S.hotkey || "ctrl+alt+shift+r").split("+").map(k => ({ ctrl: "Strg", alt: "Alt", shift: "Umschalt", win: "Win" }[k] || k.toUpperCase()));
@@ -413,7 +413,7 @@ function detailPane() {
       ${miniSteps(d)}
     </div>
     <div class="det-actions" role="toolbar" aria-label="Aktionen">${busy ? h`${btn("Verarbeitung abbrechen", { act: "cancel-job" })}<span class="caption muted">${d.recording ? "Aufnahme läuft." : "Wird verarbeitet – Aktionen sind danach möglich."}</span>` : actions}</div>
-    <div class="det-inner">${status}${handoff}<p class="caption muted">${I("shield", "ico-sm")} ${d.consent}</p>${readerBlock(d)}</div>
+    <div class="det-inner">${status}${handoff}<p class="caption muted">${I("shield", "ico-sm")} ${d.consent}</p>${d.processing_text ? h`<p class="caption muted">${I("clock", "ico-sm")} ${d.processing_text}</p>` : ""}${readerBlock(d)}</div>
   </section>`;
 }
 function readerBlock(d) {
@@ -534,6 +534,17 @@ function extraPanel(key) {
     const a = st.autostart;
     const on = Object.prototype.hasOwnProperty.call(S.patch, "__autostart") ? S.patch.__autostart : a.on;
     return h`<section class="card"><div class="setting"><div><label class="t" for="f-autostart">Mit Windows starten</label><div class="d">${a.detail}</div></div><div class="ctl"><label class="switch"><input type="checkbox" role="switch" id="f-autostart" data-field="__autostart" ${on ? raw("checked") : ""} ${a.state === "unavailable" ? raw("disabled") : ""}></label></div></div></section>`;
+  }
+  if (key === "speed") {
+    const sp = st.speed || {}, b = S.bench;
+    const running = sp.running || (b && !b.done);
+    return h`<section class="card"><div class="card-head"><h2>Geschwindigkeit</h2><span class="grow"></span>${btn(running ? "Misst …" : "Geschwindigkeit messen", { cls: "btn-sm", icon: "refresh", act: "bench", attrs: running ? raw("disabled") : raw("") })}</div><div class="card-body stack-sm">
+      ${sp.power ? h`<div class="banner banner-warn">${I("warning")}<div class="bd">${sp.power}</div></div>` : ""}
+      ${sp.plan ? h`<p class="muted">${sp.plan}</p>` : ""}
+      ${b && !b.done ? h`<div class="bar ${b.fraction === null || b.fraction === undefined ? "indet" : ""}"><i ${b.fraction !== null && b.fraction !== undefined ? data({ w: Math.round(b.fraction * 100) }) : ""}></i></div><p class="caption muted">${b.status}</p>` : ""}
+      ${(sp.lines || []).length ? h`<ul class="list-plain">${sp.lines.map(l => h`<li class="caption">${l}</li>`)}</ul>` : ""}
+      <p class="help">Misst mit einem Ausschnitt der neuesten Aufnahme, welche Einstellung auf diesem PC am schnellsten ist, und nutzt sie danach automatisch. Dauert einige Minuten; währenddessen nicht aufnehmen.</p>
+    </div></section>`;
   }
   if (key === "glossary") return h`<section class="card"><div class="setting"><div><div class="t">Glossar und Korrekturliste</div><div class="d">Namen, Firmen und Fachbegriffe helfen der Erkennung; die Korrekturliste ersetzt wiederkehrende Fehler im Transkript.</div></div><div class="ctl">${btn("Glossar bearbeiten …", { act: "textfile", attrs: data({ kind: "glossary" }) })}${btn("Korrekturliste bearbeiten …", { act: "textfile", attrs: data({ kind: "replacements" }) })}</div></div></section>`;
   if (key === "models") {
@@ -751,9 +762,11 @@ DLG.event = d => {
     h`${btn("Abbrechen", { act: "dlg-cancel" })}${btn("Zuordnen", { cls: "btn-primary", act: "ev-ok" })}`);
 };
 DLG.retranscribe = d => {
-  const x = d.data, L = d.local; if (!L.lang) { L.lang = "auto"; L.preset = ""; }
+  const x = d.data, L = d.local; if (!L.lang) { L.lang = "auto"; L.preset = ""; L.profile = ""; }
+  const profs = [{ key: "", label: "Wie in den Einstellungen", help: "" }, ...(x.profiles || [])];
   return modal(d, h`<h2 id="dlg-t">Neu transkribieren – ${x.title}</h2>`, h`<p class="mb-4">Es entsteht eine neue Transkript-Version; die bisherige bleibt erhalten. Danach wird auch die Zusammenfassung neu erstellt. Manuelle Sprecherzuordnungen bleiben gültig.</p>
     <div class="field"><span class="label" id="rt-l">Sprache des Gesprächs</span><div class="radio-cards" role="radiogroup" aria-labelledby="rt-l">${[["auto", "Automatisch erkennen"], ["de", "Deutsch"], ["en", "Englisch"]].map(([v, t]) => h`<label class="rcard"><input type="radio" name="rt" value="${v}" data-lang="${v}" ${L.lang === v ? raw("checked") : ""}><span class="rt">${t}</span><span></span></label>`)}</div></div>
+    <div class="field"><span class="label" id="rt-q">Tempo und Genauigkeit</span><div class="radio-cards" role="radiogroup" aria-labelledby="rt-q">${profs.map(p => h`<label class="rcard"><input type="radio" name="rtq" value="${p.key}" data-prof="${p.key}" ${L.profile === p.key ? raw("checked") : ""}><span class="rt">${p.label}</span><span></span>${p.help ? h`<span class="rd">${p.help}</span>` : ""}</label>`)}</div></div>
     <div class="field"><label class="label" for="rt-p">Preset (optional)</label><select class="select" id="rt-p"><option value="">Aktuelle Einstellungen</option>${x.presets.map(p => h`<option value="${p}" ${L.preset === p ? raw("selected") : ""}>${p}</option>`)}</select></div>`,
     h`${btn("Abbrechen", { act: "dlg-cancel" })}${btn("Neu transkribieren", { cls: "btn-primary", act: "rt-ok" })}`);
 };
@@ -971,6 +984,7 @@ HANDLERS.config_changed = async () => { S.calendar = null; if (S.route === "home
 HANDLERS.checks = c => { S.checks = c; S.checksBusy = ""; S.state.setup = { ready: c.ready, text: c.summary, open: c.open }; renderRail(); if (S.route === "setup") renderMain(); };
 HANDLERS.checks_busy = c => { S.checksBusy = c.text; if (S.route === "setup") renderMain(); };
 HANDLERS.download = c => { S.downloads = c.text; if (S.route === "setup") renderMain(); };
+HANDLERS.bench = p => { S.bench = p; if (p.done) { snack(p.status, !!p.error); if (p.speed && S.settings) S.settings.speed = p.speed; } if (S.route === "settings") renderMain(); };
 HANDLERS.pull = p => { S.pull = p; if (p.done) { snack(p.status, !!p.error); } if (S.route === "settings") renderMain(); };
 HANDLERS.toast = () => {};
 
@@ -1081,6 +1095,12 @@ A.textfile = async el => {
   openDialog({ id: `tf${Date.now()}`, kind: "textfile", data: { ...r, kind, title: kind === "glossary" ? "Glossar" : "Korrekturliste", hint: kind === "glossary" ? "Ein Begriff pro Zeile: Namen, Firmen, Produkte, Fachbegriffe." : "Eine Regel pro Zeile: „falsch => richtig“ oder „re: Ausdruck => Ersatz“." }, local: {} });
 };
 A.whisper = () => loadWhisper(true);
+A.bench = async () => {
+  if (!(await confirmLocal("Geschwindigkeit messen?", "Die Messung dauert einige Minuten und lastet den Prozessor voll aus. Währenddessen bitte nicht aufnehmen.", "Messen"))) return;
+  S.bench = { status: "Messung startet …", fraction: null }; renderMain();
+  const r = await act("benchmark", "start");
+  if (!r || r.error) { S.bench = null; renderMain(); }
+};
 A["whisper-del"] = async el => { if (await confirmLocal("Modell löschen?", `${el.dataset.name} (${el.dataset.size}) löschen? Wird es noch verwendet, lädt CallRecorder es bei der nächsten Transkription erneut.`, "Löschen", { danger: true })) { const r = await act("whisper_models", "remove", el.dataset.name, false); if (r && !r.error) { S.settings.whisper = r; renderMain(); } } };
 const settingsPatch = () => Object.fromEntries(Object.entries(S.patch).filter(([k]) => k !== "__autostart"));
 A["llm-list"] = async () => { const r = await act("llm_models", settingsPatch()); if (r && !r.error) { S.settings.llm = { ...r, text: `${r.version ? `Ollama-Version ${r.version}. ` : ""}${r.models.length} Modell(e) installiert: ${r.models.join(", ") || "–"}` }; renderMain(); } };
@@ -1189,7 +1209,7 @@ A["cf-ok"] = el => answer(curDlg(el), { ok: true });
 A["ch-ok"] = el => answer(curDlg(el), { choice: el.dataset.c });
 A["ho-go"] = el => { el.disabled = true; answer(curDlg(el), { action: "go" }); snack("Übergabe läuft …"); };
 A["ev-ok"] = el => { const d = curDlg(el); answer(d, { index: d.local.i, take_title: d.local.take }); };
-A["rt-ok"] = el => { const d = curDlg(el); answer(d, { ok: true, language: d.local.lang, preset: ($("#rt-p") || {}).value || "" }); };
+A["rt-ok"] = el => { const d = curDlg(el); answer(d, { ok: true, language: d.local.lang, preset: ($("#rt-p") || {}).value || "", profile: d.local.profile || "" }); };
 A.up = el => answer(curDlg(el), { choice: el.dataset.c });
 A["rn-ok"] = async el => {
   const d = curDlg(el); const title = $("#rn").value;
@@ -1251,6 +1271,7 @@ document.addEventListener("change", e => {
   if (t.dataset.ev !== undefined) { topDialog().local.i = Number(t.dataset.ev); return; }
   if (t.id === "ev-take") { topDialog().local.take = t.checked; return; }
   if (t.dataset.lang) { topDialog().local.lang = t.dataset.lang; return; }
+  if (t.dataset.prof !== undefined) { topDialog().local.profile = t.dataset.prof; return; }
   if (t.id === "rt-p") { topDialog().local.preset = t.value; return; }
   if (t.dataset.field) {
     const f = t.dataset.field;

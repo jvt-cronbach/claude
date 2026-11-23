@@ -99,6 +99,7 @@
     test_anthropic: () => R({ ok: true, text: "Verbindung ok" }),
     llm_models: () => R({ models: ["gemma3:12b"], version: "0.9", can_pull: true }),
     pull_llm_model: () => R({ ok: true }),
+    benchmark: (a) => R(a === "start" ? { ok: true } : FIX.settings.speed),
     whisper_models: () => R({ models: [], total: "0 B", root: "C:\\models", effective: "CPU, large-v3-turbo (int8)" }),
     prompts: (a) => R(a === "get" ? { prompts: [{ key: "system", label: "System-Anweisung", text: "Du bist …", placeholders: {}, default: "Standard" }, { key: "final", label: "Protokoll-Vorlage", text: "{material}", placeholders: { material: "Transkript" }, default: "Std" }], dir: "C:\\prompts" } : { ok: true, text: "Gespeichert." }),
     text_file: (k, t) => R(t === undefined || t === null ? { text: "Hafenkante\n", path: "C:\\glossar.txt" } : { ok: true }),

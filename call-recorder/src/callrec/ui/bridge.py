@@ -537,6 +537,16 @@ class Bridge:
         return {"ok": True}
 
     @safe
+    def benchmark(self, action: str = "start") -> dict[str, Any]:
+        """"Geschwindigkeit messen" (start) or the current overview (info)."""
+        core = _core(self)
+        if action == "info":
+            return dict(core.speed_info())
+        if action != "start":
+            raise BridgeError("Unbekannte Aktion.")
+        return dict(core.start_benchmark())
+
+    @safe
     def whisper_models(self, action: str = "list", name: str = "", force_gpu: bool = False) -> dict[str, Any]:
         return _core(self).whisper_models(str(action), str(name), force_gpu is True)
 

@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 import threading
 from dataclasses import dataclass
+from typing import Any
 
 MAX_THREADS = 8
 _recording = threading.Event()
@@ -125,7 +126,7 @@ class AsrThreads:
 
 
 def asr_threads(configured_threads: int = 0, configured_lanes: int = 0, cores: int | None = None,
-                busy: bool | None = None, reserve: int = 0, tuned: dict[str, object] | None = None) -> AsrThreads:
+                busy: bool | None = None, reserve: int = 0, tuned: dict[str, Any] | None = None) -> AsrThreads:
     """Whisper threads for one transcription session.
 
     ``reserve``: threads another stage needs at the same time (parallel speaker separation).

@@ -746,12 +746,12 @@ RETRANSCRIBE_LANGUAGES = (("auto", "Automatisch erkennen"), ("de", "Deutsch"), (
 CURRENT_SETTINGS = "(aktuelle Einstellungen)"
 
 
-def ask_retranscribe(root: tk.Misc, rec: Recording, presets: list[str]) -> tuple[str, str | None] | None:
-    """Language ("auto"/"de"/"en") and optional preset for a new transcript version, or None."""
+def ask_retranscribe(root: tk.Misc, rec: Recording, presets: list[str]) -> tuple[str, str | None, str | None] | None:
+    """Language ("auto"/"de"/"en"), optional preset and optional profile for a new transcript version, or None."""
     win = tk.Toplevel(root)
     win.title(f"Neu transkribieren – {rec.title()}")
     win.resizable(False, False)
-    result: dict[str, tuple[str, str | None] | None] = {"v": None}
+    result: dict[str, tuple[str, str | None, str | None] | None] = {"v": None}
     ttk.Label(win, text="Es entsteht eine neue Transkript-Version; die bisherige bleibt erhalten. Danach wird auch die "
               "Zusammenfassung neu erstellt. Manuelle Sprecherzuordnungen bleiben gültig.",
               wraplength=440).grid(row=0, column=0, columnspan=2, sticky="w", **PAD)
@@ -763,16 +763,25 @@ def ask_retranscribe(root: tk.Misc, rec: Recording, presets: list[str]) -> tuple
         rb = ttk.Radiobutton(box, text=label, value=code, variable=lang)
         rb.pack(anchor="w", padx=8, pady=2)
         first = first or rb
-    ttk.Label(win, text="Preset (optional):").grid(row=2, column=0, sticky="w", **PAD)
+    from callrec.asr.profiles import DESCRIPTIONS, LABELS, PROFILE_NAMES
+
+    prof = tk.StringVar(value="")
+    pbox = ttk.LabelFrame(win, text="Tempo und Genauigkeit")
+    pbox.grid(row=2, column=0, columnspan=2, sticky="we", padx=8, pady=4)
+    ttk.Radiobutton(pbox, text="Wie in den Einstellungen", value="", variable=prof).pack(anchor="w", padx=8, pady=2)
+    for name in PROFILE_NAMES:
+        ttk.Radiobutton(pbox, text=f"{LABELS[name]} – {DESCRIPTIONS[name]}", value=name, variable=prof).pack(
+            anchor="w", padx=8, pady=2)
+    ttk.Label(win, text="Preset (optional):").grid(row=3, column=0, sticky="w", **PAD)
     preset = tk.StringVar(value=CURRENT_SETTINGS)
     ttk.Combobox(win, textvariable=preset, values=[CURRENT_SETTINGS, *presets], state="readonly",
-                 width=30).grid(row=2, column=1, sticky="we", **PAD)
+                 width=30).grid(row=3, column=1, sticky="we", **PAD)
     bar = ttk.Frame(win)
-    bar.grid(row=3, column=0, columnspan=2, sticky="e", **PAD)
+    bar.grid(row=4, column=0, columnspan=2, sticky="e", **PAD)
 
     def ok() -> None:
         p = preset.get()
-        result["v"] = (lang.get(), None if p == CURRENT_SETTINGS else p)
+        result["v"] = (lang.get(), None if p == CURRENT_SETTINGS else p, prof.get() or None)
         win.destroy()
 
     ttk.Button(bar, text="Neu transkribieren", command=ok).pack(side="right", padx=4)

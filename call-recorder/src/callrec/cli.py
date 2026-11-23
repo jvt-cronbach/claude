@@ -71,8 +71,12 @@ def cmd_process(args: argparse.Namespace) -> int:
 
     try:
         pipeline = build_pipeline(cfg)
-        result = pipeline.run(rec, args.steps, _print_progress, language=language) if language else \
-            pipeline.run(rec, args.steps, _print_progress)
+        kwargs: dict[str, Any] = {}
+        if language:
+            kwargs["language"] = language
+        if getattr(args, "profile", None):
+            kwargs["profile"] = args.profile
+        result = pipeline.run(rec, args.steps, _print_progress, **kwargs)
     except (KeyboardInterrupt, TranscriptionCancelled):
         _say("Abgebrochen. Ein erneuter Aufruf setzt fort (bereits geladene Modelldateien bleiben erhalten).")
         return 130
@@ -787,6 +791,40 @@ def cmd_models(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_benchmark(args: argparse.Namespace) -> int:
+    """Measure the transcription speed on this PC and store the fastest layout (see callrec.asr.benchmark)."""
+    from callrec.asr.benchmark import load_result, measure_now, report_lines, run_benchmark
+    from callrec.console import default_status
+
+    cfg = load_config()
+    if args.show:
+        last = load_result()
+        print("\n".join(report_lines(last)) if last else "Noch keine Messung auf diesem PC (callrec benchmark).")
+        return 0
+    print("Messung der Transkriptionsgeschwindigkeit – dauert einige Minuten, der Prozessor ist dabei voll "
+          "ausgelastet. Bitte währenddessen nicht aufnehmen.")
+
+    def progress(f: float, msg: str) -> None:
+        default_status().update(f"Messung: {msg}" if f < 0 else f"Messung {int(f * 100)} %" + (f" ({msg})" if msg else ""))
+
+    try:
+        if args.folder or args.seconds:
+            from callrec.factory import diarize_timer
+
+            res = run_benchmark(cfg, Path(args.folder) if args.folder else None, float(args.seconds or 90), progress,
+                                diarize=diarize_timer(cfg) if cfg.diarization.enabled and not args.no_diarization else None)
+        else:
+            res = measure_now(cfg, progress)
+    except (FileNotFoundError, RuntimeError) as exc:
+        default_status().finish()
+        print(f"Messung nicht möglich: {exc}")
+        return 1
+    default_status().finish()
+    print("\n".join(report_lines(res)))
+    print("Gespeichert – bei automatischen Einstellungen nutzt CallRecorder ab jetzt diese Werte.")
+    return 0
+
+
 def cmd_gpu(args: argparse.Namespace) -> int:
     """Show (and with --recheck re-test) whether an NVIDIA GPU is usable, and what transcription will use."""
     from callrec.asr.gpu import describe_effective, gpu_status
@@ -978,6 +1016,8 @@ def build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--device", choices=["auto", "cuda", "cpu"])
     pr.add_argument("--language", help="Sprache für diese Verarbeitung: de, en … oder auto (neu erkennen)")
     pr.add_argument("--preset", help="Preset für diese Verarbeitung (überschreibt general.preset)")
+    pr.add_argument("--profile", choices=["schnell", "ausgewogen", "genau"],
+                    help="Tempo/Genauigkeit der Transkription für diese Verarbeitung")
     pr.set_defaults(func=cmd_process)
 
     pr.add_argument("--confirm-anthropic", action="store_true", help=argparse.SUPPRESS)
@@ -993,9 +1033,11 @@ def build_parser() -> argparse.ArgumentParser:
                         help="ältere Aufnahme: Zustimmung zur Übertragung an Anthropic nachträglich bestätigen")
         if name == "retranscribe":
             sp.add_argument("--language", help="Sprache für diese Neu-Transkription: de, en … oder auto (neu erkennen)")
+            sp.add_argument("--profile", choices=["schnell", "ausgewogen", "genau"],
+                            help="Tempo/Genauigkeit für diese Neu-Transkription")
         sp.set_defaults(func=cmd_process, steps=_steps(preset), model=None, device=None)
         if name != "retranscribe":
-            sp.set_defaults(language=None)
+            sp.set_defaults(language=None, profile=None)
 
     s = sub.add_parser("speakers", help="Sprecher einer Aufnahme anzeigen")
     s.add_argument("folder")
@@ -1074,6 +1116,13 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--yes", action="store_true", help="ohne Rückfrage löschen")
     m.set_defaults(func=cmd_models)
 
+    bm = sub.add_parser("benchmark", help="Transkriptionsgeschwindigkeit dieses PCs messen (Profile, Threads, "
+                                          "Sprechertrennung) und die schnellste Einstellung übernehmen")
+    bm.add_argument("--folder", help="Aufnahme für den Ausschnitt (Standard: die neueste)")
+    bm.add_argument("--seconds", type=float, help="Länge des Ausschnitts in Sekunden (Standard 90)")
+    bm.add_argument("--no-diarization", action="store_true", help="Sprechertrennung nicht messen")
+    bm.add_argument("--show", action="store_true", help="nur die letzte Messung anzeigen")
+    bm.set_defaults(func=cmd_benchmark)
     gp = sub.add_parser("gpu", help="Ist eine NVIDIA-GPU nutzbar? Effektives Gerät/Modell anzeigen")
     gp.add_argument("--recheck", action="store_true", help="erneut prüfen (sonst gespeichertes Ergebnis)")
     gp.set_defaults(func=cmd_gpu)

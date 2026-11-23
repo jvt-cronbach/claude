@@ -28,7 +28,8 @@ from callrec.userfiles import PROMPT_FILES, ensure_user_files
 log = logging.getLogger(__name__)
 
 PAD: dict[str, Any] = {"padx": 6, "pady": 3}
-WHISPER_MODELS = ["auto", "large-v3", "large-v3-turbo", "distil-large-v3.5", "medium", "small", "base"]
+from callrec.ui.settingsmodel import WHISPER_MODELS  # noqa: E402 - one list for both settings UIs
+
 PROVIDERS = ["ollama", "openai", "anthropic"]
 AUTO_DEVICE = "auto (Windows-Standard für Kommunikation)"
 NO_PRESET = "(kein Preset)"
@@ -155,8 +156,10 @@ class SettingsDialog:
         anthropic_factory: Callable[[Config, str], Any] | None = None,
         initial_tab: str = "",
         autostart: Any = None,
+        benchmark_fn: Callable[[Config, Callable[[float, str], None]], Any] | None = None,
     ) -> None:
         self.root = root
+        self.benchmark_fn = benchmark_fn  # None = callrec.asr.benchmark.measure_now
         self.autostart = autostart  # callrec.autostart.Autostart (registry entry, not config.toml)
         self.gpu_status_fn = gpu_status_fn
         self.anthropic_factory = anthropic_factory
@@ -386,11 +389,16 @@ class SettingsDialog:
 
     def _transcription(self) -> None:
         t = self._tab("Transkription")
+        from callrec.asr.profiles import PROFILE_CHOICES
+
         rows = [
+            ("Tempo und Genauigkeit (schnell, ausgewogen, genau, eigene):", "profile", list(PROFILE_CHOICES)),
             ("Whisper-Modell:", "model", WHISPER_MODELS),
             ("Sprache (auto = je Aufnahme erkennen; de/en = erzwingen):", "language", ["auto", "de", "en"]),
             ("Rechenwerk:", "device", ["auto", "cuda", "cpu"]),
-            ("Beam-Größe (Genauigkeit vs. Tempo):", "beam_size", None),
+            ("Rechen-Threads Whisper insgesamt (0 = automatisch):", "cpu_threads", None),
+            ("Parallele Spuren (0 = automatisch):", "parallel_lanes", None),
+            ("Beam-Größe (nur bei Profil „eigene“):", "beam_size", None),
             ("Zusatz-Prompt (Kontext):", "initial_prompt", None),
             ("Teilnehmernamen als Prompt:", "use_participant_names_as_prompt", None),
             ("Glossar als Hotwords:", "use_glossary", None),
@@ -403,6 +411,17 @@ class SettingsDialog:
         ]
         for i, (label, key, values) in enumerate(rows):
             self.field(t, i, label, "transcription", key, values)
+        self.profile_info = tk.StringVar(value="")
+        ttk.Label(t, textvariable=self.profile_info, wraplength=360, foreground="#555").grid(
+            row=0, column=2, sticky="w", **PAD)
+        self.vars[("transcription", "profile")].trace_add("write", lambda *a: self._show_profile())
+        self._show_profile()
+        n = len(rows)
+        self.field(t, n, "Während eines Anrufs/einer Aufnahme (reduce = langsamer weiter, pause = anhalten):",
+                   "processing", "during_call", ["reduce", "pause"])
+        self.field(t, n + 1, "Sprechertrennung gleichzeitig (auto, on, off):", "processing", "parallel_diarization",
+                   ["auto", "on", "off"])
+        rows = rows + [("", "", None), ("", "", None)]
         bar = ttk.Frame(t)
         bar.grid(row=len(rows), column=0, columnspan=3, sticky="w", **PAD)
         ttk.Button(bar, text="Glossar bearbeiten …", command=lambda: edit_text_file(
@@ -418,7 +437,8 @@ class SettingsDialog:
         ttk.Label(t, text="Modell „auto“: large-v3 auf einer NVIDIA-GPU, ohne GPU large-v3-turbo (int8). "
                   "Der Echtzeitfaktor jeder Transkription steht in meta.json und im Protokoll.",
                   wraplength=520, foreground="#555").grid(row=len(rows) + 2, column=0, columnspan=3, sticky="w", **PAD)
-        self._installed_models(t, len(rows) + 3)
+        self._speed_panel(t, len(rows) + 3)
+        self._installed_models(t, len(rows) + 4)
         self._gpu: Any = None
         for key in ("model", "device", "compute_type"):
             var = self.vars.get(("transcription", key))
@@ -451,6 +471,60 @@ class SettingsDialog:
                   "Sprache geschrieben. „Sprachwechsel innerhalb einer Spur“ nutzt die Erkennung von faster-whisper je "
                   "30-s-Abschnitt unter allen Sprachen (nicht nur der Liste) – nur bei echten Mischgesprächen.",
                   wraplength=520, foreground="#555").grid(row=len(rows), column=0, columnspan=3, sticky="w", **PAD)
+
+    def _show_profile(self) -> None:
+        from callrec.asr.profiles import DESCRIPTIONS
+
+        var = self.vars.get(("transcription", "profile"))
+        self.profile_info.set(DESCRIPTIONS.get(str(var.get()).strip().lower(), "") if var is not None else "")
+
+    def _speed_panel(self, tab: ttk.Frame, row: int) -> None:
+        """"Geschwindigkeit messen" (callrec benchmark) with the last result and the power state."""
+        from callrec.asr.benchmark import speed_overview
+
+        f = ttk.LabelFrame(tab, text="Geschwindigkeit")
+        f.grid(row=row, column=0, columnspan=3, sticky="we", padx=6, pady=6)
+        f.columnconfigure(0, weight=1)
+        try:
+            ov = speed_overview(self.cfg)
+        except Exception as exc:  # noqa: BLE001 - the dialog must open anyway
+            ov = {"plan": "", "lines": [str(exc)], "power": ""}
+        text = "\n".join(x for x in [ov.get("power", ""), ov.get("plan", ""), *ov.get("lines", [])] if x)
+        self.speed_var = tk.StringVar(value=text)
+        ttk.Label(f, textvariable=self.speed_var, wraplength=560, foreground="#555", justify="left").grid(
+            row=0, column=0, sticky="w", **PAD)
+        self.bench_btn = ttk.Button(f, text="Geschwindigkeit messen", command=self.run_benchmark)
+        self.bench_btn.grid(row=0, column=1, sticky="ne", **PAD)
+
+    def run_benchmark(self) -> None:
+        from tkinter import messagebox
+
+        if not messagebox.askyesno("Geschwindigkeit messen", "Die Messung dauert einige Minuten und lastet den "
+                                   "Prozessor voll aus. Währenddessen bitte nicht aufnehmen. Jetzt messen?", parent=self.win):
+            return
+        self.bench_btn.state(["disabled"])
+        fn = self.benchmark_fn
+        cfg = copy.deepcopy(self.cfg)
+
+        def progress(f: float, msg: str) -> None:
+            self._q.put(lambda: self.speed_var.set(f"Messung läuft … {msg}" + (f" ({int(f * 100)} %)" if f >= 0 else "")))
+
+        def work() -> None:
+            from callrec.asr.benchmark import measure_now, report_lines
+
+            try:
+                res = fn(cfg, progress) if fn is not None else measure_now(cfg, progress)
+                text = "\n".join(report_lines(res))
+            except Exception as exc:  # noqa: BLE001 - shown in the dialog
+                text = f"Messung nicht möglich: {exc}"
+
+            def done() -> None:
+                self.speed_var.set(text)
+                self.bench_btn.state(["!disabled"])
+
+            self._q.put(done)
+
+        threading.Thread(target=work, name="benchmark", daemon=True).start()
 
     def _installed_models(self, tab: ttk.Frame, row: int) -> None:
         f = ttk.LabelFrame(tab, text="Installierte Whisper-Modelle")

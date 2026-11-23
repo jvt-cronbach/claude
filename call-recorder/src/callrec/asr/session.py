@@ -243,7 +243,12 @@ def transcribe_piece(engine: Any, samples: Any, piece: Piece, language: str | No
     for seg in restore_speech_timestamps(segments, piece.chunks, SR):
         if not seg.text.strip() and not seg.words:
             continue
-        out.append(segment_dict(seg))
+        d = segment_dict(seg)
+        # the last window of a piece is padded: a timestamp may point past its last speech
+        d["start"], d["end"] = min(d["start"], s1), min(d["end"], s1)
+        for w in d["words"]:
+            w["start"], w["end"] = min(w["start"], s1), min(w["end"], s1)
+        out.append(d)
         if s1 > s0:
             on_segment(min(1.0, max(0.0, (float(seg.end) - s0) / (s1 - s0))))
     return out

@@ -284,20 +284,23 @@ class Controller:
         return rec
 
     def process(self, rec: Recording, steps: frozenset[str] = ALL_STEPS, language: str | None = None,
-                preset: str | None = None) -> None:
+                preset: str | None = None, profile: str | None = None) -> None:
         kwargs: dict[str, Any] = {}
         if language:
             kwargs["language"] = language
         if preset:
             kwargs["preset"] = preset
+        if profile:
+            kwargs["profile"] = profile
         self.queue.submit(rec, steps, on_done=self._on_processed, **kwargs)
 
     # Named operations used by tray, main window and CLI alike
     def resummarize(self, rec: Recording) -> None:
         self.process(rec, STEP_PRESETS["resummarize"])
 
-    def retranscribe(self, rec: Recording, language: str | None = None, preset: str | None = None) -> None:
-        self.process(rec, STEP_PRESETS["retranscribe"], language=language, preset=preset)
+    def retranscribe(self, rec: Recording, language: str | None = None, preset: str | None = None,
+                     profile: str | None = None) -> None:
+        self.process(rec, STEP_PRESETS["retranscribe"], language=language, preset=preset, profile=profile)
 
     def reprocess(self, rec: Recording) -> None:
         self.process(rec, ALL_STEPS)

@@ -38,7 +38,7 @@ class DialogPort(Protocol):
 
     def ask_event_for_recording(self, rec: Recording, events: list[Any]) -> tuple[Any, bool] | None: ...
 
-    def ask_retranscribe(self, rec: Recording, presets: list[str]) -> tuple[str, str | None] | None: ...
+    def ask_retranscribe(self, rec: Recording, presets: list[str]) -> tuple[str, str | None, str | None] | None: ...
 
     def ask_update(self, res: Any, busy: str, install_info: dict[str, Any]) -> str | None: ...
 
@@ -111,7 +111,7 @@ class TkDialogPort:
 
         return dialogs.ask_event_for_recording(self._root(), rec, events)
 
-    def ask_retranscribe(self, rec: Recording, presets: list[str]) -> tuple[str, str | None] | None:
+    def ask_retranscribe(self, rec: Recording, presets: list[str]) -> tuple[str, str | None, str | None] | None:
         from callrec.ui import dialogs
 
         return dialogs.ask_retranscribe(self._root(), rec, presets)

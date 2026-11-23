@@ -182,7 +182,14 @@ def build(root: Path) -> dict[str, Any]:
                        "autostart": {"state": "off", "detail": "Startet nicht mit Windows.", "on": False},
                        "apikey": {"present": False, "masked": "", "source": ""},
                        "anthropic_models": [["claude-opus-5-5", "Opus – Standard"]], "remote_allowed": False,
-                       "paths": {"presets": "C:\\presets", "prompts": "C:\\prompts"}}
+                       "paths": {"presets": "C:\\presets", "prompts": "C:\\prompts"},
+                       "speed": {"plan": "Whisper rechnet mit 2 parallelen Spuren à 4 Threads (automatisch, 8 physische Kerne).",
+                                 "lines": ["Noch nicht gemessen."], "power": "Akkubetrieb – Windows drosselt den Prozessor.",
+                                 "measured": False, "running": False}}
+    from callrec.asr.profiles import DESCRIPTIONS, LABELS, PROFILE_NAMES
+
+    out["retranscribe"] = {"title": "Jour fixe", "presets": ["Schnell"],
+                           "profiles": [{"key": k, "label": LABELS[k], "help": DESCRIPTIONS[k]} for k in PROFILE_NAMES]}
     from callrec.setupcheck import CheckItem
 
     out["checks"] = dto.checks([

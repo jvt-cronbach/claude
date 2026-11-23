@@ -55,6 +55,11 @@ def build_components(cfg: Config, profiles: ProfileStore | None = None) -> Compo
         m = embedding_model(cfg.diarization.embedding_model)
         return SherpaEmbedder(ensure_model(m, models), m.key, effective_threads(cfg.diarization.num_threads))
 
+    def speaker_worker(audio: Path, threads: int, work_dir: Path, progress):  # type: ignore[no-untyped-def]
+        from callrec.speakers.worker import run_in_child
+
+        return run_in_child(speaker_job(cfg, audio, threads), work_dir, progress)
+
     def summarizer():  # type: ignore[no-untyped-def]
         from callrec.summary import LlmSummarizer
         from callrec.userfiles import load_prompts
@@ -78,7 +83,35 @@ def build_components(cfg: Config, profiles: ProfileStore | None = None) -> Compo
         profiles=profiles or profile_store(),
         summarizer_factory=summarizer if cfg.summary.enabled else None,
         audio_loader=loader,
+        speaker_worker=speaker_worker if cfg.diarization.enabled else None,
     )
+
+
+def speaker_job(cfg: Config, audio: Path, threads: int) -> dict[str, object]:
+    """Job for :mod:`callrec.speakers.worker` (model files are downloaded here if missing)."""
+    from callrec.speakers.modelstore import SEGMENTATION, embedding_model, ensure_model
+
+    models = paths.models_dir()
+    d = cfg.diarization
+    m = embedding_model(d.embedding_model)
+    return {"audio": str(audio), "segmentation": str(ensure_model(SEGMENTATION, models)),
+            "embedding": str(ensure_model(m, models)), "embedding_id": m.key,
+            "cluster_threshold": d.cluster_threshold, "num_speakers": d.num_speakers,
+            "min_duration_on": d.min_duration_on, "min_duration_off": d.min_duration_off, "threads": int(threads)}
+
+
+def diarize_timer(cfg: Config):  # type: ignore[no-untyped-def]
+    """For ``callrec benchmark``: seconds the speaker separation needs for a WAV with ``threads``."""
+    import time
+
+    def run(wav: Path, threads: int) -> float:
+        from callrec.speakers.worker import run_in_child
+
+        t0 = time.monotonic()
+        run_in_child(speaker_job(cfg, wav, threads), wav.parent / "diarize")
+        return time.monotonic() - t0
+
+    return run
 
 
 def build_pipeline(cfg: Config, profiles: ProfileStore | None = None) -> Pipeline:

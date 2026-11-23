@@ -175,6 +175,7 @@ def detection_loop(cfg: Config, controller: Controller, ui: Any, stop: threading
     from datetime import timedelta
 
     from callrec.audio.wasapi import E_CAPTURE, com_initialized, endpoints_with_active_session
+    from callrec.speakers.threads import set_call_active
 
     detector = CallDetector(cooldown=timedelta(minutes=cfg.detection.cooldown_minutes))
     events: list[Any] = []
@@ -188,6 +189,7 @@ def detection_loop(cfg: Config, controller: Controller, ui: Any, stop: threading
             except Exception:
                 log.debug("Sitzungsabfrage fehlgeschlagen", exc_info=True)
                 active = False
+            set_call_active(active)  # background processing leaves headroom for the call
             if cfg.detection.calendar_reminder and controller.calendar.source is not None and time.monotonic() - last_calendar > 300:
                 last_calendar = time.monotonic()
                 try:

@@ -242,6 +242,42 @@ async function overflow(p) {
     await shot(p, "settings_recording_1366x768_dark");
   });
 
+  await scenario("speed_profiles_benchmark", async check => {
+    const p = await page(browser, { route: "settings" });
+    await p.waitForSelector(".subnav");
+    await p.click("[data-act=setpage][data-page=transcription]");
+    await p.waitForSelector("input[data-field='transcription.profile'][value=ausgewogen]");
+    check(await p.isChecked("input[data-field='transcription.profile'][value=ausgewogen]"), "Ausgewogen ist Standard");
+    const txt = await p.textContent(".set-col");
+    check(txt.includes("Geschwindigkeit") && txt.includes("Akkubetrieb") && txt.includes("2 parallelen Spuren"), "Tempo-Karte mit Hinweis");
+    check(txt.includes("Langsamer weiterrechnen"), "Verhalten während eines Anrufs wählbar");
+    await p.check("input[data-field='transcription.profile'][value=genau]");
+    await p.click("[data-act=bench]");
+    await p.waitForSelector(".modal [data-act=ask-ok]");
+    await p.click(".modal [data-act=ask-ok]");
+    await p.waitForTimeout(200);
+    check((await calls(p)).some(c => c[0] === "benchmark" && c[1] === "start"), "Messung gestartet");
+    await p.evaluate(() => window.cr.emit("bench", { status: "misst ausgewogen – 2 parallele Spuren", fraction: 0.4 }));
+    await p.waitForTimeout(100);
+    check((await p.textContent(".set-col")).includes("misst ausgewogen"), "Fortschritt der Messung");
+    await p.evaluate(() => window.cr.emit("bench", { status: "Messung abgeschlossen.", fraction: 1, done: true, speed: { plan: "x", lines: ["Gewählt: 2 Spur(en) × 4 Threads"], power: "", running: false } }));
+    await p.waitForTimeout(150);
+    check((await p.textContent(".set-col")).includes("Gewählt: 2 Spur(en) × 4 Threads"), "Ergebnis angezeigt");
+    await p.click("[data-act=save-settings]");
+    await p.waitForTimeout(200);
+    const saved = await p.evaluate(() => window.__saved);
+    check(saved && saved.patch["transcription.profile"] === "genau", `Profil gespeichert ${JSON.stringify(saved && saved.patch)}`);
+    await shot(p, "settings_speed_1366x768");
+    // re-transcription: the profile for this one run
+    await p.evaluate(() => window.cr.emit("dialog", { id: "rt1", kind: "retranscribe", data: JSON.parse(JSON.stringify(window.__FIX.retranscribe)) }));
+    await p.waitForSelector(".modal input[data-prof=schnell]");
+    await p.check(".modal input[data-prof=schnell]");
+    await p.click(".modal [data-act=rt-ok]");
+    await p.waitForTimeout(150);
+    const a = (await answers(p)).pop();
+    check(a && a.result.profile === "schnell" && a.result.language === "auto", `Antwort ${JSON.stringify(a)}`);
+  });
+
   await scenario("errors_and_notices", async check => {
     const p = await page(browser);
     await p.evaluate(() => window.cr.emit("notify", { title: "Verarbeitung fehlgeschlagen", message: "<b>x</b> keine Verbindung", level: "error", hint: { next: "VPN pausieren", action: "open_log", label: "Protokoll öffnen" } }));

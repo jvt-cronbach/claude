@@ -163,6 +163,9 @@ def plan_asr(cfg: TranscriptionConfig, gpu_usable: bool | None) -> AsrPlan:
             note = f"{why}: Modell {AUTO_MODEL_CPU} (int8) auf der CPU automatisch gewählt"
         elif cfg.model in ("large-v3", "large-v2", "large-v1", "large"):
             note = f"{why}: {cfg.model} ist auf der CPU sehr langsam - Modell 'auto' oder '{AUTO_MODEL_CPU}' empfohlen"
+    if not auto and cfg.model.strip().lower().startswith("distil"):
+        note = (f"{cfg.model} ist nur für Englisch trainiert und auf der CPU nicht schneller als {AUTO_MODEL_CPU} "
+                "(gleicher Encoder) - für deutsche Gespräche 'auto' wählen")
     return AsrPlan(devices, models, note)
 
 
