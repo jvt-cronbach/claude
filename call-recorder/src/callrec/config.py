@@ -18,6 +18,7 @@ from typing import Any
 import tomli_w
 
 from callrec import paths
+from callrec.asr.profiles import PROFILE_CHOICES, profile_for_legacy
 
 log = logging.getLogger(__name__)
 
@@ -70,6 +71,15 @@ class TranscriptionConfig:
     # per-segment language detection of faster-whisper (all ~100 languages, not the candidates) -
     # experimental, for calls that switch language within one track
     multilingual: bool = False
+    # speed against quality (callrec.asr.profiles): schnell | ausgewogen | genau | eigene
+    # ("eigene" = the individual values below: beam_size, temperature_fallback, vad_*,
+    # language_detection_windows; a named profile replaces exactly those)
+    profile: str = "ausgewogen"
+    # CPU threads for Whisper in total (0 = automatic: physical cores, fewer while a recording or a
+    # Teams call is running) and parallel lanes (0 = automatic: 2 from 4 cores, or what
+    # "callrec benchmark" measured as fastest on this PC)
+    cpu_threads: int = 0
+    parallel_lanes: int = 0
     beam_size: int = 5
     vad_filter: bool = True
     condition_on_previous_text: bool = False
@@ -222,6 +232,13 @@ class ProcessingConfig:
     default_summary: bool = True
     default_handoff: bool = True  # pre-ticks the hand-over box in the question (still the user's click)
     handoff_without_asking: bool = False  # only with after_recording = "full"
+    # while a recording or a Teams call is running: "reduce" = processing goes on with about half
+    # of the cores (and below-normal priority, as always); "pause" = waits between two stages and
+    # between two parts of the transcription until the call is over
+    during_call: str = "reduce"
+    # speaker separation at the same time as the transcription (in its own process, 2 threads):
+    # "auto" = when the benchmark measured it to be faster, without benchmark from 6 physical cores
+    parallel_diarization: str = "auto"
 
 
 @dataclass
@@ -388,6 +405,14 @@ class Config:
             raise ConfigError("handoff.mode muss 'folder' oder 'graph' sein")
         if self.handoff.graph_scope not in GRAPH_FILE_SCOPES:
             raise ConfigError(f"handoff.graph_scope muss einer von {', '.join(GRAPH_FILE_SCOPES)} sein")
+        if self.transcription.profile not in PROFILE_CHOICES:
+            raise ConfigError("transcription.profile muss 'schnell', 'ausgewogen', 'genau' oder 'eigene' sein")
+        if not 0 <= self.transcription.cpu_threads <= 256 or not 0 <= self.transcription.parallel_lanes <= 8:
+            raise ConfigError("transcription.cpu_threads muss zwischen 0 und 256, parallel_lanes zwischen 0 und 8 liegen")
+        if self.processing.during_call not in ("reduce", "pause"):
+            raise ConfigError("processing.during_call muss 'reduce' oder 'pause' sein")
+        if self.processing.parallel_diarization not in ("auto", "on", "off"):
+            raise ConfigError("processing.parallel_diarization muss 'auto', 'on' oder 'off' sein")
         if self.transcription.beam_size < 1:
             raise ConfigError("transcription.beam_size muss >= 1 sein")
         t = self.transcription
@@ -552,6 +577,10 @@ def apply_preset(cfg: Config, preset: dict[str, Any], name: str) -> Config:
         # presets of earlier versions stored the old default "de" - do not let it switch detection off
         allowed["transcription"] = {k: v for k, v in allowed["transcription"].items() if k != "language"}
         log.info("Preset %r: alter Standardwert language = \"de\" ignoriert (automatische Erkennung bleibt)", name)
+    tr = allowed.get("transcription")
+    if isinstance(tr, dict) and "profile" not in tr and profile_for_legacy(tr) != "ausgewogen":
+        # preset saved before 0.4 with its own speed values: they only apply as "eigene"
+        allowed["transcription"] = {**tr, "profile": "eigene"}
     ignored = sorted(set(preset) - set(allowed))
     dropped: list[str] = []
     for section, keys in PRESET_FORBIDDEN_KEYS.items():
@@ -674,7 +703,34 @@ CONSENT_ASK_NOTE = (
     "per Häkchen). meta.json vermerkt dann „gestartet mit Hinweis“, nicht „Einwilligung bestätigt“. Die "
     "ausdrückliche Bestätigung bleibt wählbar: Einstellungen › Aufnahme › Vor der Aufnahme."
 )
-MIGRATION_NOTES = frozenset({LEGACY_LANGUAGE_NOTE, HANDOFF_DEFAULT_NOTE, CONSENT_ASK_NOTE})
+PROFILE_NOTES = {
+    "ausgewogen": "Transkription: neues Profil „Ausgewogen“ (Einstellungen › Transkription) – die Verarbeitung nutzt "
+                  "jetzt alle Prozessorkerne und lädt das Modell nur einmal je Aufnahme. „Genau“ entspricht den "
+                  "bisherigen Werten, „Schnell“ spart noch etwas Zeit. Tempo dieses PCs messen: Einstellungen › "
+                  "Transkription › „Geschwindigkeit messen“.",
+    "eigene": "Transkription: Ihre geänderten Werte (Beam-Größe, VAD, Neuversuche) bleiben gültig – Profil „Eigene "
+              "Einstellungen“. Die Verarbeitung nutzt jetzt alle Prozessorkerne und lädt das Modell nur einmal je "
+              "Aufnahme; die Profile „Schnell“, „Ausgewogen“ und „Genau“ sind unter Einstellungen › Transkription wählbar.",
+}
+MIGRATION_NOTES = frozenset({LEGACY_LANGUAGE_NOTE, HANDOFF_DEFAULT_NOTE, CONSENT_ASK_NOTE, *PROFILE_NOTES.values()})
+
+
+def migrate_profile_file(path: Path, profile: str) -> bool:
+    """Write ``profile = ...`` into [transcription] once (comments and layout are kept)."""
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines(keepends=True)
+    for i, line in enumerate(lines):
+        if line.strip() == "[transcription]":
+            lines.insert(i + 1, f'# 0.4: Profil ergänzt ("eigene" = bisherige, geänderte Werte bleiben gültig)\n'
+                                f'profile = "{profile}"\n')
+            new = "".join(lines)
+            if tomllib.loads(new).get("transcription", {}).get("profile") != profile:  # never write a broken file
+                return False
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(new, encoding="utf-8")
+            tmp.replace(path)
+            return True
+    return False
 
 
 def migrate_consent_section_file(path: Path) -> bool:
@@ -737,6 +793,16 @@ def load_config(path: Path | None = None, preset: str | None = None) -> Config:
             log.info("processing.default_handoff = false (alter Standardwert) -> true")
         else:
             handoff_migrated = False
+        profile_note = ""
+        if isinstance(tr, dict) and "profile" not in tr:
+            # written before 0.4: unchanged speed values -> "ausgewogen", changed ones stay ("eigene")
+            tr["profile"] = profile_for_legacy(tr)
+            try:
+                if migrate_profile_file(path, tr["profile"]):
+                    profile_note = PROFILE_NOTES[tr["profile"]]
+            except (OSError, ValueError):
+                log.warning("config.toml: Transkriptionsprofil nicht ergänzt", exc_info=True)
+            log.info("transcription.profile fehlte -> %s", tr["profile"])
         consent_migrated = False
         if "consent" not in data:
             try:
@@ -750,6 +816,8 @@ def load_config(path: Path | None = None, preset: str | None = None) -> Config:
             _remember_notice(cfg, HANDOFF_DEFAULT_NOTE)
         if consent_migrated:
             _remember_notice(cfg, CONSENT_ASK_NOTE)
+        if profile_note:
+            _remember_notice(cfg, profile_note)
     name = preset if preset is not None else cfg.general.preset.strip()
     if name:
         ppath = paths.presets_dir() / f"{name}.toml"
@@ -848,6 +916,14 @@ language_min_speech_s = 20.0
 # Sprachwechsel innerhalb einer Spur (faster-whisper "multilingual", experimentell: erkennt je
 # 30-s-Fenster unter allen Sprachen, nicht nur den Kandidaten)
 multilingual = false
+# Tempo gegen Genauigkeit: "schnell", "ausgewogen" (empfohlen), "genau" (wie bis 0.3) oder "eigene"
+# (dann gelten beam_size, temperature_fallback, vad_* und language_detection_windows unten)
+profile = "ausgewogen"
+# Rechen-Threads für Whisper insgesamt (0 = automatisch: alle physischen Kerne, während einer Aufnahme
+# oder eines Teams-Anrufs etwa die Hälfte) und parallele Spuren (0 = automatisch bzw. Messung von
+# "callrec benchmark")
+cpu_threads = 0
+parallel_lanes = 0
 beam_size = 5
 vad_filter = true
 condition_on_previous_text = false
@@ -1013,6 +1089,11 @@ default_summary = true
 default_handoff = true
 # nur bei after_recording = "full": Zusammenfassung ohne Rückfrage an SharePoint übergeben
 handoff_without_asking = false
+# während einer Aufnahme oder eines Teams-Anrufs: "reduce" = mit etwa der Hälfte der Kerne weiterrechnen,
+# "pause" = zwischen zwei Schritten warten, bis das Gespräch vorbei ist
+during_call = "reduce"
+# Sprechertrennung gleichzeitig mit der Transkription: "auto" (nach Messung bzw. ab 6 Kernen), "on", "off"
+parallel_diarization = "auto"
 
 [hotkey]
 toggle = "ctrl+alt+shift+r"
