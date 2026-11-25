@@ -621,7 +621,7 @@ def test_participants_and_recheck_rerun_identification(world: World, monkeypatch
     w.pump(lambda: w.win.selected is not None and w.win.selected.id == name)
     labels = [w.win.more_menu.entrycget(i, "label") for i in range(w.win.more_menu.index("end") + 1)
               if w.win.more_menu.type(i) == "command"]
-    assert "Teilnehmende bearbeiten …" in labels and "Sprecherzuordnung neu prüfen …" in labels
+    assert "Teilnehmende bearbeiten …" in labels and "Sprecher neu erkennen …" in labels and "Warum (nicht) erkannt? …" in labels
     monkeypatch.setattr(dialogs, "edit_participants", lambda root, r: [P("Karl Kunde", "karl@kunde.de")])
     assert w.actions.edit_participants(rec)
     assert [p.name for p in rec.participants()] == ["Karl Kunde"]

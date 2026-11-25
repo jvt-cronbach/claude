@@ -407,6 +407,8 @@ def action_states(info: RecordingInfo, recording_now: bool, busy: bool, calendar
         "assign_event": not busy and not recording_now and calendar_connected and material,
         "participants": not busy and material,
         "recheck": not busy and info.speakers_unassigned is not None and material,
+        "explain": info.speakers_unassigned is not None and material,
+        "diagnostics": info.speakers_unassigned is not None and material,
         "rerender": not busy and info.has_transcript and material,
         "speaker_limit": not busy and info.speakers_unassigned is not None and material and audio,
         "folder": True,
@@ -423,7 +425,8 @@ def disabled_reasons(info: RecordingInfo) -> dict[str, str]:
     out: dict[str, str] = {}
     if info.reduced:
         why = "Audio und Transkript dieser Aufnahme wurden gelöscht."
-        for k in ("review", "resummarize", "retranscribe", "reprocess", "recheck", "rerender", "participants",
+        for k in ("review", "resummarize", "retranscribe", "reprocess", "recheck", "explain", "diagnostics",
+                  "rerender", "participants",
                   "assign_event", "speaker_limit", "play", "process_now", "delete_audio", "delete_material"):
             out[k] = why
     elif not info.has_audio:

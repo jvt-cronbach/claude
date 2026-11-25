@@ -192,12 +192,16 @@ def _email_person(obj: dict[str, Any] | None, role: str) -> Person | None:
 
 def parse_graph_event(item: dict[str, Any]) -> CalendarEvent:
     attendees: list[Person] = []
+    status: dict[str, dict[str, str]] = {}
     for a in item.get("attendees") or []:
-        if str(a.get("type", "")).lower() == "resource":  # meeting rooms
+        kind = str(a.get("type", "")).lower()
+        if kind == "resource":  # meeting rooms
             continue
         p = _email_person(a, "attendee")
         if p:
             attendees.append(p)
+            response = str((a.get("status") or {}).get("response") or "").lower()
+            status[p.key()] = {"type": kind or "required", "response": response or "none"}
     online = item.get("onlineMeeting") or {}
     provider = str(item.get("onlineMeetingProvider") or "")
     response = str((item.get("responseStatus") or {}).get("response") or "").lower()
@@ -222,6 +226,7 @@ def parse_graph_event(item: dict[str, Any]) -> CalendarEvent:
         show_as=str(item.get("showAs") or ""),
         source="graph",
         join_url=str(online.get("joinUrl") or ""),
+        attendee_status=status,
     )
 
 

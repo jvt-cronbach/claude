@@ -43,7 +43,8 @@ class DialogPort(Protocol):
     def ask_update(self, res: Any, busy: str, install_info: dict[str, Any]) -> str | None: ...
 
     def manage_profiles(self, profiles: Any, rebuild: Callable[[str], str] | None = None,
-                        recordings_root: Any = None) -> None: ...
+                        recordings_root: Any = None, reidentify: Callable[[], object] | None = None,
+                        repair: Callable[[], object] | None = None) -> None: ...
 
     def edit_settings(self, base: Any, mics: list[str], outs: list[str], save: Callable[[Any], None],
                       initial_tab: str = "", autostart: Any = None) -> bool: ...
@@ -51,6 +52,8 @@ class DialogPort(Protocol):
     def edit_summary_prompts(self, test: Callable[[], object] | None = None) -> bool: ...
 
     def ask_yes_no(self, title: str, message: str, warning: bool = False) -> bool: ...
+
+    def show_text(self, title: str, text: str) -> None: ...
 
     def ask_retention(self, kind: str, text: str, items: list[tuple[str, str]], rt: Any) -> str: ...
 
@@ -122,10 +125,12 @@ class TkDialogPort:
         return dialogs.ask_update(self._root(), res, busy, install_info)
 
     def manage_profiles(self, profiles: Any, rebuild: Callable[[str], str] | None = None,
-                        recordings_root: Any = None) -> None:
+                        recordings_root: Any = None, reidentify: Callable[[], object] | None = None,
+                        repair: Callable[[], object] | None = None) -> None:
         from callrec.ui import dialogs
 
-        dialogs.manage_profiles(self._root(), profiles, rebuild=rebuild, recordings_root=recordings_root)
+        dialogs.manage_profiles(self._root(), profiles, rebuild=rebuild, recordings_root=recordings_root,
+                                reidentify=reidentify, repair=repair)
 
     def edit_settings(self, base: Any, mics: list[str], outs: list[str], save: Callable[[Any], None],
                       initial_tab: str = "", autostart: Any = None) -> bool:
@@ -145,6 +150,11 @@ class TkDialogPort:
         if warning:
             kwargs["icon"] = "warning"
         return bool(messagebox.askyesno(title, message, **kwargs))
+
+    def show_text(self, title: str, text: str) -> None:
+        from callrec.ui import dialogs
+
+        dialogs.show_text(self._root(), title, text)
 
     def ask_retention(self, kind: str, text: str, items: list[tuple[str, str]], rt: Any) -> str:
         from callrec.retention import RETENTION_CHOICES, question_text

@@ -207,7 +207,7 @@ def test_participants_edit_reidentifies_and_manual_wins(tmp_path: Path, store: P
     sp = rec2.load_speakers()
     assert sp["S1"].name == "Bernd Muster" and sp["S2"].name == "Carla Neu" and sp["S2"].source == "manual"
     meta = rec2.load_meta()["processing"]
-    assert meta["identification"]["rule"] == "participants-v2" and "identify_s" in meta["identification"]["timing"]
+    assert meta["identification"]["rule"] == "participants-v3" and "identify_s" in meta["identification"]["timing"]
     assert {"diarize_s", "embed_s", "total_s", "rtf"} <= set(meta["diarization"]["timing"])
 
 
@@ -400,11 +400,11 @@ def test_old_identification_hint_and_capture_warning_in_library(tmp_path: Path):
     rec = make_recording(tmp_path, with_parts=False)
     rec.save_speakers({"ME": SpeakerInfo("ME", "Ich", source="self"),
                        "S1": SpeakerInfo("S1", "Sprecher 1", name="Karl", source="auto")})
-    assert "Sprecherzuordnung neu prüfen" in status_description(read_info(rec.folder))
+    assert "Sprecher neu erkennen" in status_description(read_info(rec.folder))
     rec.update_meta(["processing", "identification"], {"rule": "participants-v2",
                                                        "trackcheck": {"warnings": ["Mikro kaputt"]}})
     text = status_description(read_info(rec.folder))
-    assert "neu prüfen" not in text and "Mikrofon prüfen: Mikro kaputt" in text
+    assert "neu erkennen" not in text and "Mikrofon prüfen: Mikro kaputt" in text
 
 
 # -- speaker count bounded by the participants ----------------------------------------------------
@@ -449,7 +449,9 @@ def test_sole_participant_learns_only_a_voice_that_is_plausibly_theirs(tmp_path:
     set_participants(sub, [Person("Kunde, Karl", "karl@kunde.de")])
     pipeline.run(sub)
     s1 = sub.load_speakers()["S1"]
-    assert s1.name == "Kunde, Karl" and "Stimme passt nicht zum Stimmprofil" in s1.note
+    # 0.4.1: named after the invitation all the same, the doubt is shown and nothing is learned
+    assert s1.name == "Kunde, Karl" and "Stimmprofil nicht aktualisiert: klingt eher wie Bernd Muster" in s1.note
+    assert s1.suggested_name == "Bernd Muster"
     assert all(c.recording != sub.uid for c in store.find("Karl Kunde", "karl@kunde.de", "fake-embedder").contributions)  # type: ignore[union-attr]
 
 
@@ -599,7 +601,7 @@ def test_sole_participant_without_profile_whose_voice_is_somebody_known(tmp_path
     pipeline, _, _ = make_pipeline(store)
     pipeline.run(rec)
     s1 = rec.load_speakers()["S1"]
-    assert s1.name == "Neu, Nora" and "klingt wie Bernd Muster" in s1.note
+    assert s1.name == "Neu, Nora" and "Stimme sehr ähnlich zu Bernd Muster" in s1.note
     assert store.find("Nora Neu", "nora@kunde.de", "fake-embedder") is None
 
 

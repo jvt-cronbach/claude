@@ -423,6 +423,16 @@ class WebCore:
             store.delete(pid)
         elif action == "delete_all":
             store.delete_all()
+        elif action in ("mode_never", "mode_always", "mode_normal"):
+            store.set_mode(pid, {"mode_never": "never", "mode_always": "always", "mode_normal": ""}[action])
+        elif action == "reidentify":
+            n = self.loop.call(lambda: self.actions.reidentify_all(ask=False))
+            text = f"{n} Aufnahme(n) werden mit den aktuellen Regeln neu erkannt (eigene Zuordnungen bleiben)."
+        elif action == "repair":
+            from callrec.speakers import repair
+
+            rp = repair.plan(store, self.cfg.recordings_path())
+            text = "\n".join(repair.apply(store, rp) if not rp.empty else rp.lines())
         elif action != "list":
             return {"error": "Unbekannte Aktion"}
         return {"profiles": profiles(store, self.cfg.recordings_path()), "text": text}
@@ -761,6 +771,7 @@ def _boot(core: WebCore, start_minimized: bool) -> None:
                          daemon=True).start()
     core.loop.after(3000, actions.show_update_result)
     actions.schedule_retention()  # automatic deletion of old recordings: at the start, then daily
+    actions.schedule_profile_repair()  # once after the update to 0.4.1: rebuild/link the voice profiles
     schedule_daily_update_check(cfg, core.loop, actions)
 
     def tick() -> None:

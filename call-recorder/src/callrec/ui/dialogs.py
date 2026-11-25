@@ -380,8 +380,13 @@ def review_speakers(
         info = f"{ov.label}\n{fmt_ts(ov.talk_time_s, 'mm:ss')} Sprechzeit, {ov.utterances} Beiträge"
         if ov.minor:
             info += f"\nkurzes Fragment ({ov.speech_s:.1f} s Sprache)"
-        if ov.source == "auto" and ov.score is not None:
-            info += f"\nautomatisch erkannt ({ov.score:.2f})"
+        if ov.source == "auto" and ov.name:
+            from callrec.speakers.identify import RULE_TEXT
+
+            info += f"\nautomatisch: {RULE_TEXT.get(ov.rule, 'Stimmprofil')}" + (
+                f" ({ov.score:.2f})" if ov.score is not None else "")
+        elif not ov.name and ov.preselect_name:
+            info += "\nVorschlag" + (f" ({ov.preselect_score:.2f})" if ov.preselect_score is not None else "")
         elif ov.source == "self_echo":
             info += "\nals eigene Stimme markiert"
         lab = ttk.Label(win, text=info)
@@ -393,6 +398,13 @@ def review_speakers(
         lab2.grid(row=i, column=1, sticky="nw", **PAD)
         box = play_buttons(win, "remote", ov)
         box.grid(row=i, column=2, sticky="nw", **PAD)
+
+        def why(ov: Any = ov) -> None:
+            from callrec.speakers.identify import explain_lines
+
+            show_text(win, f"Warum? – {ov.label}", "\n".join(explain_lines(ov.explain, ov.name, ov.source)))
+
+        ttk.Button(box, text="Warum?", command=why).pack(anchor="w", pady=(2, 0))
         initial = SELF_CHOICE if ov.source == "self_echo" else (ov.name or ov.preselect_name)
         name_var = tk.StringVar(value=initial)
         combo = ttk.Combobox(win, textvariable=name_var, values=row_choices(rec, profiles, ov, all_profiles), width=44)
@@ -446,6 +458,16 @@ def review_speakers(
         win.destroy()
 
     ttk.Button(bottom, text="Übernehmen", command=apply).pack(side="right", padx=4)
+    suggestions = {ov.id: ov.preselect_name for ov in overview if not ov.name and ov.preselect_name and not ov.minor}
+    if suggestions:
+        def take_all() -> None:
+            for sid, nv, _kv in rows:
+                if sid in suggestions:
+                    nv.set(suggestions[sid])
+            apply()
+
+        ttk.Button(bottom, text=f"Alle Vorschläge übernehmen ({len(suggestions)})", command=take_all).pack(
+            side="right", padx=4)
     bound = ((rec.load_meta().get("processing") or {}).get("diarization") or {}).get("bound") or {}
     if allow_more is not None and not in_chain and bound.get("merged"):
         def more() -> None:
@@ -526,8 +548,22 @@ def confirm_recheck(root: tk.Misc, rec: Recording, changes: list[tuple[str, str,
 # ---------------------------------------------------------------------------
 # Voice profiles
 # ---------------------------------------------------------------------------
+def show_text(root: Any, title: str, text: str) -> None:
+    """A longer read-only text (explanations, results) with a "Schließen" button."""
+    win = tk.Toplevel(root)
+    win.title(title)
+    box = tk.Text(win, wrap="word", width=96, height=min(30, max(8, text.count("\n") + 3)))
+    box.insert("1.0", text)
+    box.configure(state="disabled")
+    box.pack(fill="both", expand=True, **PAD)
+    ttk.Button(win, text="Schließen", command=win.destroy).pack(anchor="e", **PAD)
+    _modal(win)
+    win.wait_window(win)
+
+
 def manage_profiles(root: tk.Tk, profiles: ProfileStore, rebuild: Callable[[str], str] | None = None,
-                    recordings_root: Path | None = None) -> None:
+                    recordings_root: Path | None = None, reidentify: Callable[[], object] | None = None,
+                    repair: Callable[[], object] | None = None) -> None:
     """``rebuild(profile_id) -> message``: rebuild a profile from your assignments in the recordings."""
     win = tk.Toplevel(root)
     win.title("Stimmprofile (biometrische Daten)")
@@ -553,6 +589,27 @@ def manage_profiles(root: tk.Tk, profiles: ProfileStore, rebuild: Callable[[str]
         origins.heading(col, text=head)
         origins.column(col, width=w, anchor="w")
     origins.pack(fill="both", expand=True, **PAD)
+    ttk.Label(win, text="Erkennung (wird die Person inzwischen automatisch erkannt?):").pack(anchor="w", padx=8)
+    stats_box = tk.Text(win, wrap="word", height=7, width=90)
+    stats_box.pack(fill="both", expand=True, **PAD)
+    mode_bar = ttk.Frame(win)
+    mode_bar.pack(fill="x", padx=8)
+    ttk.Label(mode_bar, text="Automatisch zuordnen:").pack(side="left")
+    MODE_LABELS = {"": "normal (wenn eingeladen)", "never": "nie automatisch", "always": "immer erkennen (auch ohne Einladung)"}
+    mode_var = tk.StringVar(value=MODE_LABELS[""])
+    mode_box = ttk.Combobox(mode_bar, textvariable=mode_var, values=list(MODE_LABELS.values()), state="readonly",
+                            width=40)
+    mode_box.pack(side="left", padx=4)
+
+    def set_mode(*_a: Any) -> None:
+        sel = tree.selection()
+        if not sel:
+            return
+        mode = next(k for k, v in MODE_LABELS.items() if v == mode_var.get())
+        profiles.set_mode(sel[0], mode)
+        show_origins()
+
+    mode_box.bind("<<ComboboxSelected>>", set_mode)
 
     def refresh() -> None:
         tree.delete(*tree.get_children())
@@ -562,10 +619,18 @@ def manage_profiles(root: tk.Tk, profiles: ProfileStore, rebuild: Callable[[str]
 
     def show_origins(*_a: Any) -> None:
         origins.delete(*origins.get_children())
+        stats_box.configure(state="normal")
+        stats_box.delete("1.0", "end")
         sel = tree.selection()
         p = profiles.get(sel[0]) if sel else None
         if p is None:
+            stats_box.configure(state="disabled")
             return
+        from callrec.speakers.stats import profile_stats, stats_lines
+
+        stats_box.insert("1.0", "\n".join(stats_lines(profile_stats(p))))
+        stats_box.configure(state="disabled")
+        mode_var.set(MODE_LABELS.get(p.mode, MODE_LABELS[""]))
         from callrec.ui.dto import provenance_state
 
         for i, c in enumerate(p.contributions):
@@ -642,6 +707,14 @@ def manage_profiles(root: tk.Tk, profiles: ProfileStore, rebuild: Callable[[str]
     bar2.pack(fill="x", **PAD)
     ttk.Button(bar2, text="Ausgewählte löschen", command=delete_selected).pack(side="left", padx=4)
     ttk.Button(bar2, text="Alle löschen", command=delete_all).pack(side="left", padx=4)
+    if reidentify is not None:
+        ttk.Button(bar2, text="Sprecher in allen Aufnahmen neu erkennen …", command=reidentify).pack(side="left", padx=4)
+    if repair is not None:
+        def do_repair() -> None:
+            repair()
+            refresh()
+
+        ttk.Button(bar2, text="Reparieren …", command=do_repair).pack(side="left", padx=4)
     ttk.Button(bar2, text="Schließen", command=win.destroy).pack(side="right", padx=4)
     refresh()
     _modal(win)

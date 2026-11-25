@@ -396,6 +396,7 @@ def _run_tk(cfg: Config, log_file: Any, start_minimized: bool, fallback_notice: 
             controller.process(rec)
 
     actions.schedule_retention()  # automatic deletion of old recordings: at the start, then daily
+    actions.schedule_profile_repair()  # once after the update to 0.4.1: rebuild/link the voice profiles
     if cfg.detection.enabled and sys.platform == "win32":
         threading.Thread(target=detection_loop, args=(cfg, controller, ui, stop_event), name="detect", daemon=True).start()
 

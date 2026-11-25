@@ -421,7 +421,7 @@ def status_description(info: RecordingInfo) -> str:
         parts.append("Der Zusammenfassung fehlen Abschnitte (" + ", ".join(info.summary_missing) + ") – Prompt prüfen.")
     if info.old_identification:
         parts.append("Die Sprecher wurden von einer früheren Version zugeordnet, die auch nicht eingeladene Personen "
-                     "erkannt hat – „Weitere … → Sprecherzuordnung neu prüfen“.")
+                     "erkannt hat – „Weitere … → Sprecher neu erkennen“.")
     for w in info.capture_warnings:
         parts.append(f"Mikrofon prüfen: {w}")
     return " ".join(parts)

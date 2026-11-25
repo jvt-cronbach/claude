@@ -610,3 +610,58 @@ def test_retranscribe_dialog_offers_the_profiles(root, tmp_path: Path):
 
     root.after(100, answer)
     assert dialogs.ask_retranscribe(root, rec, []) == ("auto", None, "genau")
+
+
+def test_review_bulk_suggestions_explanation_and_profile_stats(root, tmp_path: Path):
+    """0.4.1: "Alle Vorschläge übernehmen", "Warum?" per voice, recognition statistics and the per-person
+    mode in the profile manager."""
+    from callrec.models import AsrResult, AsrSegment, SpeakerInfo, Word
+    from callrec.speakers.profiles import PlainFilePersistence, ProfileStore
+    from tests.conftest import make_recording
+
+    rec = make_recording(tmp_path / "r", with_parts=False)
+    seg = AsrResult("de", 3, [AsrSegment(0, 2, "Hallo", [Word(0, 2, " Hallo zusammen")])])
+    rec.save_asr("mic", seg)
+    rec.save_asr("remote", seg)
+    rec.save_speakers({"ME": SpeakerInfo("ME", "Ich", name="Ich Selbst", source="self"),
+                       "S1": SpeakerInfo("S1", "Sprecher 1", preselect_name="Anna Beispiel", preselect_score=0.52,
+                                         note="nicht eindeutig: Anna Beispiel 0.52 / Bernd Muster 0.49")})
+    rec.update_meta(["processing", "identification"], {"rule": "participants-v3", "decisions": {"S1": {
+        "decision": "open", "reason": "nicht eindeutig", "speech_s": 25.0,
+        "candidates": [{"name": "Anna Beispiel", "score": 0.52, "expected": True, "kind": "participant",
+                        "profile": "linked"}]}}})
+    rec.turns_path.write_text('[{"start": 0, "end": 25, "speaker": "S1"}]', encoding="utf-8")
+    rec.save_embeddings({"S1": np.ones(8, dtype=np.float32)}, "m")
+    store = ProfileStore(PlainFilePersistence(tmp_path / "vp.json"))
+    seen: dict[str, object] = {}
+
+    def drive():
+        win = toplevel(root)
+        seen["why"] = bool(find(win, ttk.Button, "Warum?"))
+        find(win, ttk.Button, "Alle Vorschläge übernehmen (1)").invoke()
+        root.after(300, lambda: [w.destroy() for w in root.winfo_children() if isinstance(w, tk.Toplevel)])
+
+    root.after(200, drive)
+    dialogs.messagebox.showinfo = lambda *a, **k: None  # type: ignore[assignment]
+    assert dialogs.review_speakers(root, rec, store, lambda: None, lambda: None) is True
+    assert seen["why"] and rec.load_speakers()["S1"].name == "Anna Beispiel"
+    anna = store.find("Anna Beispiel", "anna@firma.de", "m")
+    assert anna is not None and [h["how"] for h in anna.history] == ["manual"]
+
+    def drive_profiles():
+        win = toplevel(root)
+        tree = find(win, ttk.Treeview)
+        tree.selection_set(tree.get_children()[0])
+        root.update()
+        texts = [w.get("1.0", "end") for w in walk(win) if isinstance(w, tk.Text)]
+        seen["stats"] = " ".join(texts)
+        combo = [w for w in walk(win) if isinstance(w, ttk.Combobox)][0]
+        combo.set("nie automatisch")
+        combo.event_generate("<<ComboboxSelected>>")
+        root.update()
+        win.destroy()
+
+    root.after(200, drive_profiles)
+    dialogs.manage_profiles(root, store, reidentify=lambda: None, repair=lambda: None)
+    assert "Gesprächen automatisch" in str(seen["stats"]) and "von Ihnen zugeordnet" in str(seen["stats"])
+    assert store.find("Anna Beispiel", "anna@firma.de", "m").mode == "never"  # type: ignore[union-attr]

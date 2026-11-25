@@ -28,7 +28,7 @@ jslog = logging.getLogger("callrec.ui.page")
 
 _ID = re.compile(r"^[^\\/:*?\"<>|\x00-\x1f]{1,200}$")
 REC_ACTIONS = ("process_now", "review", "resummarize", "handoff", "play", "folder", "retranscribe", "assign_event",
-               "participants", "recheck", "rerender", "speaker_limit", "reprocess")
+               "participants", "recheck", "rerender", "speaker_limit", "reprocess", "explain", "diagnostics")
 
 
 # js_api object -> {"core": WebCore, "window": name}; not reachable by attribute access from the page
@@ -309,6 +309,7 @@ class Bridge:
             "participants": lambda: a.edit_participants(rec), "recheck": lambda: a.recheck_speakers(rec),
             "rerender": lambda: a.rerender(rec), "speaker_limit": lambda: a.toggle_speaker_limit(rec),
             "reprocess": lambda: a.reprocess(rec),
+            "explain": lambda: a.explain_speakers(rec), "diagnostics": lambda: a.export_diagnostics(rec),
         }
         return self._post(fns[key])
 

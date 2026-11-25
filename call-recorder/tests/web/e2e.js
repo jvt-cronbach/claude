@@ -214,6 +214,22 @@ async function overflow(p) {
     check(await p.evaluate(() => window.__xss) === undefined, "Hörprobe/Text sicher");
   });
 
+  await scenario("speaker_review_suggestions_and_why", async check => {
+    const p = await page(browser, { route: "library" });
+    await p.waitForSelector(".rec-item");
+    await p.evaluate(() => window.__dialog("review", window.__FIX.review_suggest));
+    await p.waitForSelector(".modal.review");
+    const why = await p.$$(".modal.review details summary");
+    check(why.length >= 2, `„Warum?“ je Stimme (${why.length})`);
+    check((await p.textContent(".modal.review")).includes("Vorschlag · Ähnlichkeit 0.61"), "Vorschlag mit Ähnlichkeit");
+    await p.click(".modal-foot [data-a=suggest]");
+    await p.waitForTimeout(200);
+    const a = (await answers(p)).pop();
+    const fix = JSON.parse(FIX);
+    check(a && a.result.action === "apply" && a.result.assignments[0].name === fix.review_suggest.rows[0].preselect,
+      `Alle Vorschläge übernehmen ${JSON.stringify(a && a.result)}`);
+  });
+
   await scenario("settings_roundtrip", async check => {
     const p = await page(browser, { route: "settings" });
     await p.waitForSelector(".subnav");

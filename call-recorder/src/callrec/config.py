@@ -133,23 +133,36 @@ class SpeakerConfig:
     # invitation or entered by you); "all_profiles": every known profile (behaviour of earlier
     # versions). Only config.toml / the settings dialog may change it, never a preset.
     match_scope: str = "participants"
-    match_threshold: float = 0.55
-    # the best profile must beat every other profile by this much (else: no automatic assignment)
-    match_margin: float = 0.08
+    # 0.4.1 (see callrec.speakers.identify): only this call's participants compete; the best one must
+    # reach match_threshold and beat the second-best participant and the other voices by match_margin.
+    # Measured on Teams-like audio: the same person scores 0.36-0.92 depending on the devices, two
+    # different people through the same kind of device up to 0.75 - an absolute bar against everybody
+    # (0.4.0: 0.55 / 0.08 against all profiles) mostly blocked the right person.
+    match_threshold: float = 0.45
+    match_margin: float = 0.06
+    # with nobody to compare with (one voice, one participant with a profile) the bar is higher
+    alone_threshold: float = 0.60
+    # a profile of somebody NOT invited blocks an automatic name only when it is this much closer
+    guard_margin: float = 0.10
     # clean speech (s) a speaker needs before it is matched automatically / may change a profile
-    min_match_speech_s: float = 8.0
-    min_learn_speech_s: float = 20.0
+    min_match_speech_s: float = 6.0
+    min_learn_speech_s: float = 12.0
     # a diarized remote "speaker" with less speech than this (s, without overlap) is a fragment (cough,
     # "mhm", cross-talk, noise): not offered for naming, not counted as open, never matched or learned;
     # its text goes to the most plausible speaker or is labelled "Unklar"
     min_named_speech_s: float = 5.0
-    # the participant list limits the number of remote speakers (participants without you, plus
+    # the participant list limits the number of remote speakers (expected participants without you, plus
     # this many uninvited guests); per recording "Weitere Sprecher zulassen" lifts it
     limit_to_participants: bool = True
     extra_remote_speakers: int = 0
+    # exactly one other expected participant and one remote voice: named after that person (no profile needed)
+    single_participant_rule: bool = True
+    # all expected participants but one recognised and one voice left: that voice is the remaining person
+    elimination_rule: bool = True
     invitee_bonus: float = 0.05  # only in match_scope = "all_profiles"
     auto_update_on_match: bool = True
-    auto_update_threshold: float = 0.75
+    # an automatic profile match teaches the profile from this score on (with a clear margin)
+    auto_update_threshold: float = 0.55
 
 
 @dataclass
@@ -749,6 +762,57 @@ def migrate_consent_section_file(path: Path) -> bool:
     return True
 
 
+SPEAKER_RULES_NOTE = (
+    "Sprechererkennung (0.4.1): Bekannte Personen werden jetzt deutlich öfter automatisch erkannt – es "
+    "konkurrieren nur noch die Teilnehmenden des Termins, ein Profil hält mehrere Stimmproben (Geräte), und bei "
+    "genau einer weiteren Person wird deren Name immer vergeben. Die bisherigen Standardwerte in config.toml "
+    "(Schwelle 0,55, Abstand 0,08, 8 s / 20 s Sprache, Nachschärfen ab 0,75) wurden auf die neuen umgestellt; "
+    "selbst geänderte Werte bleiben. Warum eine Stimme (nicht) erkannt wurde, steht im Dialog „Sprecher zuordnen“."
+)
+# 0.4.0 template defaults (written into every config.toml) -> 0.4.1 defaults; other values are a choice
+SPEAKER_DEFAULTS_041 = {"match_threshold": (0.55, 0.45), "match_margin": (0.08, 0.06),
+                        "min_match_speech_s": (8.0, 6.0), "min_learn_speech_s": (20.0, 12.0),
+                        "auto_update_threshold": (0.75, 0.55)}
+MIGRATION_NOTES = MIGRATION_NOTES | {SPEAKER_RULES_NOTE}
+_KEY_LINE = re.compile(r"^(?P<key>[a-z_]+)\s*=\s*(?P<value>[0-9.]+)\s*(#.*)?$")
+
+
+def migrate_speaker_defaults_file(path: Path) -> bool:
+    """One-time: the 0.4.0 default values of [speakers] -> 0.4.1 (comments and layout kept), and mark
+    the section as written for 0.4.1 (``single_participant_rule``) so a value chosen later stays."""
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines(keepends=True)
+    if lines and not lines[-1].endswith("\n"):
+        lines[-1] += "\n"
+    section, at, changed = "", -1, False
+    for i, line in enumerate(lines):
+        st = line.strip()
+        if st.startswith("["):
+            section = st.strip("[] ")
+            if section == "speakers":
+                at = i
+            continue
+        m = _KEY_LINE.match(st)
+        if section == "speakers" and m and m.group("key") in SPEAKER_DEFAULTS_041:
+            old, new = SPEAKER_DEFAULTS_041[m.group("key")]
+            if abs(float(m.group("value")) - old) < 1e-9:
+                lines[i] = f"{m.group('key')} = {new}\n"
+                changed = True
+    marker = "# 0.4.1: neue Erkennungsregeln (siehe Versionshinweise)\nsingle_participant_rule = true\n"
+    if at >= 0:
+        lines.insert(at + 1, marker)
+    else:
+        lines.append("\n[speakers]\n" + marker)
+    new_text = "".join(lines)
+    data = tomllib.loads(new_text)  # never write a file that does not parse
+    if data.get("speakers", {}).get("single_participant_rule") is not True:
+        return False
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(new_text, encoding="utf-8")
+    tmp.replace(path)
+    return changed
+
+
 def _remember_notice(cfg: Config, text: str) -> None:
     from callrec import notices
 
@@ -803,6 +867,15 @@ def load_config(path: Path | None = None, preset: str | None = None) -> Config:
             except (OSError, ValueError):
                 log.warning("config.toml: Transkriptionsprofil nicht ergänzt", exc_info=True)
             log.info("transcription.profile fehlte -> %s", tr["profile"])
+        speakers_migrated = False
+        if isinstance(sp, dict) and "single_participant_rule" not in sp:
+            for key, (old, new) in SPEAKER_DEFAULTS_041.items():
+                if isinstance(sp.get(key), (int, float)) and abs(float(sp[key]) - old) < 1e-9:
+                    sp[key] = new
+            try:
+                speakers_migrated = migrate_speaker_defaults_file(path)
+            except (OSError, ValueError):
+                log.warning("config.toml: Sprechererkennung nicht auf die Werte von 0.4.1 umgestellt", exc_info=True)
         consent_migrated = False
         if "consent" not in data:
             try:
@@ -818,6 +891,8 @@ def load_config(path: Path | None = None, preset: str | None = None) -> Config:
             _remember_notice(cfg, CONSENT_ASK_NOTE)
         if profile_note:
             _remember_notice(cfg, profile_note)
+        if speakers_migrated:
+            _remember_notice(cfg, SPEAKER_RULES_NOTE)
     name = preset if preset is not None else cfg.general.preset.strip()
     if name:
         ppath = paths.presets_dir() / f"{name}.toml"
@@ -967,24 +1042,33 @@ num_threads = 0
 # "participants": automatisch nur Personen dieses Termins (Einladung oder von Ihnen eingetragen);
 # "all_profiles": alle bekannten Stimmprofile (Verhalten früherer Versionen). Nicht per Preset änderbar.
 match_scope = "participants"
-# Ab welcher Ähnlichkeit (Kosinus, 0..1) eine Stimme einem Profil zugeordnet wird
-match_threshold = 0.55
-# Abstand zum zweitbesten Profil, sonst keine automatische Zuordnung
-match_margin = 0.08
+# Nur die Teilnehmenden des Termins kommen in Frage. Die beste Person braucht mindestens diese Ähnlichkeit
+# (Kosinus, 0..1) und diesen Abstand zur zweitbesten Person bzw. zu den anderen Stimmen des Gesprächs
+match_threshold = 0.45
+match_margin = 0.06
+# Schwelle, wenn es nichts zu vergleichen gibt (eine Stimme, nur eine Person mit Stimmprofil)
+alone_threshold = 0.6
+# Ein Profil einer NICHT eingeladenen Person verhindert die automatische Zuordnung nur, wenn es so viel näher ist
+guard_margin = 0.1
 # Mindest-Sprechzeit (s) für die automatische Zuordnung bzw. für das Lernen eines Profils
-min_match_speech_s = 8.0
-min_learn_speech_s = 20.0
+min_match_speech_s = 6.0
+min_learn_speech_s = 12.0
 # Stimmen mit weniger Sprache (s) gelten als kurze Fragmente (Husten, "mhm", Störgeräusch): sie werden nicht
 # zur Zuordnung angeboten und zählen nicht als offen; ihr Text geht an die passende Person oder heißt "Unklar"
 min_named_speech_s = 5.0
-# Anzahl der Sprecher der Gegenseite höchstens = Teilnehmende ohne Sie (+ so viele nicht eingeladene Gäste);
-# je Aufnahme aufhebbar ("Weitere Sprecher zulassen")
+# Anzahl der Sprecher der Gegenseite höchstens = erwartete Teilnehmende ohne Sie (ohne Absagen, Räume, Verteiler,
+# optionale ohne Zusage) + so viele nicht eingeladene Gäste; je Aufnahme aufhebbar ("Weitere Sprecher zulassen")
 limit_to_participants = true
 extra_remote_speakers = 0
+# Genau eine weitere erwartete Person und eine Stimme: die Stimme bekommt deren Namen (auch ohne Stimmprofil)
+single_participant_rule = true
+# Alle Teilnehmenden bis auf eine Person erkannt und eine Stimme übrig: die Stimme ist diese Person
+elimination_rule = true
 # Bonus für Eingeladene (nur bei match_scope = "all_profiles")
 invitee_bonus = 0.05
 auto_update_on_match = true
-auto_update_threshold = 0.75
+# Eine automatische Erkennung verbessert das Profil ab dieser Ähnlichkeit (bei deutlichem Abstand)
+auto_update_threshold = 0.55
 
 [transcript]
 # Zeitstempel: "hh:mm:ss", "mm:ss" oder "none"

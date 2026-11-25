@@ -429,6 +429,104 @@ class AppActions:
         self._changed(rec)
         return True
 
+    # -- speaker recognition: explanation, diagnostics, re-identification, one-time repair (0.4.1) ----
+    def explain_speakers(self, rec: Recording | None = None) -> bool:
+        """ "Warum (nicht) erkannt?": for every remote voice the candidates, scores and deciding rule."""
+        from callrec.review import recognition_text
+
+        rec = self._resolve(rec)
+        if rec is None or not rec.speakers_path.exists():
+            return False
+        self.dialogs.show_text(f"Sprechererkennung – {rec.title()}", recognition_text(rec))
+        return True
+
+    def export_diagnostics(self, rec: Recording | None = None) -> str:
+        """A small anonymised file (scores and rule outcomes, no content) to send back; names only if wanted."""
+        from callrec.speakers import diagnostics
+
+        rec = self._resolve(rec)
+        if rec is None or not rec.speakers_path.exists():
+            return ""
+        names = self.dialogs.ask_yes_no(
+            "Diagnose der Sprechererkennung",
+            "Die Datei enthält nur Zahlen und Regelergebnisse (Ähnlichkeiten, Sprechzeiten, welche Regel "
+            "entschieden hat) – keinen Ton, keinen Text, keine Stimmmerkmale, keinen Titel.\n\n"
+            "Namen der Personen einschließen?\nNein = Personen erscheinen als „Person 1“, „Person 2“ …")
+        out = diagnostics.export(rec, diagnostics.default_path(rec), self.cfg, include_names=names)
+        self.ui.notify("Diagnose gespeichert", str(out))
+        self._open(out.parent)
+        return str(out)
+
+    def reidentifiable(self) -> list[Recording]:
+        return [r for r in list_recordings(self.cfg.recordings_path())
+                if r.speakers_path.exists() and r.embeddings_path.exists() and not self.controller.is_busy(r)
+                and not self.retention_busy(r)]
+
+    def reidentify_all(self, ask: bool = True) -> int:
+        """ "Sprecher neu erkennen" for every recording that still has speaker data, with the current rules
+        and profiles. Your own assignments are never changed; a copy of each speakers.json is archived."""
+        from callrec.review import archive_speakers
+
+        recs = self.reidentifiable()
+        if not recs:
+            self.ui.notify("Sprecher neu erkennen", "Keine Aufnahme mit Sprecherdaten vorhanden (ältere werden nach "
+                           f"{self.cfg.retention.max_age_days} Tagen gelöscht).")
+            return 0
+        if ask and not self.dialogs.ask_yes_no(
+                "Sprecher neu erkennen",
+                f"{len(recs)} Aufnahme(n) mit den aktuellen Regeln und Stimmprofilen neu erkennen?\n\nEigene "
+                "Zuordnungen bleiben unverändert; geänderte Namen markieren eine vorhandene Zusammenfassung als "
+                "veraltet."):
+            return 0
+        for rec in recs:
+            archive_speakers(rec)
+            self.controller.process(rec, frozenset({"identify", "render"}))
+        self.ui.notify("Sprecher neu erkennen", f"{len(recs)} Aufnahme(n) werden neu erkannt.")
+        self._changed(None)
+        return len(recs)
+
+    def offer_profile_repair(self) -> list[str]:
+        """Once after the update to 0.4.1: rebuild the voice profiles from your own assignments, link
+        names typed once to the calendar identity, merge the same person under two addresses."""
+        from callrec.speakers import repair
+
+        if not repair.is_due():
+            return []
+        if not self.profiles.all_profiles():
+            repair.mark_done("no profiles")
+            return []
+        rp = repair.plan(self.profiles, self.cfg.recordings_path())
+        if rp.empty:
+            repair.mark_done("nothing")
+            return []
+        text = ("Die Sprechererkennung arbeitet ab dieser Version mit neuen Regeln. Die vorhandenen Stimmprofile "
+                "lassen sich einmalig aus den eigenen Zuordnungen neu aufbauen:\n\n• " + "\n• ".join(rp.lines())
+                + "\n\nJetzt übernehmen? (Später: Stimmprofile verwalten → „Reparieren“)")
+        if not self.dialogs.ask_yes_no("Stimmprofile reparieren", text):
+            repair.mark_done("declined")
+            return []
+        done = repair.apply(self.profiles, rp)
+        self.dialogs.show_text("Stimmprofile repariert", "\n".join(done))
+        self.reidentify_all(ask=True)
+        return done
+
+    def repair_profiles(self) -> list[str]:
+        """The same repair on demand (profile manager)."""
+        from callrec.speakers import repair
+
+        rp = repair.plan(self.profiles, self.cfg.recordings_path())
+        if rp.empty:
+            self.dialogs.show_text("Stimmprofile reparieren", "\n".join(rp.lines()))
+            return []
+        if not self.dialogs.ask_yes_no("Stimmprofile reparieren", "\n".join(rp.lines()) + "\n\nÜbernehmen?"):
+            return []
+        done = repair.apply(self.profiles, rp)
+        self.dialogs.show_text("Stimmprofile repariert", "\n".join(done))
+        return done
+
+    def schedule_profile_repair(self, delay_ms: int = 25000) -> None:
+        self._after(delay_ms, self.offer_profile_repair)
+
     def handoff_ready(self) -> tuple[bool, str]:
         h = self.cfg.handoff
         if h.mode == "graph":
@@ -721,7 +819,8 @@ class AppActions:
 
         self.dialogs.manage_profiles(self.profiles,
                                      rebuild=lambda pid: rebuild_profile(self.profiles, pid, self.cfg.recordings_path()),
-                                     recordings_root=self.cfg.recordings_path())
+                                     recordings_root=self.cfg.recordings_path(),
+                                     reidentify=lambda: self.reidentify_all(), repair=self.repair_profiles)
 
     # -- files --------------------------------------------------------
     def _open(self, path: Any) -> bool:

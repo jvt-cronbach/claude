@@ -11,6 +11,7 @@
   let dlgN = 0;
   const emit = (n, p) => setTimeout(() => window.cr && window.cr.emit(n, p), 0);
   const dialog = (kind, data) => { const id = `d${++dlgN}`; window.__lastDialog = { id, kind }; emit("dialog", { id, kind, data }); return id; };
+  window.__dialog = dialog;  // tests open a dialog with other data
   const pending = {};
   function startRecording(title) {
     state = { ...state, recording: { on: true, title, elapsed: 0, id: "new", levels: { mic: 0.6, remote: 0.3 } } };

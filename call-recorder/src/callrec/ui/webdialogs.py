@@ -306,7 +306,8 @@ class WebDialogPort:
 
     # -- pages instead of modal windows ----------------------------------------------------
     def manage_profiles(self, profiles: Any, rebuild: Callable[[str], str] | None = None,
-                        recordings_root: Any = None) -> None:
+                        recordings_root: Any = None, reidentify: Callable[[], object] | None = None,
+                        repair: Callable[[], object] | None = None) -> None:
         self.navigate("settings", {"page": "profiles"})
 
     def edit_settings(self, base: Any, mics: list[str], outs: list[str], save: Callable[[Any], None],
@@ -322,6 +323,9 @@ class WebDialogPort:
 
     def ask_yes_no(self, title: str, message_text: str, warning: bool = False) -> bool:
         return confirm(self.broker, title, message_text, "Ja", "Nein", warning=warning)
+
+    def show_text(self, title: str, text: str) -> None:
+        message(self.broker, title, text)
 
     def ask_retention(self, kind: str, text: str, items: list[tuple[str, str]], rt: Any) -> str:
         from callrec.retention import RETENTION_CHOICES, question_text

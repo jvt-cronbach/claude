@@ -116,3 +116,46 @@ def same_identity_loose(a: Person, b: Person) -> bool:
 
 def is_one_of(person: Person, people: list[Person]) -> bool:
     return any(same_identity_loose(person, p) for p in people)
+
+
+def _domain(email: str) -> str:
+    return email.strip().casefold().rsplit("@", 1)[-1] if "@" in email else ""
+
+
+def probable_same(name_a: str, email_a: str, name_b: str, email_b: str) -> str:
+    """A likely - not certain - link between two identities that :func:`same_person` keeps apart
+    ("" = none). Used only for a pre-selection the user confirms once, never for an automatic name:
+
+    * ``"first_name"``: one side was typed as a first name only ("Anna") and is part of the other
+      side's full name ("Müller, Anna"), and one side has no e-mail address;
+    * ``"alias"``: the same full name (at least two name tokens) under two different addresses of
+      the same domain ("anna.mueller@firma.de" / "a.mueller@firma.de").
+    """
+    if same_person(name_a, email_a, name_b, email_b):
+        return ""
+    ta = name_tokens(name_a) or email_tokens(email_a)
+    tb = name_tokens(name_b) or email_tokens(email_b)
+    if not ta or not tb:
+        return ""
+    ea, eb = email_a.strip(), email_b.strip()
+    if (not ea or not eb) and ta != tb and (ta < tb or tb < ta) and len(min(ta, tb, key=len)) >= 1:
+        short = min(ta, tb, key=len)
+        if all(len(t) >= 2 for t in short):
+            return "first_name"
+    if ea and eb and len(ta) >= 2 and ta == tb and _domain(ea) == _domain(eb):
+        return "alias"
+    return ""
+
+
+ROOM_WORDS = ("raum", "room", "besprechungsraum", "konferenzraum", "meetingraum", "meeting room", "saal",
+              "verteiler", "distribution list", "verteilerliste")
+_ROOM_LOCAL = re.compile(r"^(room|raum|rm|conf|meetingroom|besprechung|konferenz|saal|dl|verteiler|team)[._\-]")
+
+
+def looks_like_room_or_list(person: Person) -> bool:
+    """A meeting room or distribution list invited like a person (not typed as a resource)."""
+    name = _fold(person.name or "")
+    if any(re.search(rf"(^|\W){re.escape(w)}(\W|$)", name) for w in ROOM_WORDS):
+        return True
+    local = person.email.split("@", 1)[0].casefold() if "@" in person.email else ""
+    return bool(local and _ROOM_LOCAL.match(local))

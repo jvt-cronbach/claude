@@ -54,6 +54,10 @@ class CalendarEvent:
     show_as: str = ""
     source: str = "graph"  # graph | ics | manual
     join_url: str = ""
+    # per attendee (Person.key()): {"type": required|optional|resource, "response": accepted|tentative|declined|
+    # none|organizer|...} - only for the speaker identification (who is expected to speak); the
+    # participant list itself (start dialog, consent) is unchanged
+    attendee_status: dict[str, dict[str, str]] = field(default_factory=dict)
 
     def participants(self) -> list[Person]:
         """Organizer first, then attendees, de-duplicated."""
@@ -82,6 +86,7 @@ class CalendarEvent:
             "is_all_day": self.is_all_day,
             "source": self.source,
             "join_url": self.join_url,
+            "attendee_status": self.attendee_status,
         }
 
     @staticmethod
@@ -97,6 +102,8 @@ class CalendarEvent:
             is_all_day=bool(d.get("is_all_day", False)),
             source=str(d.get("source", "graph")),
             join_url=str(d.get("join_url", "")),
+            attendee_status={str(k): {str(a): str(b) for a, b in v.items()}
+                             for k, v in (d.get("attendee_status") or {}).items() if isinstance(v, dict)},
         )
 
 
@@ -211,6 +218,11 @@ class SpeakerInfo:
     preselect_name: str = ""  # pre-filled in the dialog: the only participant not assigned yet (you confirm)
     # too little speech (speakers.min_named_speech_s): a fragment, not offered for naming, not "open"
     minor: bool = False
+    # 0.4.1: which rule named the speaker automatically (single | profile | elimination | always) and the
+    # voice profile behind a pre-selection (a free-text profile not yet linked to the participant)
+    rule: str = ""
+    preselect_profile_id: str = ""
+    preselect_score: float | None = None
 
     @property
     def display(self) -> str:
@@ -220,6 +232,8 @@ class SpeakerInfo:
         self.suggested_name, self.suggested_email, self.suggested_score, self.note = "", "", None, ""
         self.self_suspect = False
         self.preselect_name = ""
+        self.preselect_profile_id = ""
+        self.preselect_score = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -242,4 +256,7 @@ class SpeakerInfo:
             self_suspect=bool(d.get("self_suspect", False)),
             preselect_name=str(d.get("preselect_name", "")),
             minor=bool(d.get("minor", False)),
+            rule=str(d.get("rule", "")),
+            preselect_profile_id=str(d.get("preselect_profile_id", "")),
+            preselect_score=float(d["preselect_score"]) if d.get("preselect_score") is not None else None,
         )

@@ -66,10 +66,17 @@ def _event_from_component(comp: Any, local_tz: Any, cancelled_calendar: bool) ->
 
     organizer = _person(comp.get("ORGANIZER"), "organizer")
     attendees: list[Person] = []
+    att_status: dict[str, dict[str, str]] = {}
     for a in _as_list(comp.get("ATTENDEE")):
         p = _person(a, "attendee")
         if p is not None:
             attendees.append(p)
+            params = getattr(a, "params", {}) or {}
+            cutype = str(params.get("CUTYPE", "")).upper()
+            role = str(params.get("ROLE", "")).upper()
+            kind = ("resource" if cutype in ("ROOM", "RESOURCE") else "group" if cutype == "GROUP"
+                    else "optional" if role in ("OPT-PARTICIPANT", "NON-PARTICIPANT") else "required")
+            att_status[p.key()] = {"type": kind, "response": str(params.get("PARTSTAT", "") or "none").lower()}
 
     description = str(comp.get("DESCRIPTION", ""))
     location = str(comp.get("LOCATION", ""))
@@ -98,6 +105,7 @@ def _event_from_component(comp: Any, local_tz: Any, cancelled_calendar: bool) ->
         is_cancelled=status == "CANCELLED" or cancelled_calendar,
         show_as=str(comp.get("X-MICROSOFT-CDO-BUSYSTATUS", "")).lower(),
         source="ics",
+        attendee_status=att_status,
         join_url=join_url,
     )
 

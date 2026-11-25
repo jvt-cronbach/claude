@@ -26,7 +26,7 @@ from typing import Any, Protocol
 import numpy as np
 
 from callrec.models import Person
-from callrec.speakers.names import is_one_of, persons_match, same_person
+from callrec.speakers.names import is_one_of, persons_match, probable_same, same_person
 
 log = logging.getLogger(__name__)
 
@@ -38,6 +38,11 @@ SOURCE_WEIGHT = {"manual": 1.0, "confirmed": 1.0, "sole": 0.75, "auto": 0.5}
 USER_SOURCES = ("manual", "confirmed")
 CREATING_SOURCES = (*USER_SOURCES, "sole")  # may create a new profile
 AUTO_SOURCES = ("auto", "sole")  # learned without a decision of yours: replaced by every re-run
+MODES = ("", "never", "always")  # per person: normal | never named automatically | also when not invited
+MAX_HISTORY = 300  # outcome entries per profile ("how was this person recognised in which recording")
+# what an outcome entry says (profile manager: "automatisch erkannt" vs "selbst zugeordnet")
+AUTO_HOW = ("single", "profile", "elimination", "always")
+USER_HOW = ("manual", "confirmed", "corrected")
 
 
 class Persistence(Protocol):
@@ -162,6 +167,10 @@ class VoiceProfile:
     created_at: str
     updated_at: str
     contributions: list[Contribution] = field(default_factory=list)
+    # further identities of the same person (a second address, the name as typed once): {"name", "email"}
+    aliases: list[dict[str, str]] = field(default_factory=list)
+    mode: str = ""  # "" | "never" (only suggested, never named automatically) | "always" (also when not invited)
+    history: list[dict[str, Any]] = field(default_factory=list)  # outcomes per recording+speaker, oldest first
 
     def recompute(self) -> None:
         if not self.contributions:
@@ -183,6 +192,9 @@ class VoiceProfile:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "contributions": [c.to_dict() for c in self.contributions],
+            "aliases": self.aliases,
+            "mode": self.mode,
+            "history": self.history[-MAX_HISTORY:],
         }
 
     @staticmethod
@@ -197,6 +209,10 @@ class VoiceProfile:
             created_at=str(d.get("created_at", "")),
             updated_at=str(d.get("updated_at", "")),
             contributions=[Contribution.from_dict(c) for c in d.get("contributions") or []],
+            aliases=[{"name": str(a.get("name", "")), "email": str(a.get("email", ""))}
+                     for a in d.get("aliases") or [] if isinstance(a, dict)],
+            mode=str(d.get("mode", "")) if str(d.get("mode", "")) in MODES else "",
+            history=[h for h in d.get("history") or [] if isinstance(h, dict)],
         )
         if not p.contributions:
             # profile of an earlier version: everything it learned, origin unknown
@@ -205,8 +221,48 @@ class VoiceProfile:
             p.samples = max(p.samples, 1)
         return p
 
+    def identities(self) -> list[tuple[str, str]]:
+        return [(self.name, self.email)] + [(a.get("name", ""), a.get("email", "")) for a in self.aliases]
+
     def matches_person(self, person: Person) -> bool:
-        return same_person(self.name, self.email, person.name, person.email)
+        return any(same_person(n, e, person.name, person.email) for n, e in self.identities())
+
+    def link_kind(self, person: Person) -> str:
+        """ "hard" (same person by address or full name, incl. aliases), "first_name"/"alias" (probable,
+        see :func:`callrec.speakers.names.probable_same`) or ""."""
+        if self.matches_person(person):
+            return "hard"
+        for n, e in self.identities():
+            kind = probable_same(n, e, person.name, person.email)
+            if kind:
+                return kind
+        return ""
+
+    def references(self, ignore_recording: str = "") -> list[Contribution]:
+        """What the profile learned, each contribution a reference of its own (several devices/calls)."""
+        return [c for c in self.contributions if not (ignore_recording and c.recording == ignore_recording)]
+
+    def score(self, vec: np.ndarray, ignore_recording: str = "") -> float | None:
+        """Similarity of a voice to this person: the better of (a) the weighted centroid of everything
+        learned and (b) the mean of the two closest single references. (b) recognises a person on a
+        device that was learned once even when most samples come from another device - one averaged
+        embedding of mixed devices matches none of them well (measured: same person across devices
+        0.36-0.66 cosine, on the same device 0.81-0.92)."""
+        refs = self.references(ignore_recording)
+        v = _normalize(vec)
+        refs = [c for c in refs if c.embedding.shape == v.shape]
+        if not refs:
+            return None
+        sims = sorted((float(np.dot(v, _normalize(c.embedding))) for c in refs), reverse=True)
+        acc = np.zeros_like(v)
+        for c in refs:
+            acc += c.weight * _normalize(c.embedding)
+        centroid = float(np.dot(v, _normalize(acc)))
+        top = float(np.mean(sims[:2]))
+        return max(centroid, top)
+
+    def user_references(self) -> int:
+        return sum(1 for c in self.contributions if c.source in USER_SOURCES)
 
     @property
     def person(self) -> Person:
@@ -301,11 +357,14 @@ class ProfileStore:
         return changed
 
     def learn(self, name: str, email: str, embedding: np.ndarray, model_id: str, *, recording: str,
-              speaker: str, source: str, seconds: float = 0.0, title: str = "", folder: str = "") -> VoiceProfile:
+              speaker: str, source: str, seconds: float = 0.0, title: str = "", folder: str = "",
+              profile_id: str = "") -> VoiceProfile:
         """Record what speaker ``speaker`` of ``recording`` sounds like, for the person ``name``.
 
         An earlier contribution of the same recording+speaker (to any profile) is replaced, so a
-        correction undoes the earlier update and re-running never counts one recording twice."""
+        correction undoes the earlier update and re-running never counts one recording twice.
+        ``profile_id``: learn into this profile (a link you confirmed: the free-text profile "Anna" is
+        the participant "Müller, Anna") - ``name``/``email`` become an alias of it."""
         if source not in SOURCE_WEIGHT:
             raise ValueError(f"Unbekannte Herkunft {source!r}")
         emb = _normalize(embedding)
@@ -314,7 +373,16 @@ class ProfileStore:
                 # a user decision replaces anything this speaker taught before; an automatic match
                 # only replaces an earlier automatic one
                 self._drop(recording, speaker, None if source in USER_SOURCES else ("auto", "sole"))
-            existing = self.find(name, email, model_id)
+            existing = self._load().get(profile_id) if profile_id else None
+            if existing is not None and existing.model_id == model_id:
+                if not existing.matches_person(Person(name, email)):
+                    if email and not existing.email:  # a typed name linked to the calendar identity
+                        existing.aliases.append({"name": existing.name, "email": ""})
+                        existing.name, existing.email = name, email
+                    else:
+                        existing.aliases.append({"name": name, "email": email})
+            else:
+                existing = self.find(name, email, model_id)
             now = _now()
             contrib = Contribution(recording, speaker, source, emb, SOURCE_WEIGHT[source], seconds, now, title, folder)
             if existing is None:
@@ -352,6 +420,70 @@ class ProfileStore:
             weight += c.weight
         new_legacy = Contribution("", "", "legacy", _normalize(acc), min(weight, float(MAX_CENTROID_WEIGHT)), at=_now())
         p.contributions = [new_legacy] + [c for c in p.contributions if c is not legacy and c not in movable]
+
+    def add_alias(self, profile_id: str, person: Person) -> VoiceProfile | None:
+        """Link a further identity (an address, the calendar name) to a profile."""
+        with self._lock:
+            p = self._load().get(profile_id)
+            if p is None:
+                return None
+            if not p.matches_person(person):
+                if person.email and not p.email:  # a typed name linked to the calendar identity
+                    p.aliases.append({"name": p.name, "email": ""})
+                    p.name, p.email = person.name or p.name, person.email
+                else:
+                    p.aliases.append({"name": person.name, "email": person.email})
+                p.updated_at = _now()
+                self._save()
+            return p
+
+    def set_mode(self, profile_id: str, mode: str) -> VoiceProfile | None:
+        if mode not in MODES:
+            raise ValueError(f"Unbekannter Modus {mode!r}")
+        with self._lock:
+            p = self._load().get(profile_id)
+            if p is not None and p.mode != mode:
+                p.mode = mode
+                p.updated_at = _now()
+                self._save()
+            return p
+
+    def merge(self, keep_id: str, other_id: str) -> VoiceProfile | None:
+        """Two profiles of the same person (e.g. two addresses): one profile with both identities."""
+        with self._lock:
+            profiles = self._load()
+            keep, other = profiles.get(keep_id), profiles.get(other_id)
+            if keep is None or other is None or keep is other or keep.model_id != other.model_id:
+                return keep
+            for n, e in other.identities():
+                if not keep.matches_person(Person(n, e)):
+                    keep.aliases.append({"name": n, "email": e})
+            keep.contributions += other.contributions
+            keep.history = sorted(keep.history + other.history, key=lambda h: str(h.get("at", "")))[-MAX_HISTORY:]
+            keep.mode = keep.mode or other.mode
+            self._fold_old(keep)
+            keep.recompute()
+            keep.updated_at = _now()
+            del profiles[other_id]
+            self._save()
+            return keep
+
+    def record_outcomes(self, recording: str, entries: list[tuple[str, dict[str, Any]]],
+                        speakers: set[str] | None = None) -> None:
+        """Remember how speakers of ``recording`` were named (profile id, entry with "speaker", "how",
+        "score"). Earlier entries of this recording (for ``speakers``, or all) are replaced - a re-run
+        or a correction never counts twice. Kept in the (encrypted) profile store, without content."""
+        with self._lock:
+            now = _now()
+            for p in self._load().values():
+                p.history = [h for h in p.history if not (h.get("recording") == recording and (
+                    speakers is None or h.get("speaker") in speakers))]
+            for pid, entry in entries:
+                target = self._load().get(pid)
+                if target is not None:
+                    target.history.append({"at": now, "recording": recording, **entry})
+                    target.history = target.history[-MAX_HISTORY:]
+            self._save()
 
     def add_sample(self, name: str, email: str, embedding: np.ndarray, model_id: str) -> VoiceProfile:
         """A user-made assignment without a known origin (CLI/tests)."""

@@ -45,6 +45,9 @@ class SpeakerOverview:
     minor: bool = False  # short fragment: hidden unless "Kurze Fragmente anzeigen"
     speech_s: float = 0.0  # clean speech (no other speaker at the same time)
     samples: list[Any] = field(default_factory=list)  # callrec.speakers.samples.Sample, best first
+    preselect_score: float | None = None  # confidence of the pre-selection (similarity), None = by rule
+    rule: str = ""  # rule that named it automatically (single | profile | elimination | always)
+    explain: dict[str, Any] = field(default_factory=dict)  # stored explanation of the identification
 
 
 def choose_sample_span(turns: list[SpeakerTurn], min_len: float = 3.0, max_len: float = 8.0) -> tuple[float, float] | None:
@@ -104,6 +107,7 @@ def speaker_overview(rec: Recording) -> list[SpeakerOverview]:
     turns = load_turns(rec)
     speech = speech_seconds(turns)
     mic = mic_spans(rec) if turns else []
+    decisions = (((rec.load_meta().get("processing") or {}).get("identification") or {}).get("decisions") or {})
     out = []
     for sid, info in speakers.items():
         if sid == SELF_SPEAKER_ID:
@@ -121,7 +125,8 @@ def speaker_overview(rec: Recording) -> list[SpeakerOverview]:
                                    text, span, info.suggested_name, info.suggested_score,
                                    info.note, info.self_suspect, info.preselect_name,
                                    minor=info.minor and not info.name, speech_s=speech.get(sid, talk),
-                                   samples=samples))
+                                   samples=samples, preselect_score=info.preselect_score, rule=info.rule,
+                                   explain=dict(decisions.get(sid) or {})))
     out.sort(key=lambda o: (min((t.start for t in turns if t.speaker == o.id), default=1e12), o.id))
     return out
 
@@ -251,6 +256,8 @@ def apply_assignments(
     rid = rec.uid
     messages: list[str] = []
     added: list[Person] = []
+    outcomes: list[tuple[str, dict[str, Any]]] = []  # profile history: how you named whom
+    touched: set[str] = set()
     for a in assignments:
         info = speakers.get(a.speaker_id)
         if info is None or a.speaker_id == SELF_SPEAKER_ID:
@@ -276,7 +283,26 @@ def apply_assignments(
         unchanged_auto = info.source == SOURCE_AUTO and info.name.casefold() == name.casefold()
         if unchanged_auto and not a.save_profile:
             continue  # stays an automatic (re-checkable) assignment
+        touched.add(a.speaker_id)
+        if info.source == SOURCE_AUTO and info.profile_id and not unchanged_auto:
+            # an automatic name you corrected: the profile it came from gets a "corrected" entry
+            outcomes.append((info.profile_id, {"speaker": a.speaker_id, "how": "corrected", "score": info.score,
+                                               "folder": rec.folder.name}))
+        link_profile = (info.preselect_profile_id if info.preselect_profile_id and info.preselect_name
+                        and info.preselect_name.casefold() == name.casefold() else "")
+        was_suggested = bool(info.preselect_name) and info.preselect_name.casefold() == name.casefold()
+        prev_score = info.score if unchanged_auto else info.preselect_score
         person = _participant_for(name, participants + added)
+        if person is None and not a.email:
+            # "Anna" typed while "Müller, Anna" is a participant: that person (one profile, linked to the calendar)
+            from callrec.speakers.names import probable_same
+
+            hits = [p for p in participants if probable_same(name, "", p.name, p.email) == "first_name"
+                    and not _is_me(p, [me, *_my_identities(rec)])]
+            if len(hits) == 1:
+                messages.append(f"„{name}“ als {hits[0].display} übernommen.")
+                person, name = hits[0], hits[0].name or hits[0].email
+                unchanged_auto = info.source == SOURCE_AUTO and info.name.casefold() == name.casefold()
         if person is None and not _is_me(Person(name, a.email), [me, *_my_identities(rec)]):
             person = Person(name, a.email, "assigned")
             added.append(person)
@@ -285,8 +311,10 @@ def apply_assignments(
         info.email = a.email or (person.email if person is not None else "")
         info.score = None
         info.source = SOURCE_MANUAL
+        info.rule = ""
         info.minor = False
         info.clear_hints()
+        how = "confirmed" if unchanged_auto else "manual"
         if a.save_profile:
             emb = embeddings.get(a.speaker_id)
             secs = speech.get(a.speaker_id, 0.0)
@@ -303,13 +331,33 @@ def apply_assignments(
             else:
                 prof = profiles.learn(name, info.email, emb, model_id, recording=rid, speaker=a.speaker_id,
                                       source="confirmed" if unchanged_auto else "manual", seconds=secs,
-                                      title=rec.title(), folder=rec.folder.name)
+                                      title=rec.title(), folder=rec.folder.name, profile_id=link_profile)
                 info.profile_id = prof.id
-                messages.append(f"Stimmprofil für {name} gespeichert ({prof.samples} Probe(n)).")
+                messages.append(f"Stimmprofil für {name} gespeichert ({prof.samples} Probe(n))."
+                                + (" Name mit dem bisherigen Profil verknüpft." if link_profile else ""))
         elif corrected or info.profile_id:
             if profiles.forget(rid, a.speaker_id):
                 messages.append(f"{info.label}: frühere Profil-Aktualisierung zurückgenommen.")
             info.profile_id = ""
+        if link_profile and info.profile_id != link_profile and profiles.get(link_profile) is not None:
+            # confirmed once: the typed name / other address of that profile is this participant
+            profiles.add_alias(link_profile, Person(name, info.email))
+            info.profile_id = info.profile_id or link_profile
+            messages.append(f"{name}: mit dem vorhandenen Stimmprofil verknüpft.")
+        hist_id = info.profile_id
+        if not hist_id and model_id:
+            found = profiles.find(name, info.email, model_id)
+            hist_id = found.id if found is not None else ""
+        if hist_id:
+            outcomes.append((hist_id, {"speaker": a.speaker_id, "how": how, "score": prev_score,
+                                       "suggested": was_suggested, "folder": rec.folder.name}))
+    if touched:
+        try:
+            profiles.record_outcomes(rid, outcomes, speakers=touched)
+        except Exception:  # noqa: BLE001 - statistics must never block an assignment
+            import logging
+
+            logging.getLogger(__name__).warning("Erkennungsstatistik nicht gespeichert", exc_info=True)
     if added:
         rec.update_meta(["participants"], [p.to_dict() for p in participants + added])
         messages.append("Als Teilnehmende ergänzt: " + ", ".join(p.display for p in added) + ".")
@@ -488,3 +536,28 @@ def rebuild_profile(profiles: ProfileStore, profile_id: str, recordings_root: An
                 "das Profil bleibt unverändert.")
     profiles.replace_contributions(prof.id, found)
     return f"{prof.name}: neu aufgebaut aus {len(found)} Zuordnung(en) in den eigenen Aufnahmen."
+
+
+def recognition(rec: Recording) -> list[dict[str, Any]]:
+    """Per remote voice: label, current name and the stored explanation as German lines (both UIs, CLI)."""
+    from callrec.speakers.identify import explain_lines
+
+    decisions = (((rec.load_meta().get("processing") or {}).get("identification") or {}).get("decisions") or {})
+    out = []
+    for sid, s in rec.load_speakers().items():
+        if sid == SELF_SPEAKER_ID:
+            continue
+        lines = explain_lines(decisions.get(sid), s.name, s.source)
+        if s.note and not any(s.note in line for line in lines):
+            lines.insert(0, s.note)
+        out.append({"id": sid, "label": s.label, "name": s.display, "source": s.source, "rule": s.rule,
+                    "score": s.score, "minor": s.minor, "lines": lines})
+    return out
+
+
+def recognition_text(rec: Recording) -> str:
+    parts = []
+    for r in recognition(rec):
+        head = f"{r['label']}: {r['name']}" if r["name"] != r["label"] else r["label"]
+        parts.append(head + "\n" + "\n".join(f"  • {line}" for line in r["lines"]))
+    return "\n\n".join(parts) or "Keine Stimmen der Gegenseite erkannt."

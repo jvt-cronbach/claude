@@ -133,11 +133,19 @@ def cmd_speakers(args: argparse.Namespace) -> int:
     rec = _recording(args.folder)
     me = self_overview(rec)
     print(f"ME   Ich – {me.name} (Mikrofonspur, immer Sie): {me.utterances} Beiträge, {fmt_ts(me.talk_time_s)} Sprechzeit")
+    from callrec.speakers.identify import explain_lines
+
+    decisions = (((rec.load_meta().get("processing") or {}).get("identification") or {}).get("decisions") or {})
     for ov in speaker_overview(rec):
         state = f"= {ov.name}" + (f" (automatisch, {ov.score:.2f})" if ov.source == "auto" and ov.score is not None else "") if ov.name else "(nicht zugeordnet)"
+        if not ov.name and ov.preselect_name:
+            state += f" – Vorschlag: {ov.preselect_name}" + (f" ({ov.preselect_score:.2f})" if ov.preselect_score is not None else "")
         print(f"{ov.id:<4} {ov.label:<12} {fmt_ts(ov.talk_time_s)}  {state}")
-        if ov.note and not ov.name:
+        if ov.note and (not ov.name or getattr(args, "explain", False)):
             print(f"      {ov.note}")
+        if getattr(args, "explain", False):
+            for line in explain_lines(decisions.get(ov.id), ov.name, ov.source):
+                print(f"      · {line}")
         if ov.sample_text:
             print(f"      „{ov.sample_text}“")
     choices = name_choices(rec, profile_store(), all_profiles=cfg.speakers.match_scope == "all_profiles")
@@ -193,6 +201,42 @@ def cmd_profiles(args: argparse.Namespace) -> int:
             print("Keine Stimmprofile gespeichert.")
         for p in profs:
             print(f"{p.id[:8]}  {p.name:<28} {p.email:<30} Proben: {p.samples:<3} Modell: {p.model_id}  ({p.updated_at})")
+        return 0
+    if args.action == "stats":
+        from callrec.speakers.stats import profile_stats, stats_lines
+
+        k = (args.key or "").strip().casefold()
+        profs = [p for p in store.all_profiles() if not k or k in (p.id.casefold(), p.id[:8].casefold(),
+                                                                    p.name.casefold(), p.email.casefold())]
+        if not profs:
+            print("Keine Stimmprofile gefunden.")
+            return 1
+        for p in profs:
+            print("\n".join(stats_lines(profile_stats(p))))
+        return 0
+    if args.action in ("never", "always", "normal"):
+        if not args.key:
+            raise SystemExit("Bitte Name, E-Mail oder ID angeben")
+        k = args.key.strip().casefold()
+        profs = [p for p in store.all_profiles() if k in (p.id.casefold(), p.id[:8].casefold(), p.name.casefold(),
+                                                          p.email.casefold())]
+        for p in profs:
+            store.set_mode(p.id, "" if args.action == "normal" else args.action)
+            print(f"{p.name}: " + {"never": "nie automatisch zuordnen", "always": "immer erkennen, auch ohne Einladung",
+                                   "normal": "normal (nur als Teilnehmende/r)"}[args.action])
+        return 0 if profs else 1
+    if args.action == "repair":
+        from callrec.speakers import repair
+
+        rp = repair.plan(store, load_config().recordings_path())
+        print("\n".join(rp.lines()))
+        if rp.empty:
+            repair.mark_done("nothing")
+            return 0
+        if not args.yes and input("Übernehmen? (ja/nein) ").strip().lower() != "ja":
+            print("Nichts geändert.")
+            return 1
+        print("\n".join(repair.apply(store, rp)))
         return 0
     if args.action == "delete":
         if not args.key:
@@ -393,6 +437,46 @@ def cmd_recheck(args: argparse.Namespace) -> int:
     if sharpened:
         print("Die frühere Version hat diese Stimmprofile mit der Aufnahme nachgeschärft: " + ", ".join(sharpened)
               + ". Waren die Zuordnungen falsch: callrec profiles rebuild \"<Name>\"")
+    return 0
+
+
+def cmd_reidentify(args: argparse.Namespace) -> int:
+    """ "Sprecher neu erkennen": the identification again with the current rules and profiles, for
+    recordings that still have speaker data. Your own assignments are never changed."""
+    from callrec.factory import build_pipeline, profile_store
+    from callrec.recording import list_recordings
+    from callrec.review import archive_speakers
+
+    cfg = load_config()
+    recs = list_recordings(cfg.recordings_path()) if args.all else [_recording(f) for f in args.folders]
+    if not recs:
+        raise SystemExit("Bitte Ordner angeben oder --all")
+    pipeline = build_pipeline(cfg, profile_store())
+    done = 0
+    for rec in recs:
+        if not rec.speakers_path.exists() or not rec.embeddings_path.exists():
+            continue
+        before = {sid: s.display for sid, s in rec.load_speakers().items()}
+        archive_speakers(rec)
+        pipeline.run(rec, {"identify", "render"})
+        after = rec.load_speakers()
+        changed = [f"{s.label}: {before.get(sid, s.label)} -> {s.display}" for sid, s in after.items()
+                   if sid != "ME" and before.get(sid) != s.display]
+        done += 1
+        print(f"{rec.folder.name}: " + ("; ".join(changed) if changed else "unverändert"))
+    print(f"{done} Aufnahme(n) neu erkannt (manuelle Zuordnungen unverändert).")
+    return 0
+
+
+def cmd_diagnostics(args: argparse.Namespace) -> int:
+    """Anonymised diagnostics of the speaker recognition of one recording (numbers and rules only)."""
+    from callrec.speakers import diagnostics
+
+    cfg = load_config()
+    rec = _recording(args.folder)
+    out = Path(args.out) if args.out else diagnostics.default_path(rec)
+    diagnostics.export(rec, out, cfg, include_names=args.names)
+    print(f"Diagnose gespeichert: {out}" + ("" if args.names else " (ohne Namen)"))
     return 0
 
 
@@ -1041,7 +1125,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("speakers", help="Sprecher einer Aufnahme anzeigen")
     s.add_argument("folder")
+    s.add_argument("--explain", action="store_true", help="je Stimme: Kandidaten, Werte, entscheidende Regel")
     s.set_defaults(func=cmd_speakers)
+
+    ri = sub.add_parser("reidentify", help="Sprecher neu erkennen (aktuelle Regeln; eigene Zuordnungen bleiben)")
+    ri.add_argument("folders", nargs="*")
+    ri.add_argument("--all", action="store_true", help="alle Aufnahmen mit Sprecherdaten")
+    ri.set_defaults(func=cmd_reidentify)
+
+    dg = sub.add_parser("diagnostics", help="Anonymisierte Diagnose der Sprechererkennung einer Aufnahme exportieren")
+    dg.add_argument("folder")
+    dg.add_argument("--names", action="store_true", help="Namen einschließen (sonst Person 1, Person 2 ...)")
+    dg.add_argument("--out", help="Zieldatei (Standard: %%LOCALAPPDATA%%\\CallRecorder\\diagnostics)")
+    dg.set_defaults(func=cmd_diagnostics)
 
     a = sub.add_parser("assign", help='Sprecher zuordnen: S1="Anna Beispiel"')
     a.add_argument("folder")
@@ -1055,7 +1151,8 @@ def build_parser() -> argparse.ArgumentParser:
     rv.set_defaults(func=cmd_review)
 
     pf = sub.add_parser("profiles", help="Stimmprofile anzeigen/löschen")
-    pf.add_argument("action", choices=["list", "show", "reset", "rebuild", "delete", "delete-all"])
+    pf.add_argument("action", choices=["list", "show", "stats", "reset", "rebuild", "never", "always", "normal",
+                                       "repair", "delete", "delete-all"])
     pf.add_argument("key", nargs="?")
     pf.add_argument("--yes", action="store_true")
     pf.set_defaults(func=cmd_profiles)

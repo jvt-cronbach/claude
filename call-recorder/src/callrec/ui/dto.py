@@ -120,7 +120,21 @@ def recording_detail(info: RecordingInfo, busy: bool, recording_now: bool, calen
         "has_summary": info.has_summary, "has_transcript": info.has_transcript,
         "speakers_open": info.speakers_state() == OPEN,
         "processing_text": _processing_text(meta),
+        "recognition": _recognition(rec, info),
     }
+
+
+def _recognition(rec: Recording, info: RecordingInfo) -> list[dict[str, Any]]:
+    """Why each remote voice was (not) named - the stored explanation (recording details)."""
+    if info.reduced or not rec.speakers_path.exists():
+        return []
+    try:
+        from callrec.review import recognition
+
+        return [{k: r[k] for k in ("id", "label", "name", "source", "lines")} for r in recognition(rec)
+                if not r["minor"]]
+    except (OSError, ValueError, KeyError):
+        return []
 
 
 def _processing_text(meta: dict[str, Any]) -> str:
@@ -196,6 +210,8 @@ def speaker_review(rec: Recording, profiles: Any, speaker_cfg: Any, in_chain: bo
     warnings = list((((meta.get("processing") or {}).get("identification") or {}).get("trackcheck") or {})
                     .get("warnings") or [])
     bound = ((meta.get("processing") or {}).get("diarization") or {}).get("bound") or {}
+    from callrec.speakers.identify import RULE_TEXT, explain_lines
+
     rows = []
     for ov in overview:
         choices = []
@@ -218,6 +234,9 @@ def speaker_review(rec: Recording, profiles: Any, speaker_cfg: Any, in_chain: bo
             "minor": ov.minor, "speech": f"{ov.speech_s:.1f}".replace(".", ","),
             "sample_info": _sample_info(ov), "sample_count": len(ov.samples),
             "choices": choices, "_samples": ov.samples, "_track": "remote",
+            "rule": ov.rule, "rule_text": RULE_TEXT.get(ov.rule, "") if ov.source == "auto" and ov.name else "",
+            "preselect": ov.preselect_name if not ov.name else "", "preselect_score": ov.preselect_score,
+            "explain": explain_lines(ov.explain, ov.name, ov.source),
         })
     return {
         "id": rec.folder.name, "title": rec.title(), "in_chain": in_chain,
@@ -225,6 +244,7 @@ def speaker_review(rec: Recording, profiles: Any, speaker_cfg: Any, in_chain: bo
                "sample": me.sample_text, "can_play": audio is not None and bool(me.samples),
                "sample_info": _sample_info(me), "_samples": me.samples, "_track": "mic"},
         "rows": rows, "warnings": warnings, "fragments": sum(1 for r in rows if r["minor"]),
+        "suggestions": sum(1 for r in rows if r["preselect"] and not r["minor"]),
         "bound": {"merged": bool(bound.get("merged")), "participants": bound.get("participants"),
                   "raw": bound.get("raw_speakers")} if can_allow_more and not in_chain else None,
         "can_handoff": can_handoff and not in_chain, "error": "",
@@ -349,11 +369,14 @@ def provenance_state(root: Path | None, folder: str) -> str:
 
 def profiles(store: Any, root: Path | None = None) -> list[dict[str, Any]]:
     from callrec.review import SOURCE_TEXT
+    from callrec.speakers.stats import profile_stats, stats_lines
 
     out = []
     for p in store.all_profiles():
+        st = profile_stats(p)
         out.append({"id": p.id, "name": p.name, "email": p.email, "samples": p.samples, "model": p.model_id,
-                    "updated": p.updated_at, "origins": [
+                    "updated": p.updated_at, "mode": p.mode, "state": st["state"], "stats": stats_lines(st)[1:],
+                    "recent_auto": st["recent_auto"], "recent_n": st["recent_n"], "origins": [
                         {"index": i, "recording": (f"{c.title} ({c.folder})" if c.folder and c.title else
                                                    c.title or c.folder or ("–" if not c.recording else c.recording[:8]))
                          + provenance_state(root, c.folder),

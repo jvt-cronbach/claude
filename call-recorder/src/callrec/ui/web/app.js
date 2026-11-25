@@ -378,7 +378,7 @@ function miniSteps(d) {
 }
 const MORE = [
   ["retranscribe", "lang", "Neu transkribieren …"], ["assign_event", "calendar", "Termin zuordnen …"], ["participants", "people", "Teilnehmende bearbeiten …"],
-  ["rename", "pencil", "Umbenennen …"], "-", ["rerender", "doc", "Transkript neu darstellen"], ["recheck", "fingerprint", "Sprecherzuordnung neu prüfen …"],
+  ["rename", "pencil", "Umbenennen …"], "-", ["rerender", "doc", "Transkript neu darstellen"], ["recheck", "fingerprint", "Sprecher neu erkennen …"], ["explain", "info", "Warum (nicht) erkannt? …"], ["diagnostics", "doc", "Diagnose der Sprechererkennung exportieren …"],
   ["speaker_limit", "people", "Weitere Sprecher zulassen / begrenzen"], ["reprocess", "refresh", "Komplett neu verarbeiten …"], ["folder", "folder", "Ordner öffnen"], "-",
   ["pin", "lock", "Behalten (nicht automatisch löschen)"], ["delete_audio", "trash", "Nur Audio löschen …"],
   ["delete_material", "trash", "Audio und Transkript löschen …"], ["delete", "trash", "Aufnahme vollständig löschen …", "Entf"],
@@ -413,7 +413,7 @@ function detailPane() {
       ${miniSteps(d)}
     </div>
     <div class="det-actions" role="toolbar" aria-label="Aktionen">${busy ? h`${btn("Verarbeitung abbrechen", { act: "cancel-job" })}<span class="caption muted">${d.recording ? "Aufnahme läuft." : "Wird verarbeitet – Aktionen sind danach möglich."}</span>` : actions}</div>
-    <div class="det-inner">${status}${handoff}<p class="caption muted">${I("shield", "ico-sm")} ${d.consent}</p>${d.processing_text ? h`<p class="caption muted">${I("clock", "ico-sm")} ${d.processing_text}</p>` : ""}${readerBlock(d)}</div>
+    <div class="det-inner">${status}${handoff}${d.recognition && d.recognition.length ? h`<details class="adv"><summary>${I("right", "ico-sm")}Sprechererkennung – warum (nicht) erkannt?</summary><ul class="origins">${d.recognition.map(r => h`<li><span><b>${r.label}${r.name !== r.label ? `: ${r.name}` : ""}</b> – ${r.lines.join(" · ")}</span></li>`)}</ul></details>` : ""}<p class="caption muted">${I("shield", "ico-sm")} ${d.consent}</p>${d.processing_text ? h`<p class="caption muted">${I("clock", "ico-sm")} ${d.processing_text}</p>` : ""}${readerBlock(d)}</div>
   </section>`;
 }
 function readerBlock(d) {
@@ -586,10 +586,13 @@ function pageProfiles() {
   return h`<div class="banner mb-4">${I("shield")}<div class="bt">Biometrische Daten – nur auf diesem Rechner</div><div class="bd">Ein Profil entsteht nur, wenn eine Stimme bestätigt wird („Stimme merken“). Es ist mit Windows verschlüsselt und lässt sich jederzeit löschen – zum Beispiel, wenn eine Person das verlangt.</div></div>
     ${P && P.text ? h`<div class="banner banner-ok mb-4">${I("info")}<div class="bd">${P.text}</div></div>` : ""}
     <section class="card">${!P ? h`<div class="card-body muted">Wird geladen …</div>` : !P.profiles.length ? h`<div class="empty compact"><div class="art">${I("fingerprint")}</div><h3>Keine Stimmprofile</h3><p>Sie entstehen beim Zuordnen von Sprechern mit „Stimme merken“.</p></div>`
-      : P.profiles.map(p => h`<div class="profile-row"><div class="rec-title"><div class="strong">${p.name}</div><div class="caption muted">${p.email ? `${p.email} · ` : ""}${p.samples} Proben · aktualisiert ${p.updated}</div></div>
+      : P.profiles.map(p => h`<div class="profile-row"><div class="rec-title"><div class="strong">${p.name}</div><div class="caption muted">${p.email ? `${p.email} · ` : ""}${p.samples} Proben · aktualisiert ${p.updated}</div><div class="caption">${p.state}</div></div>
+        <div class="field mt-2"><label class="label" for="pm-${p.id}">Automatisch zuordnen</label><select class="select" id="pm-${p.id}" data-pmode="${p.id}">${[["mode_normal", "normal (wenn eingeladen)", ""], ["mode_never", "nie automatisch", "never"], ["mode_always", "immer erkennen (auch ohne Einladung)", "always"]].map(([k, t, m]) => h`<option value="${k}" ${p.mode === m ? raw("selected") : ""}>${t}</option>`)}</select></div>
+        ${p.stats && p.stats.length ? h`<details class="adv origins-wrap"><summary>${I("right", "ico-sm")}Erkennung im Verlauf</summary><ul class="origins">${p.stats.map(t => h`<li><span>${t.trim()}</span></li>`)}</ul></details>` : ""}
         <div class="btn-row">${btn("Nur Bestätigtes behalten …", { cls: "btn-sm", act: "prof", attrs: data({ a: "reset", pid: p.id }) })}${btn("Neu aufbauen", { cls: "btn-sm", act: "prof", attrs: data({ a: "rebuild", pid: p.id }) })}${btn("Löschen …", { cls: "btn-sm btn-subtle btn-danger", act: "prof", attrs: data({ a: "delete", pid: p.id, name: p.name }) })}</div>
         ${p.origins.length ? h`<details class="adv origins-wrap"><summary>${I("right", "ico-sm")}Gelernt aus ${p.origins.length} Einträgen</summary><ul class="origins">${p.origins.map(o => h`<li><span class="ellipsis">${o.recording} · ${o.speaker}</span><span>${o.source}${o.seconds ? ` · ${o.seconds} s` : ""}</span>${btn("Entfernen …", { cls: "btn-sm btn-subtle", act: "prof", attrs: data({ a: "remove_origin", pid: p.id, i: o.index }) })}</li>`)}</ul></details>` : ""}</div>`)}</section>
-    ${P && P.profiles.length ? h`<div class="btn-row mt-4">${btn("Alle Stimmprofile löschen …", { cls: "btn-danger", act: "prof", attrs: data({ a: "delete_all" }) })}</div>` : ""}`;
+    ${P && P.profiles.length ? h`<div class="btn-row mt-4">${btn("Sprecher in allen Aufnahmen neu erkennen …", { act: "prof", attrs: data({ a: "reidentify" }) })}${btn("Reparieren …", { act: "prof", attrs: data({ a: "repair" }) })}${btn("Alle Stimmprofile löschen …", { cls: "btn-danger", act: "prof", attrs: data({ a: "delete_all" }) })}</div>
+    <p class="help mt-2">„Neu erkennen“ wendet die aktuellen Regeln und Profile auf alle Aufnahmen an, die noch Sprecherdaten haben; eigene Zuordnungen bleiben. „Reparieren“ baut Profile aus den eigenen Zuordnungen neu auf, verknüpft einmal eingetippte Namen mit dem Kalender und führt dieselbe Person unter zwei Adressen zusammen.</p>` : ""}`;
 }
 function pageUpdates() {
   const a = S.about || {};
@@ -712,10 +715,11 @@ DLG.review = d => {
     const values = r.choices.map(c => c.value);
     const typed = L.sel[r.id] && !values.includes(L.sel[r.id]);
     return h`<section class="card voice" aria-labelledby="vh-${n}" data-c="${c}">
-      <div class="rec-title"><div class="voice-head"><span class="swatch"></span><h3 id="vh-${n}">${r.label}</h3>${r.minor && !L.sel[r.id] ? h`<span class="chip">Kurzes Fragment · ${r.speech} s Sprache</span>` : r.source === "auto" && r.name ? h`<span class="chip chip-accent">${I("check")}Automatisch erkannt · ${r.name}</span>` : r.source === "self_echo" ? h`<span class="chip chip-info">${I("info")}Klingt wie die eigene Stimme</span>` : L.sel[r.id] ? "" : h`<span class="chip chip-warn">Noch ohne Namen</span>`}</div>
+      <div class="rec-title"><div class="voice-head"><span class="swatch"></span><h3 id="vh-${n}">${r.label}</h3>${r.minor && !L.sel[r.id] ? h`<span class="chip">Kurzes Fragment · ${r.speech} s Sprache</span>` : r.source === "auto" && r.name ? h`<span class="chip chip-accent">${I("check")}Automatisch erkannt · ${r.name}${r.rule_text ? ` · ${r.rule_text}` : ""}${r.score !== null && r.score !== undefined ? ` · ${r.score.toFixed(2)}` : ""}</span>` : r.preselect && L.sel[r.id] === r.preselect ? h`<span class="chip chip-info">${I("info")}Vorschlag${r.preselect_score !== null && r.preselect_score !== undefined ? ` · Ähnlichkeit ${r.preselect_score.toFixed(2)}` : ""} – bitte bestätigen</span>` : r.source === "self_echo" ? h`<span class="chip chip-info">${I("info")}Klingt wie die eigene Stimme</span>` : L.sel[r.id] ? "" : h`<span class="chip chip-warn">Noch ohne Namen</span>`}</div>
         <div class="play"><button class="pbtn" data-act="sample" ${data({ sid: r.id })} aria-label="Beispiel von ${r.label} anhören" ${r.can_play ? "" : raw("disabled")}>${I(L.playing === r.id ? "pause" : "play", "ico-sm")}</button><span class="caption muted num">${r.talk} Sprechzeit · ${r.utterances} Beiträge</span>${r.can_play ? h`<span class="caption muted num" data-sample-info="${r.id}">${(L.info || {})[r.id] || r.sample_info}</span>` : ""}${r.can_play && r.sample_count > 1 ? h`<button class="btn btn-link btn-sm" data-act="sample" ${data({ sid: r.id, step: "1" })}>Weiteres Beispiel</button>` : ""}</div>
         ${r.sample ? h`<div class="quotes"><div class="qt"><span class="ts">Beispiel</span><q>${r.sample}</q></div></div>` : ""}
-        ${r.note ? h`<p class="note mt-2">${r.note}</p>` : ""}</div>
+        ${r.note ? h`<p class="note mt-2">${r.note}</p>` : ""}
+        ${r.explain && r.explain.length ? h`<details class="adv mt-2"><summary>${I("right", "ico-sm")}Warum?</summary><ul class="origins">${r.explain.map(t => h`<li><span>${t}</span></li>`)}</ul></details>` : ""}</div>
       <fieldset class="choices"><legend class="label">Diese Stimme gehört zu …</legend>
         ${r.choices.map(ch => h`<label class="choice ${ch.kind === "suggest" ? "suggest" : ch.kind === "self" ? "me" : ""}"><input type="radio" name="v-${r.id}" value="${ch.value}" data-sel="${r.id}" ${L.sel[r.id] === ch.value ? raw("checked") : ""}>${avatar(ch.kind === "self" ? "Ich" : ch.label, "", ch.kind === "self")}<span class="rec-title"><span class="cn">${ch.kind === "self" ? "Das bin ich" : ch.label.replace(/ \(kein Teilnehmer dieses Termins\)$/, "")}</span>${ch.kind === "suggest" ? h`<span class="cd">Vorschlag: klingt ähnlich · kein Teilnehmer dieses Termins</span>` : ch.kind === "self" ? h`<span class="cd">eigene Stimme auf der Spur der Gegenseite</span>` : ""}</span></label>`)}
         <div class="choice-other"><input class="input" placeholder="Andere Person eintippen …" aria-label="Name einer anderen Person für ${r.label}" data-other="${r.id}" value="${typed ? L.sel[r.id] : ""}"></div>
@@ -734,7 +738,7 @@ DLG.review = d => {
   h`<span class="left"><b>${named.length - open} von ${named.length} Stimmen zugeordnet</b> <span class="muted">· Stimmprofile sind biometrische Daten und verlassen den Rechner nie.</span></span>
     ${x.in_chain ? h`<span class="caption muted">Danach wird die Zusammenfassung mit diesen Namen erstellt.</span>` : h`<label class="check"><input type="checkbox" id="rv-resum" ${L.resum ? raw("checked") : ""}><span class="t">Zusammenfassung danach neu erstellen</span></label>`}
     ${x.can_handoff ? btn("Übergeben …", { cls: "btn-subtle", icon: "send", act: "rv", attrs: data({ a: "handoff" }) }) : ""}
-    ${btn(x.in_chain ? "Überspringen" : "Abbrechen", { act: "dlg-cancel" })}${x.rows.length ? btn("Übernehmen", { cls: "btn-primary", act: "rv", attrs: data({ a: "apply" }) }) : ""}`, "review");
+    ${btn(x.in_chain ? "Überspringen" : "Abbrechen", { act: "dlg-cancel" })}${x.suggestions ? btn(`Alle Vorschläge übernehmen (${x.suggestions})`, { act: "rv", attrs: data({ a: "suggest" }) }) : ""}${x.rows.length ? btn("Übernehmen", { cls: "btn-primary", act: "rv", attrs: data({ a: "apply" }) }) : ""}`, "review");
 };
 DLG.participants = d => modal(d, h`<h2 id="dlg-t">Teilnehmende – ${d.data.title}</h2>`, h`<div class="field"><label class="label" for="pp">Eine Person pro Zeile, optional mit E-Mail: Name &lt;E-Mail&gt;</label><textarea class="textarea tall" id="pp" spellcheck="false">${d.data.text}</textarea>
   <p class="help">Stimmen werden automatisch nur Personen aus dieser Liste zugeordnet; manuelle Zuordnungen bleiben erhalten. Was bei der Aufnahme vermerkt wurde (Einwilligung bzw. Start mit Hinweis), bleibt unverändert.</p></div>`,
@@ -1116,8 +1120,10 @@ A.prof = async el => {
   const a = el.dataset.a, pid = el.dataset.pid || "";
   const Q = { reset: ["Nur Bestätigtes behalten?", "Nur behalten, was selbst zugeordnet oder bestätigt wurde? Automatisch Gelerntes und Einträge früherer Versionen werden entfernt.", "Behalten"],
     delete: ["Stimmprofil löschen?", `Stimmprofil von ${el.dataset.name || ""} endgültig löschen?`, "Löschen"], delete_all: ["Alle Stimmprofile löschen?", "ALLE Stimmprofile endgültig löschen?", "Alle löschen"],
-    remove_origin: ["Eintrag entfernen?", "Diesen gelernten Eintrag aus dem Profil entfernen?", "Entfernen"] }[a];
-  if (Q && !(await confirmLocal(Q[0], Q[1], Q[2], { danger: a !== "reset" }))) return;
+    remove_origin: ["Eintrag entfernen?", "Diesen gelernten Eintrag aus dem Profil entfernen?", "Entfernen"],
+    reidentify: ["Sprecher neu erkennen?", "Alle Aufnahmen mit Sprecherdaten mit den aktuellen Regeln und Stimmprofilen neu erkennen? Eigene Zuordnungen bleiben unverändert.", "Neu erkennen"],
+    repair: ["Stimmprofile reparieren?", "Profile aus den eigenen Zuordnungen neu aufbauen, eingetippte Namen mit dem Kalender verknüpfen und doppelte Profile derselben Person zusammenführen?", "Reparieren"] }[a];
+  if (Q && !(await confirmLocal(Q[0], Q[1], Q[2], { danger: !["reset", "reidentify", "repair"].includes(a) }))) return;
   loadProfiles(a, pid, el.dataset.i !== undefined ? Number(el.dataset.i) : null);
 };
 A.updates = () => act("check_updates");
@@ -1185,7 +1191,8 @@ A["pc-discard"] = el => { const d = curDlg(el); d.local.confirmDiscard = true; r
 A["pc-back"] = el => { const d = curDlg(el); d.local.confirmDiscard = false; renderDialog(); };
 A.rv = el => {
   const d = curDlg(el), L = d.local, a = el.dataset.a;
-  if (a === "apply") answer(d, { action: "apply", assignments: d.data.rows.filter(r => !r.minor || L.sel[r.id]).map(r => ({ id: r.id, name: L.sel[r.id] || "", keep: !!L.keep[r.id] })), resummarize: !!L.resum });
+  if (a === "suggest") { for (const r of d.data.rows) if (r.preselect && !r.minor) L.sel[r.id] = r.preselect; }
+  if (a === "apply" || a === "suggest") answer(d, { action: "apply", assignments: d.data.rows.filter(r => !r.minor || L.sel[r.id]).map(r => ({ id: r.id, name: L.sel[r.id] || "", keep: !!L.keep[r.id] })), resummarize: !!L.resum });
   else answer(d, { action: a });
 };
 A["rv-frag"] = el => { const d = curDlg(el); d.local.showFragments = !d.local.showFragments; renderDialog(); };
@@ -1258,6 +1265,7 @@ document.addEventListener("click", e => {
 });
 document.addEventListener("change", e => {
   const t = e.target;
+  if (t.dataset && t.dataset.pmode) { loadProfiles(t.value, t.dataset.pmode, null); return; }
   if (t.id === "ver") { S.version_sel[S.tab] = t.value; loadText(); return; }
   if (t.id === "st-check") { const b = $("#st-go"); if (b) b.disabled = !t.checked; return; }
   if (t.dataset.plan) {

@@ -171,6 +171,15 @@ def build(root: Path) -> dict[str, Any]:
     for row in [out["review"]["me"], *out["review"]["rows"]]:
         row.pop("_span", None)
         row.pop("_track", None)
+    # the same dialog with a pre-selected suggestion for the first voice ("Alle Vorschläge übernehmen")
+    import copy as _copy
+
+    sug = _copy.deepcopy(out["review"])
+    first = sug["rows"][0]
+    first["preselect"] = first["initial"] = first["choices"][0]["value"]
+    first["preselect_score"] = 0.61
+    sug["suggestions"] = 1
+    out["review_suggest"] = sug
     from callrec.config import Config
     from callrec.handoff import HANDOFF_WARNING
     from callrec.ui.viewmodel import markdown_blocks

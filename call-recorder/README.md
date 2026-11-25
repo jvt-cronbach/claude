@@ -798,37 +798,58 @@ begründet ist (die Stimme ähnelt einer erkannten Stimme mindestens mit der Erk
 Fragment liegt in bzw. direkt neben – höchstens 1 s – einem Beitrag genau einer Person), sonst steht er
 im Transkript und in der Zusammenfassung als **„Unklar“**. Was zugeordnet oder offen gelassen wurde und
 warum, steht in `meta.json` unter `processing.fragments`. Fragmente zählen nicht für die Begrenzung auf
-die Teilnehmenden und nicht für die Regel „einzige eingeladene Person“. Im Dialog zeigt **„Kurze Fragmente
+die Teilnehmenden und nicht für die Regel „einzige weitere Person“. Im Dialog zeigt **„Kurze Fragmente
 anzeigen“** sie trotzdem; ein dort benanntes Fragment bleibt benannt (ohne Stimmprofil).
-*Sprecherzuordnung neu prüfen* wendet die Regel auch auf ältere Aufnahmen an; manuelle Zuordnungen
+*Sprecher neu erkennen* wendet die Regel auch auf ältere Aufnahmen an; manuelle Zuordnungen
 bleiben unverändert.
 
-**Automatische Erkennung – nur Teilnehmende.** Eine Stimme wird automatisch nur einer Person
+**Automatische Erkennung – nur Teilnehmende (seit 0.4.1).** Eine Stimme wird automatisch nur einer Person
 zugeordnet, die an *dieser* Aufnahme teilnimmt: aus der Kalendereinladung, beim Start eingetragen, über
-*Weitere … → Teilnehmende bearbeiten …* oder *Termin zuordnen …* (beides vor oder nach der Verarbeitung;
-die Erkennung läuft dann erneut, Ihre manuellen Zuordnungen bleiben immer) oder von Ihnen im Dialog
-zugeordnet. Ohne Teilnehmerliste wird nichts automatisch zugeordnet („Sprecher 1 … n“). Zusätzlich gilt:
+*Weitere … → Teilnehmende bearbeiten …* oder *Termin zuordnen …* (die Erkennung läuft dann erneut, Ihre
+manuellen Zuordnungen bleiben immer), von Ihnen im Dialog zugeordnet – oder eine Person, die unter
+*Stimmprofile verwalten* auf „immer erkennen“ steht. Abgesagte Personen, Besprechungsräume, Verteiler
+und optionale Teilnehmende ohne Zusage zählen nicht als erwartete Stimme. Die Regeln, in dieser Reihenfolge:
 
-- Ähnlichkeit (Kosinus) mindestens `speakers.match_threshold` (0,55) **und** mindestens
-  `match_margin` (0,08) besser als jedes andere Profil – auch als Profile von Nicht-Teilnehmenden; sonst
-  „nicht eindeutig“ bzw. nur ein Vorschlag,
-- jedes Profil höchstens einmal pro Aufnahme (ein zweiter, ähnlicher Sprecher bekommt nur einen
-  Vorschlag),
-- mindestens `min_match_speech_s` (8 s) Sprache ohne Überlappung; Stimmmerkmale werden nur aus
-  Abschnitten ohne gleichzeitiges Sprechen anderer gebildet,
-- Ihre eigene Identität (Name/E-Mail, auch Varianten wie „Nachname, Vorname“) wird nie einem Sprecher
-  der Gegenseite zugeordnet.
+1. **Genau eine weitere erwartete Person, genau eine Stimme** (`single_participant_rule`): Die Stimme
+   bekommt deren Namen – auch ohne Stimmprofil – und das Profil lernt daraus (ab `min_learn_speech_s`,
+   12 s). Klingt die Stimme klar nach einer anderen bekannten, nicht eingeladenen Person, bleibt der Name,
+   aber das Profil lernt nichts, und der Dialog zeigt „klingt eher wie …“.
+2. **Stimmprofil**: Es konkurrieren nur die Teilnehmenden. Gesucht ist die beste Gesamtverteilung der
+   Stimmen auf die Personen (jede Person höchstens einmal). Ein Name wird vergeben, wenn die Ähnlichkeit
+   mindestens `match_threshold` (0,45) erreicht und jede andere, fast gleich gute Verteilung diese
+   Zuordnung auch enthält (Vorsprung mindestens `match_margin`, 0,06). Gibt es nichts zu vergleichen (eine
+   Stimme, nur eine Person mit Profil, aber weitere ohne), gilt `alone_threshold` (0,60). Ein Profil einer
+   nicht eingeladenen Person verhindert die Zuordnung nur, wenn es mindestens `guard_margin` (0,10) näher
+   ist. Ein Profil hält mehrere Stimmproben (Geräte, Räume); verglichen wird mit dem besseren Wert aus dem
+   Mittel aller Proben und den zwei nächsten einzelnen Proben.
+3. **Ausschluss** (`elimination_rule`): Sind alle erwarteten Personen bis auf eine erkannt und ist genau
+   eine Stimme übrig, bekommt sie diesen Namen – außer sie ähnelt einer schon benannten Stimme dieses
+   Gesprächs (vermutlich dieselbe Person, in zwei Stimmen geteilt) oder klingt klar nach jemand anderem.
+4. **Alles Übrige** bleibt offen, aber mit dem wahrscheinlichsten Namen und seiner Ähnlichkeit
+   vorbelegt; *Alle Vorschläge übernehmen* bestätigt sie mit einem Klick. Ohne Teilnehmerliste wird nur
+   eine bekannte Stimme vorbelegt, die klar am nächsten ist (≥ 0,70).
+
+Weitere Bedingungen: mindestens `min_match_speech_s` (6 s) Sprache ohne Überlappung (Stimmmerkmale
+werden nur aus Abschnitten ohne gleichzeitiges Sprechen anderer gebildet); Ihre eigene Identität wird nie
+einem Sprecher der Gegenseite zugeordnet; „nie automatisch“ je Person schaltet die automatische Zuordnung
+für sie ab. **Warum** eine Stimme (nicht) erkannt wurde – Kandidaten, Werte, entscheidende Regel, wie weit
+unter der Schwelle, gegen wen der Abstand fehlte – steht im Dialog unter „Warum?“, in den Details unter
+*Weitere … → Warum (nicht) erkannt?* und mit `callrec speakers "<Ordner>" --explain`.
+
+**Warum die Werte so sind.** Gemessen mit dem wespeaker-Modell an synthetischen Stimmen über
+Teams-ähnliche Wege (Opus 12–24 kbit/s, Bluetooth-Schmalband, GSM, Laptop-Mikrofon mit Hall, Rauschen):
+dieselbe Person erreicht über dasselbe Gerät im Mittel 0,81–0,92, über ein anderes Gerät nur 0,36–0,66;
+zwei verschiedene Personen über dieselbe Geräteart 0,47–0,75 (Spitzen über 0,9). Eine feste Schwelle
+gegen *alle* Profile (bis 0.4.0: 0,55 / 0,08, Lernen erst ab 0,75) blockierte deshalb meist die richtige
+Person. Die Entscheidung *zwischen den wenigen Teilnehmenden* ist dagegen gut möglich.
 
 **Anzahl der Sprecher.** Die Sprechertrennung teilt eine Stimme gelegentlich in mehrere „Sprecher“
-auf. Die Teilnehmerliste begrenzt deshalb die Zahl der Sprecher der Gegenseite auf die Teilnehmenden
-ohne Sie (`speakers.limit_to_participants`, plus `extra_remote_speakers` nicht eingeladene Gäste,
-Standard 0): ähnliche Stimmen werden zusammengeführt – anhand der gespeicherten Stimmmerkmale, ohne das
-Audio neu auszuwerten; Stimmen, die Sie verschiedenen Personen zugeordnet haben, nie. Bei einem Gespräch
-mit **einer** eingeladenen Person ist die ganze Gegenseite diese Person – auch ohne Stimmprofil; dabei
-lernt deren Profil (ab 20 s Sprache) mit. Bleibt genau eine Stimme und eine Teilnehmende offen, ist sie
-im Dialog vorausgewählt. Saßen nicht eingeladene Personen mit am Gerät: im Dialog bzw. unter
-*Weitere … → Weitere Sprecher zulassen / begrenzen*. Ohne Teilnehmerliste bleibt die automatische
-Sprecherzahl.
+auf. Die Teilnehmerliste begrenzt deshalb die Zahl der Sprecher der Gegenseite auf die erwarteten
+Teilnehmenden ohne Sie (`speakers.limit_to_participants`, plus `extra_remote_speakers` nicht eingeladene
+Gäste, Standard 0): ähnliche Stimmen werden zusammengeführt – anhand der gespeicherten Stimmmerkmale, ohne
+das Audio neu auszuwerten; Stimmen, die Sie verschiedenen Personen zugeordnet haben, nie. Saßen nicht
+eingeladene Personen mit am Gerät: im Dialog bzw. unter *Weitere … → Weitere Sprecher zulassen /
+begrenzen*. Ohne Teilnehmerliste bleibt die automatische Sprecherzahl.
 
 Ändern sich Sprechernamen, nachdem die Zusammenfassung erstellt wurde, zeigt das Hauptfenster
 „Die Zusammenfassung beruht auf alten Sprechernamen“ – dann „Zusammenfassung neu erstellen“ und ggf.
@@ -839,18 +860,37 @@ Namen werden robust verglichen: per E-Mail, wenn beide Seiten eine haben, sonst 
 `speakers.match_scope = "all_profiles"` stellt das frühere Verhalten (alle bekannten Profile,
 `invitee_bonus` für Eingeladene) wieder her – nur in `config.toml` bzw. den Einstellungen, nie per Preset.
 
-**Was ein Profil lernt.** Ein Profil entsteht nur aus einer Zuordnung, die Sie gemacht oder bestätigt
-haben (mit mindestens `min_learn_speech_s` = 20 s Sprache), und wird automatisch nur bei sehr sicherer
-Erkennung (≥ `auto_update_threshold` = 0,75) nachgeschärft – mit halbem Gewicht. Jeder Beitrag ist mit
+**Was ein Profil lernt.** Ein Profil entsteht aus einer Zuordnung, die Sie gemacht oder bestätigt
+haben, oder aus einem Gespräch mit genau einer weiteren Person (jeweils mit mindestens
+`min_learn_speech_s` = 12 s Sprache). Eine automatische Erkennung per Stimmprofil fügt eine weitere
+Stimmprobe hinzu, wenn sie sicher war (≥ `auto_update_threshold` = 0,55 und doppelter Vorsprung) – mit
+halbem Gewicht. Ein eingetippter Vorname („Anna“) wird bei der Teilnehmerin „Müller, Anna“ zu dieser
+Person; ein früher eingetipptes Profil wird einmal vorgeschlagen und nach Ihrer Bestätigung mit der
+Kalenderidentität verknüpft. *Stimmprofile verwalten* zeigt je Person, wie oft sie zuletzt automatisch
+erkannt bzw. von Ihnen zugeordnet oder korrigiert wurde, Zahl und Herkunft der Stimmproben und die letzten
+Ähnlichkeiten – das ehrliche „Lernstand“-Maß: Ein Profil ist nie „fertig“, es braucht je Gerät/Raum eine
+Probe. Jeder Beitrag ist mit
 Aufnahme und Sprecher gespeichert: Korrigieren Sie eine Zuordnung, wird der frühere Beitrag dieses
 Sprechers zurückgenommen; erneutes Erkennen ersetzt den automatischen Beitrag einer Aufnahme, statt ihn
 zu wiederholen. *Extras → Stimmprofile verwalten …* zeigt je Profil „Gelernt aus“ (Aufnahme, Sprecher,
 Herkunft) mit „Eintrag entfernen“, „Nur Bestätigtes behalten“ und „Aus Ihren Zuordnungen neu aufbauen“
 (baut das Profil nur aus Ihren manuellen Zuordnungen in den Aufnahmen neu auf – auch für Profile älterer
-Versionen, deren Herkunft unbekannt ist).
+Versionen, deren Herkunft unbekannt ist). Nach dem Update auf 0.4.1 wird einmalig angeboten, alle Profile so
+zu reparieren (eigene Zuordnungen übernehmen, eingetippte Namen verknüpfen, dieselbe Person unter zwei
+Adressen zusammenführen; später: *Reparieren …* bzw. `callrec profiles repair`). Beitragen können nur
+Aufnahmen, deren Sprecherdaten noch vorhanden sind – das automatische Löschen entfernt sie nach
+`retention.max_age_days` (7) Tagen. *Sprecher in allen Aufnahmen neu erkennen* (bzw. `callrec reidentify
+--all`) wendet danach die neuen Regeln an.
+
+**Diagnose.** *Weitere … → Diagnose der Sprechererkennung exportieren …* bzw. `callrec diagnostics
+"<Ordner>"` schreibt eine kleine JSON-Datei nach `%LOCALAPPDATA%\CallRecorder\diagnostics` – nur
+Zahlen und Regelergebnisse (Sprechzeiten, Ähnlichkeiten, Regel, Teilnehmerzahl und -arten,
+Sprecherbegrenzung, Spurprüfung, Einstellungen), keinen Ton, keinen Text, keine Stimmmerkmale, keinen
+Titel. Namen werden durch „Person 1“, „Person 2“ … ersetzt, außer Sie wählen „Namen einschließen“
+(`--names`).
 
 **Ältere Aufnahmen.** Aufnahmen, die nach dem früheren Verfahren automatisch zugeordnet wurden, zeigen
-im Hauptfenster einen Hinweis. *Weitere … → Sprecherzuordnung neu prüfen …* zeigt zuerst, was sich ändern
+im Hauptfenster einen Hinweis. *Weitere … → Sprecher neu erkennen …* zeigt zuerst, was sich ändern
 würde (inklusive Zusammenführung zu vieler Sprecher auf die Teilnehmenden), und ändert nach Bestätigung nur
 automatische Zuordnungen. Bei Aufnahmen früherer Versionen werden zusätzlich Zuordnungen zu Personen, die
 nicht eingeladen waren, zum Zurücksetzen angeboten – frühere Versionen haben vorausgefüllte automatische
@@ -1296,9 +1336,11 @@ Wichtige Einstellungen:
 | `update.check_daily` | `true` | einmal täglich nach einer freigegebenen Version sehen und nur benachrichtigen |
 | `update.repo_url` / `update.branch` | dieses Repository | Update-Quelle (nur `https://github.com/…`; nur in `config.toml`) |
 | `speakers.match_scope` | `participants` | `participants` = automatisch nur Teilnehmende dieser Aufnahme; `all_profiles` = alle Profile (früheres Verhalten). Nur in `config.toml`/Einstellungen, nie per Preset |
-| `speakers.match_threshold` / `match_margin` | `0.55` / `0.08` | Schwelle für die Wiedererkennung; Mindestabstand zum zweitbesten Profil |
-| `speakers.min_match_speech_s` / `min_learn_speech_s` | `8` / `20` | Mindest-Sprechzeit (ohne Überlappung) für die automatische Erkennung bzw. damit ein Profil lernt |
-| `speakers.auto_update_on_match` / `auto_update_threshold` | `true` / `0.75` | Profil bei sehr sicherer automatischer Erkennung nachschärfen (rücknehmbar) |
+| `speakers.match_threshold` / `match_margin` | `0.45` / `0.06` | Schwelle für die Wiedererkennung unter den Teilnehmenden; Vorsprung vor der nächstbesten Verteilung der Stimmen auf die Teilnehmenden |
+| `speakers.alone_threshold` / `guard_margin` | `0.6` / `0.1` | Schwelle ohne Vergleichsmöglichkeit; so viel näher muss ein Profil einer nicht eingeladenen Person sein, um eine Zuordnung zu verhindern |
+| `speakers.single_participant_rule` / `elimination_rule` | `true` / `true` | Regel „einzige weitere Person“ bzw. Ausschlussregel |
+| `speakers.min_match_speech_s` / `min_learn_speech_s` | `6` / `12` | Mindest-Sprechzeit (ohne Überlappung) für die automatische Erkennung bzw. damit ein Profil lernt |
+| `speakers.auto_update_on_match` / `auto_update_threshold` | `true` / `0.55` | Profil bei sicherer automatischer Erkennung um eine Stimmprobe ergänzen (rücknehmbar) |
 | `transcript.self_display_name` | leer | Ihr Name für die eigenen Beiträge; leer = Vorname aus dem Microsoft-Konto, sonst aus `general.user_name`, sonst „Ich“ |
 | `general.preset` | leer | aktives Preset |
 | `transcription.initial_prompt` | leer | Zusatz-Kontext für Whisper |

@@ -193,7 +193,10 @@ PAGES: tuple[Page, ...] = (
         Field("speakers", "match_scope", "Automatisch zuordnen", "Nicht per Preset einstellbar.", "radio",
               _c(("participants", "Nur Teilnehmende des Termins (empfohlen)"),
                  ("all_profiles", "Alle gespeicherten Stimmprofile – auch nicht Eingeladene"))),
-        Field("speakers", "auto_update_on_match", "Profile bei sicherer Erkennung nachschärfen"),
+        Field("speakers", "single_participant_rule", "Bei genau einer weiteren Person deren Namen vergeben",
+              "Auch ohne Stimmprofil; abgesagte Personen, Räume und optionale ohne Zusage zählen nicht."),
+        Field("speakers", "elimination_rule", "Letzte übrige Stimme der letzten übrigen Person zuordnen"),
+        Field("speakers", "auto_update_on_match", "Profile bei sicherer Erkennung ergänzen"),
         Field("speakers", "min_named_speech_s", "Kurze Fragmente ausblenden unter (Sekunden Sprache)",
               "Stimmen mit weniger Sprache (Husten, „mhm“, Störgeräusche) werden nicht zur Zuordnung angeboten; "
               "ihr Text geht an die passende Person oder erscheint als „Unklar“. Im Zuordnungsdialog über "
@@ -204,11 +207,15 @@ PAGES: tuple[Page, ...] = (
         Field("diarization", "min_duration_off", "Mindestpause zwischen Abschnitten (s)", adv=True),
         Field("diarization", "num_threads", "Rechen-Threads Sprechertrennung (0 = automatisch)", adv=True),
         Field("speakers", "match_threshold", "Schwelle Wiedererkennung (0..1)", adv=True),
-        Field("speakers", "match_margin", "Mindestabstand zum zweitbesten Profil", adv=True),
+        Field("speakers", "match_margin", "Mindestvorsprung vor der nächstbesten Zuordnung unter den Teilnehmenden",
+              adv=True),
+        Field("speakers", "alone_threshold", "Schwelle ohne Vergleichsmöglichkeit (0..1)", adv=True),
+        Field("speakers", "guard_margin", "Nicht Eingeladene verhindern eine Zuordnung erst ab diesem Vorsprung",
+              adv=True),
         Field("speakers", "min_match_speech_s", "Mindest-Sprechzeit für automatische Erkennung (s)", adv=True),
         Field("speakers", "min_learn_speech_s", "Mindest-Sprechzeit, damit ein Profil lernt (s)", adv=True),
         Field("speakers", "invitee_bonus", "Bonus für Eingeladene (nur bei „alle Profile“)", adv=True),
-        Field("speakers", "auto_update_threshold", "Nachschärfen ab Ähnlichkeit", adv=True),
+        Field("speakers", "auto_update_threshold", "Stimmprobe ergänzen ab Ähnlichkeit", adv=True),
     ), ("profiles_link",)),
     Page("rendering", "Transkript", "Geänderte Einstellungen erzeugen beim erneuten Verarbeiten eine neue Version; "
          "frühere Versionen bleiben zum Vergleich erhalten.", (

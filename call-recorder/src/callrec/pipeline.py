@@ -45,10 +45,11 @@ from callrec.versions import adopt_legacy, fingerprint, latest, write_version
 
 log = logging.getLogger(__name__)
 
-IDENTIFY_RULE = "participants-v2"  # meta.json processing.identification.rule of this version
+IDENTIFY_RULE = "participants-v3"  # 0.4.1: relative decision among participants  # meta.json processing.identification.rule of this version
 # below this similarity, clusters merged by the participant limit are probably different people:
 # the merged speaker is still named after the only participant, but teaches no voice profile
 SOLE_MIN_MERGE_SIMILARITY = 0.3
+LEGACY_ALL_THRESHOLD, LEGACY_ALL_MARGIN = 0.55, 0.08  # match_scope = "all_profiles": at least these
 PARALLEL_DIAR_THREADS = 2  # speaker separation alongside the transcription
 PARALLEL_MIN_CORES = 6  # without a benchmark: parallel only from this many physical cores
 PAUSE_POLL_S = 5.0
@@ -853,8 +854,12 @@ class Pipeline:
         meta = rec.load_meta()
         lifted = bool((meta.get("speaker_limit") or {}).get("lifted"))
         sc = self.cfg.speakers
-        participants = self._participants(rec)
-        bound = (len(participants) + sc.extra_remote_speakers
+        classified = self.classified_participants(rec)
+        participants = [c.person for c in classified if not c.excluded]
+        # expected voices: declined people, rooms, distribution lists and optional attendees without an
+        # answer do not count (they kept one voice split in two and the single-participant rule off)
+        n_expected = sum(1 for c in classified if c.expected) or len(participants)
+        bound = (n_expected + sc.extra_remote_speakers
                  if sc.limit_to_participants and participants and not lifted else None)
         report = trackcheck.check(rec.load_asr("mic"), rec.load_asr("remote"), raw_turns, raw_emb,
                                   rec.load_self_embedding(), rec.load_trackcheck().get("signal"), meta.get("devices"))
@@ -869,7 +874,7 @@ class Pipeline:
         res = merge_to_bound(raw_turns, raw_emb, speech_seconds(raw_turns), bound, keep_apart, exclude,
                              named_merge_min=sc.match_threshold)
         raw_n = len({t.speaker for t in raw_turns})
-        info: dict[str, Any] = {"participants": len(participants), "bound": bound, "lifted": lifted,
+        info: dict[str, Any] = {"participants": n_expected if participants else 0, "bound": bound, "lifted": lifted,
                                 "raw_speakers": raw_n, "speakers": len({t.speaker for t in res.turns}),
                                 "merged": res.merged, "fragments": sorted(fragments), "changed": False}
         same = [(t.start, t.end, t.speaker) for t in res.turns] == \
@@ -887,19 +892,24 @@ class Pipeline:
                 carried[new_sid] = dataclasses.replace(decided, id=new_sid)
         return res.turns, res.embeddings, raw_model or model_id, carried, info
 
+    def classified_participants(self, rec: Recording) -> list[Any]:
+        """This recording's participants without you, each with its kind (expected / optional /
+        declined / room), see :mod:`callrec.speakers.candidates`."""
+        from callrec.speakers.candidates import classify
+
+        return classify(self._participants(rec), rec.load_meta().get("event"))
+
     def compute_identification(self, rec: Recording, diar: tuple[Any, ...] | None = None,
                                ) -> tuple[dict[str, SpeakerInfo], dict[str, Any], list[Any]]:
         """(speakers, identification meta, profile updates) - reads only, changes nothing.
 
-        Rule ("participants", default): a remote speaker is assigned automatically only to a voice
-        profile of a participant of THIS recording (calendar invitation, entered at the start, via
-        "Teilnehmende bearbeiten"/"Termin zuordnen", or assigned by you). Without any participant
-        nothing is assigned automatically. Assignments you made (source "manual"/"self_echo")
-        are always kept."""
+        Rule ("participants", default, see :mod:`callrec.speakers.identify`): a remote speaker is named
+        automatically only as a participant of THIS recording (calendar invitation, entered at the
+        start, via "Teilnehmende bearbeiten"/"Termin zuordnen", or assigned by you) or a person set to
+        "immer erkennen". Assignments you made (source "manual"/"self_echo") are always kept."""
         from callrec.selfname import self_people
         from callrec.speakers import trackcheck
         from callrec.speakers.diarize import speech_seconds
-        from callrec.speakers.names import persons_match
 
         if diar is not None:  # (turns, embeddings, model_id, speakers) from plan_bound
             turns, embeddings, model_id, old = diar[0], diar[1], diar[2], diar[3]
@@ -920,65 +930,133 @@ class Pipeline:
             if sid in speakers and sid != SELF_SPEAKER_ID and info.source in USER_DECIDED:
                 info.label = speakers[sid].label
                 info.clear_hints()
+                info.rule = ""
                 speakers[sid] = info
         meta = rec.load_meta()
         report = trackcheck.check(rec.load_asr("mic"), rec.load_asr("remote"), turns, embeddings,
                                   rec.load_self_embedding(), rec.load_trackcheck().get("signal"), meta.get("devices"))
         speech = speech_seconds(turns)
         me_all = self_people(self.cfg, me)
-        participants = self._participants(rec)
+        classified = self.classified_participants(rec)
+        participants = [c.person for c in classified if not c.excluded]
         strict = sc.match_scope == "participants"
-        open_ids = [sid for sid in ids if speakers[sid].source not in USER_DECIDED]
         from callrec.speakers.fragments import minor_ids
 
-        fragments = minor_ids(turns, sc.min_named_speech_s, {sid for sid in ids if speakers[sid].source in USER_DECIDED})
+        decided = {sid for sid in ids if speakers[sid].source in USER_DECIDED}
+        fragments = minor_ids(turns, sc.min_named_speech_s, decided)
         for sid in fragments:
             info = speakers[sid]
             info.minor = True
             info.note = (f"kurzes Fragment ({speech.get(sid, 0.0):.1f} s Sprache, weniger als "
                          f"{sc.min_named_speech_s:.0f} s) – nicht zur Zuordnung angeboten")
-        open_ids = [sid for sid in open_ids if sid not in fragments]
+        for sid in ids:
+            if sid not in decided and sid not in fragments and sid in report.self_suspects:
+                speakers[sid].self_suspect = True
+        learn: list[Any] = []
+        outcomes: dict[str, Any] = {}
+        if strict:
+            outcomes, learn = self._identify_participants(rec, ids, speakers, turns, embeddings, model_id, speech,
+                                                          fragments, report, classified, me_all, meta)
+        else:
+            learn = self._identify_all_profiles(rec, ids, speakers, embeddings, model_id, speech, fragments,
+                                                report, participants, me_all)
+        ident = {
+            "rule": IDENTIFY_RULE,
+            "scope": sc.match_scope,
+            "participants": len(participants),
+            "expected": sum(1 for c in classified if c.expected),
+            "participant_kinds": [{"expected": c.expected, "excluded": c.excluded, "why": c.why} for c in classified],
+            "auto": sum(1 for s in speakers.values() if s.source == SOURCE_AUTO),
+            "manual": sum(1 for s in speakers.values() if s.source in USER_DECIDED),
+            "speech_s": speech,
+            "fragments": sorted(fragments),
+            "min_named_speech_s": sc.min_named_speech_s,
+            "decisions": {sid: {"match": o.name, "rule": o.rule, "reason": o.why, "score": o.score,
+                                "learn": o.learn, **o.explain} for sid, o in outcomes.items()},
+            "trackcheck": report.to_dict(),
+        }
+        return speakers, ident, learn
+
+    def _identify_participants(self, rec: Recording, ids: list[str], speakers: dict[str, SpeakerInfo],
+                               turns: list[SpeakerTurn], embeddings: dict[str, np.ndarray], model_id: str,
+                               speech: dict[str, float], fragments: set[str], report: Any, classified: list[Any],
+                               me_all: list[Person], meta: dict[str, Any]) -> tuple[dict[str, Any], list[Any]]:
+        from callrec.speakers.identify import Params, Voice, build_candidates, identify
+
+        sc = self.cfg.speakers
+        participants = [c.person for c in classified if not c.excluded]
+        expected = [c.person for c in classified if c.expected]
+        profiles = [p for p in self.c.profiles.all_profiles() if p.model_id == model_id] if model_id else []
+        cands, others = build_candidates(participants, expected, profiles, me_all)
+        voices: list[Voice] = []
+        for sid in ids:
+            info = speakers[sid]
+            blocked = ""
+            if sid in fragments:
+                blocked = info.note
+            elif info.self_suspect:
+                blocked = "vermutlich die eigene Stimme (auf der Spur der Gegenseite)"
+            elif info.source == SOURCE_SELF_ECHO:
+                blocked = "als eigene Stimme markiert"
+            decided = info.name if info.source == SOURCE_MANUAL else ""
+            voices.append(Voice(sid, embeddings.get(sid), speech.get(sid, 0.0), decided=decided, blocked=blocked))
+        lifted = bool((meta.get("speaker_limit") or {}).get("lifted"))
+        params = Params.from_config(sc)
+        if not sc.limit_to_participants or lifted:
+            params.single = False  # more voices than invited are allowed: one voice proves nothing
+        merged = (((meta.get("processing") or {}).get("diarization") or {}).get("bound") or {}).get("merged") or []
+        merged_apart = any(len(m) >= 3 and float(m[2]) < SOLE_MIN_MERGE_SIMILARITY for m in merged)
+        outcomes = identify(voices, cands, others, params, recording=rec.uid, has_participants=bool(participants),
+                            mic_unreliable=report.mic_unreliable, merged_apart=merged_apart)
+        learn: list[Any] = []
+        for sid, o in outcomes.items():
+            info = speakers[sid]
+            if info.source in USER_DECIDED or sid in fragments:
+                continue
+            if o.name:
+                info.name, info.email, info.profile_id = o.name, o.email, o.profile_id
+                info.score, info.source, info.rule = o.score, SOURCE_AUTO, o.rule
+                info.note = o.why
+                if o.suggestion is not None:  # named after the invitation, but the voice sounds like somebody else
+                    info.suggested_name, info.suggested_email = o.suggestion[0], o.suggestion[1]
+                    info.suggested_score = round(o.suggestion[2], 4)
+                if o.learn == "auto" and not sc.auto_update_on_match:
+                    o.learn = ""
+                if o.learn and model_id and sid in embeddings:
+                    learn.append((Person(o.name, o.email), sid, embeddings[sid], speech.get(sid, 0.0), o.learn,
+                                  o.profile_id))
+            else:
+                info.note = o.why if not info.self_suspect else (info.note or o.why)
+                info.preselect_name, info.preselect_profile_id = o.preselect, o.preselect_profile_id
+                info.preselect_score = o.preselect_score
+                if o.suggestion is not None:
+                    info.suggested_name, info.suggested_email = o.suggestion[0], o.suggestion[1]
+                    info.suggested_score = round(o.suggestion[2], 4)
+        return outcomes, learn
+
+    def _identify_all_profiles(self, rec: Recording, ids: list[str], speakers: dict[str, SpeakerInfo],
+                               embeddings: dict[str, np.ndarray], model_id: str, speech: dict[str, float],
+                               fragments: set[str], report: Any, participants: list[Person],
+                               me_all: list[Person]) -> list[Any]:
+        """match_scope = "all_profiles" (behaviour of earlier versions, opt-in): every profile competes."""
+        sc = self.cfg.speakers
+        open_ids = [sid for sid in ids if speakers[sid].source not in USER_DECIDED and sid not in fragments]
         not_eligible: dict[str, str] = {}
         for sid in open_ids:
-            if sid in report.self_suspects:
-                speakers[sid].self_suspect = True
+            if speakers[sid].self_suspect:
                 not_eligible[sid] = "vermutlich die eigene Stimme (auf der Spur der Gegenseite)"
             elif speech.get(sid, 0.0) < sc.min_match_speech_s:
                 not_eligible[sid] = (f"zu wenig Sprache für eine automatische Erkennung ({speech.get(sid, 0.0):.0f} s, "
                                      f"mindestens {sc.min_match_speech_s:.0f} s)")
         to_match = {sid: embeddings[sid] for sid in open_ids if sid in embeddings}
-        decisions: dict[str, Any] = {}
+        decisions = self.c.profiles.decide(
+            # against every profile the 0.4.0 values stay the floor (the relaxed values are safe only
+            # because the participants' profiles compete among themselves)
+            to_match, model_id, participants=None, threshold=max(sc.match_threshold, LEGACY_ALL_THRESHOLD),
+            margin=max(sc.match_margin, LEGACY_ALL_MARGIN),
+            exclude=me_all, not_eligible=not_eligible, bonus=sc.invitee_bonus, preferred=participants,
+            ignore_recording=rec.uid) if to_match and model_id else {}
         learn: list[Any] = []
-        lifted = bool((rec.load_meta().get("speaker_limit") or {}).get("lifted"))
-        remote_ids = [sid for sid in ids if not speakers[sid].self_suspect and speakers[sid].source != SOURCE_SELF_ECHO
-                      and sid not in fragments]
-        sole = (strict and sc.limit_to_participants and not lifted and len(participants) == 1
-                and len(remote_ids) == 1 and remote_ids[0] in open_ids)
-        if sole:
-            # a call with you and ONE invited person: the remote voice is that person - no voice profile needed
-            sid, person = remote_ids[0], participants[0]
-            info = speakers[sid]
-            info.name, info.email, info.source, info.score = person.name or person.email, person.email, SOURCE_AUTO, None
-            info.note = "einzige eingeladene Person der Gegenseite"
-            open_ids = [x for x in open_ids if x != sid]
-            doubt = self._sole_doubt(rec, person, embeddings.get(sid), model_id, me_all, meta)
-            if doubt:
-                info.note += f" – {doubt}; Stimmprofil nicht aktualisiert"
-            elif (model_id and sid in embeddings and speech.get(sid, 0.0) >= sc.min_learn_speech_s
-                    and not report.mic_unreliable):
-                learn.append((Person(info.name, info.email), sid, embeddings[sid], speech.get(sid, 0.0), "sole"))
-            to_match = {}
-        if strict and not participants:
-            for sid in open_ids:
-                speakers[sid].note = ("keine Teilnehmerliste für diese Aufnahme – nichts automatisch zugeordnet "
-                                      "(Teilnehmende eintragen oder Termin zuordnen)")
-        elif to_match and model_id:
-            decisions = self.c.profiles.decide(
-                to_match, model_id, participants=participants if strict else None, threshold=sc.match_threshold,
-                margin=sc.match_margin, exclude=me_all, not_eligible=not_eligible,
-                bonus=0.0 if strict else sc.invitee_bonus, preferred=None if strict else participants,
-                ignore_recording=rec.uid,
-            )
         for sid in open_ids:
             info, d = speakers[sid], decisions.get(sid)
             if d is None:
@@ -987,67 +1065,17 @@ class Pipeline:
             if d.match is not None:
                 m = d.match
                 info.name, info.email, info.profile_id = m.profile.name, m.profile.email, m.profile.id
-                info.score, info.source = round(m.similarity, 4), SOURCE_AUTO
-                if (sc.auto_update_on_match and m.similarity >= sc.auto_update_threshold
+                info.score, info.source, info.rule = round(m.similarity, 4), SOURCE_AUTO, "profile"
+                if (sc.auto_update_on_match and m.similarity >= max(sc.auto_update_threshold, 0.75)
                         and speech.get(sid, 0.0) >= sc.min_learn_speech_s):
-                    learn.append((m.profile.person, sid, embeddings[sid], speech.get(sid, 0.0), "auto"))
+                    learn.append((m.profile.person, sid, embeddings[sid], speech.get(sid, 0.0), "auto", m.profile.id))
             else:
                 info.note = d.reason
                 if d.suggestion is not None:
                     s = d.suggestion
                     info.suggested_name, info.suggested_email = s.profile.name, s.profile.email
                     info.suggested_score = round(s.similarity, 4)
-        # exactly one open voice and one participant left: pre-select that participant (you confirm it)
-        taken = [s for sid2, s in speakers.items() if sid2 != SELF_SPEAKER_ID and s.name]
-        remaining = [p for p in participants
-                     if not any(persons_match(p, Person(s.name, s.email)) for s in taken)]
-        still_open = [sid for sid in remote_ids if not speakers[sid].name]
-        if len(still_open) == 1 and len(remaining) == 1:
-            info = speakers[still_open[0]]
-            info.preselect_name = remaining[0].name or remaining[0].email
-            info.note = "vorausgewählt: einzige noch nicht zugeordnete Person des Termins" + (
-                f"; {info.note}" if info.note else "")
-        ident = {
-            "rule": IDENTIFY_RULE,
-            "scope": sc.match_scope,
-            "participants": len(participants),
-            "auto": sum(1 for s in speakers.values() if s.source == SOURCE_AUTO),
-            "manual": sum(1 for s in speakers.values() if s.source in USER_DECIDED),
-            "speech_s": speech,
-            "fragments": sorted(fragments),
-            "min_named_speech_s": sc.min_named_speech_s,
-            "decisions": {sid: {"match": d.match.profile.name if d.match else "", "reason": d.reason,
-                                "candidates": d.candidates} for sid, d in decisions.items()},
-            "trackcheck": report.to_dict(),
-        }
-        return speakers, ident, learn
-
-    def _sole_doubt(self, rec: Recording, person: Person, emb: np.ndarray | None, model_id: str,
-                    me_all: list[Person], meta: dict[str, Any]) -> str:
-        """Why the voice of the only remote speaker must not teach that participant's profile ("" = fine).
-
-        The name follows from the invitation; a voice profile must not: somebody else may have come
-        instead (the voice then differs from the participant's profile or sounds like another known
-        person), or the limit merged clearly different voices into one speaker."""
-        from callrec.speakers.profiles import cosine
-
-        sc = self.cfg.speakers
-        merged = (((meta.get("processing") or {}).get("diarization") or {}).get("bound") or {}).get("merged") or []
-        if any(len(m) >= 3 and float(m[2]) < SOLE_MIN_MERGE_SIMILARITY for m in merged):
-            return "mehrere unterschiedliche Stimmen zusammengefasst"
-        if emb is None or not model_id:
-            return ""
-        own = self.c.profiles.find(person.name, person.email, model_id)
-        if own is not None and own.embedding.shape == np.asarray(emb).reshape(-1).shape:
-            if all(c.recording == rec.uid for c in own.contributions):
-                own = None  # learned only from this recording: no independent evidence
-            elif cosine(np.asarray(emb).reshape(-1), own.embedding) < sc.match_threshold:
-                return f"Stimme passt nicht zum Stimmprofil von {own.name}"
-        dec = self.c.profiles.decide({"x": emb}, model_id, participants=None, threshold=sc.match_threshold,
-                                     margin=sc.match_margin, exclude=me_all, ignore_recording=rec.uid).get("x")
-        if dec is not None and dec.match is not None and not dec.match.profile.matches_person(person):
-            return f"klingt wie {dec.match.profile.name}"
-        return ""
+        return learn
 
     def _step_identify(self, rec: Recording, result: ProcessResult, progress: Callable[..., None]) -> None:
         import time
@@ -1072,9 +1100,19 @@ class Pipeline:
         speakers, ident, learn = self.compute_identification(rec, (turns, embs, model_id, rec.load_speakers()))
         # automatic contributions of an earlier run of this recording are replaced, never repeated
         self.c.profiles.forget(rid, sources=AUTO_SOURCES)
-        for person, sid, emb, secs, source in learn:
-            self.c.profiles.learn(person.name, person.email, emb, model_id, recording=rid, speaker=sid, source=source,
-                                  seconds=secs, title=rec.title(), folder=rec.folder.name)
+        for person, sid, emb, secs, source, pid in learn:
+            try:
+                prof = self.c.profiles.learn(person.name, person.email, emb, model_id, recording=rid, speaker=sid,
+                                             source=source, seconds=secs, title=rec.title(), folder=rec.folder.name,
+                                             profile_id=pid)
+            except ValueError:
+                log.warning("Stimmprofil nicht aktualisiert (%s %s)", rec.folder.name, sid, exc_info=True)
+                continue
+            speakers[sid].profile_id = prof.id
+        entries = [(s.profile_id, {"speaker": sid, "how": s.rule, "score": s.score, "folder": rec.folder.name})
+                   for sid, s in speakers.items() if s.source == SOURCE_AUTO and s.profile_id and s.rule]
+        self.c.profiles.record_outcomes(rid, entries, speakers={sid for sid, s in speakers.items()
+                                                                if s.source not in USER_DECIDED})
         rec.save_speakers(speakers)
         mark_summary_outdated(rec, before, speakers)
         ident["timing"] = {"identify_s": round(time.monotonic() - t0, 3)}

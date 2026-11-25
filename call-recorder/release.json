@@ -1,16 +1,19 @@
 {
   "schema": 1,
-  "version": "0.4.0",
+  "version": "0.4.1",
   "commit": "05f5261e5ece99a2f161e80bb0c030fcfb6ec6fd",
-  "date": "2026-11-23",
+  "date": "2026-11-25",
   "notes": [
-    "Schnellere Verarbeitung auf PCs ohne NVIDIA-Grafik: Whisper nutzt jetzt alle Prozessorkerne (bisher höchstens 4) und transkribiert beide Spuren in Teilen gleichzeitig. Das Modell wird nur noch einmal je Aufnahme geladen, Spracherkennung und Sprachaktivitätserkennung werden nicht mehr doppelt gerechnet, und eine Spur ohne Sprache wird übersprungen.",
-    "Neu: „Tempo und Genauigkeit“ mit den Profilen „Schnell“, „Ausgewogen“ (Standard) und „Genau“ (wie bisher) – in den Einstellungen und bei „Neu transkribieren“ je Aufnahme wählbar. Selbst geänderte Werte bleiben als „Eigene Einstellungen“ erhalten.",
-    "Die Sprechertrennung läuft in einem eigenen Prozess mit niedriger Priorität: Fenster, Infobereich und eine neue Aufnahme bleiben währenddessen bedienbar. Auf PCs mit vielen Kernen läuft sie gleichzeitig mit der Transkription.",
-    "Während eines Teams-Anrufs oder einer Aufnahme rechnet die Verarbeitung mit etwa der Hälfte der Kerne weiter – oder pausiert auf Wunsch (Einstellungen › Transkription). Akkubetrieb und Energiesparmodus werden angezeigt, weil sie die Verarbeitung stark verlangsamen.",
-    "Neu: „Geschwindigkeit messen“ (Einstellungen › Transkription, oder „callrec benchmark“) prüft mit einem kurzen Ausschnitt einer vorhandenen Aufnahme, welche Einstellung auf diesem PC am schnellsten ist, und übernimmt sie.",
-    "Jede Aufnahme zeigt in den Details die Verarbeitungszeit je Schritt („Verarbeitung: 6 min 40 s für 38 min Gespräch …“); die Statusanzeige schätzt die Restzeit anhand der letzten Aufnahmen auf diesem PC.",
-    "Die Hörfassung (mix) entsteht erst nach dem Transkript. Das Modell „distil-large-v3.5“ wird nicht mehr angeboten (nur für Englisch trainiert und auf dem Prozessor nicht schneller)."
+    "Sprechererkennung lernt jetzt wirklich: Bekannte Personen werden deutlich öfter automatisch erkannt. Es konkurrieren nur noch die Teilnehmenden des Termins miteinander („wer von diesen Personen ist diese Stimme?“) – Stimmprofile von nicht eingeladenen Personen blockieren eine Zuordnung nur noch, wenn sie klar besser passen.",
+    "Gespräche mit genau einer weiteren Person: Die Stimme der Gegenseite bekommt immer deren Namen – auch ohne Stimmprofil – und das Profil lernt daraus. Abgesagte Personen, Besprechungsräume, Verteiler und optionale Teilnehmende ohne Zusage zählen dabei nicht mehr mit (bisher schalteten sie diese Regel ab).",
+    "Ein Stimmprofil hält jetzt mehrere Stimmproben (z. B. Headset und Laptop) statt eines Durchschnitts. Gelernt wird schon ab 12 s sauberer Sprache (bisher 20 s), erkannt ab 6 s (bisher 8 s).",
+    "Ausschlussregel: Sind alle Teilnehmenden bis auf eine Person erkannt und ist genau eine Stimme übrig, bekommt sie den Namen dieser Person – außer die Stimme ähnelt einer schon erkannten Stimme oder klingt klar nach jemand anderem.",
+    "Eingetippte Namen werden verknüpft: „Anna“ wird bei der Teilnehmerin „Müller, Anna“ zu dieser Person; ein früher eingetipptes Profil wird einmal vorgeschlagen und nach der Bestätigung mit dem Kalender verknüpft.",
+    "Sprecher zuordnen: Offene Stimmen sind mit dem wahrscheinlichsten Namen und seiner Ähnlichkeit vorbelegt; „Alle Vorschläge übernehmen“ bestätigt alle mit einem Klick. „Warum?“ zeigt je Stimme die Kandidaten, ihre Werte und welche Regel entschieden hat bzw. warum nicht.",
+    "Details einer Aufnahme: „Warum (nicht) erkannt?“, „Sprecher neu erkennen“ (neue Regeln, eigene Zuordnungen bleiben) und „Diagnose der Sprechererkennung exportieren“ – eine kleine Datei nur mit Zahlen und Regelergebnissen, ohne Ton, Text und Stimmmerkmale; Namen nur auf Wunsch. Befehl: callrec diagnostics \"<Ordner>\".",
+    "Stimmprofile verwalten: je Person, wie oft sie zuletzt automatisch erkannt bzw. selbst zugeordnet wurde, Anzahl und Herkunft der Stimmproben und die letzten Ähnlichkeiten; Einstellung „nie automatisch“ bzw. „immer erkennen (auch ohne Einladung)“; „Sprecher in allen Aufnahmen neu erkennen“.",
+    "Einmalig nach dem Update: Angebot, die Stimmprofile aus den eigenen Zuordnungen neu aufzubauen, eingetippte Namen mit dem Kalender zu verknüpfen und dieselbe Person unter zwei Adressen zusammenzuführen. Beitragen können nur Aufnahmen, deren Sprecherdaten noch vorhanden sind (das automatische Löschen entfernt sie nach 7 Tagen).",
+    "Die bisherigen Standardwerte in config.toml werden auf die neuen umgestellt; selbst geänderte Werte bleiben."
   ],
   "python": ">=3.12,<3.14"
 }
