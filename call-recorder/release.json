@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "version": "0.4.1",
-  "commit": "05f5261e5ece99a2f161e80bb0c030fcfb6ec6fd",
+  "commit": "bb5106c824d35ea887fe2cba454b873595b0abd2",
   "date": "2026-11-25",
   "notes": [
     "Sprechererkennung lernt jetzt wirklich: Bekannte Personen werden deutlich öfter automatisch erkannt. Es konkurrieren nur noch die Teilnehmenden des Termins miteinander („wer von diesen Personen ist diese Stimme?“) – Stimmprofile von nicht eingeladenen Personen blockieren eine Zuordnung nur noch, wenn sie klar besser passen.",
@@ -13,7 +13,8 @@
     "Details einer Aufnahme: „Warum (nicht) erkannt?“, „Sprecher neu erkennen“ (neue Regeln, eigene Zuordnungen bleiben) und „Diagnose der Sprechererkennung exportieren“ – eine kleine Datei nur mit Zahlen und Regelergebnissen, ohne Ton, Text und Stimmmerkmale; Namen nur auf Wunsch. Befehl: callrec diagnostics \"<Ordner>\".",
     "Stimmprofile verwalten: je Person, wie oft sie zuletzt automatisch erkannt bzw. selbst zugeordnet wurde, Anzahl und Herkunft der Stimmproben und die letzten Ähnlichkeiten; Einstellung „nie automatisch“ bzw. „immer erkennen (auch ohne Einladung)“; „Sprecher in allen Aufnahmen neu erkennen“.",
     "Einmalig nach dem Update: Angebot, die Stimmprofile aus den eigenen Zuordnungen neu aufzubauen, eingetippte Namen mit dem Kalender zu verknüpfen und dieselbe Person unter zwei Adressen zusammenzuführen. Beitragen können nur Aufnahmen, deren Sprecherdaten noch vorhanden sind (das automatische Löschen entfernt sie nach 7 Tagen).",
-    "Die bisherigen Standardwerte in config.toml werden auf die neuen umgestellt; selbst geänderte Werte bleiben."
+    "Die bisherigen Standardwerte in config.toml werden auf die neuen umgestellt; selbst geänderte Werte bleiben.",
+    "Unsichere automatische Namen sind als „unsicher – bitte bestätigen“ markiert: Die Verarbeitung zeigt dafür die Zuordnung mit einem Klick zum Bestätigen, bevor Zusammenfassung und Übergabe entstehen (Schwelle einstellbar). Vor „Reparieren“ und „Sprecher in allen Aufnahmen neu erkennen“ wird eine Sicherung angelegt; „Sicherung wiederherstellen …“ macht beides rückgängig."
   ],
   "python": ">=3.12,<3.14"
 }
