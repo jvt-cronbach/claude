@@ -307,7 +307,8 @@ class WebDialogPort:
     # -- pages instead of modal windows ----------------------------------------------------
     def manage_profiles(self, profiles: Any, rebuild: Callable[[str], str] | None = None,
                         recordings_root: Any = None, reidentify: Callable[[], object] | None = None,
-                        repair: Callable[[], object] | None = None) -> None:
+                        repair: Callable[[], object] | None = None,
+                        restore: Callable[[], object] | None = None) -> None:
         self.navigate("settings", {"page": "profiles"})
 
     def edit_settings(self, base: Any, mics: list[str], outs: list[str], save: Callable[[Any], None],

@@ -48,6 +48,7 @@ class SpeakerOverview:
     preselect_score: float | None = None  # confidence of the pre-selection (similarity), None = by rule
     rule: str = ""  # rule that named it automatically (single | profile | elimination | always)
     explain: dict[str, Any] = field(default_factory=dict)  # stored explanation of the identification
+    needs_confirmation: bool = False  # automatic, but uncertain: shown "bitte bestätigen"
 
 
 def choose_sample_span(turns: list[SpeakerTurn], min_len: float = 3.0, max_len: float = 8.0) -> tuple[float, float] | None:
@@ -126,7 +127,9 @@ def speaker_overview(rec: Recording) -> list[SpeakerOverview]:
                                    info.note, info.self_suspect, info.preselect_name,
                                    minor=info.minor and not info.name, speech_s=speech.get(sid, talk),
                                    samples=samples, preselect_score=info.preselect_score, rule=info.rule,
-                                   explain=dict(decisions.get(sid) or {})))
+                                   explain=dict(decisions.get(sid) or {}),
+                                   needs_confirmation=info.source == SOURCE_AUTO and bool(info.name)
+                                   and info.needs_confirmation))
     out.sort(key=lambda o: (min((t.start for t in turns if t.speaker == o.id), default=1e12), o.id))
     return out
 
@@ -281,7 +284,10 @@ def apply_assignments(
             info.name, info.email, info.profile_id, info.score, info.source = "", "", "", None, ""
             continue
         unchanged_auto = info.source == SOURCE_AUTO and info.name.casefold() == name.casefold()
-        if unchanged_auto and not a.save_profile:
+        # an uncertain automatic name shown "bitte bestätigen": taking it over unchanged IS the confirmation
+        # (it becomes yours; the voice is learned only with "Stimme merken")
+        confirming = unchanged_auto and info.needs_confirmation
+        if unchanged_auto and not a.save_profile and not confirming:
             continue  # stays an automatic (re-checkable) assignment
         touched.add(a.speaker_id)
         if info.source == SOURCE_AUTO and info.profile_id and not unchanged_auto:
@@ -335,7 +341,7 @@ def apply_assignments(
                 info.profile_id = prof.id
                 messages.append(f"Stimmprofil für {name} gespeichert ({prof.samples} Probe(n))."
                                 + (" Name mit dem bisherigen Profil verknüpft." if link_profile else ""))
-        elif corrected or info.profile_id:
+        elif corrected or (info.profile_id and not confirming):
             if profiles.forget(rid, a.speaker_id):
                 messages.append(f"{info.label}: frühere Profil-Aktualisierung zurückgenommen.")
             info.profile_id = ""
@@ -374,7 +380,19 @@ def speaker_names(speakers: dict[str, Any]) -> dict[str, str]:
 def mark_summary_outdated(rec: Recording, before: dict[str, Any], after: dict[str, Any]) -> bool:
     """The speaker names changed after the summary was written: flag it (main window, header of the
     hand-over) so the user can regenerate and hand over again."""
-    if not rec.summary_path.exists() or speaker_names(before) == speaker_names(after):
+    if not rec.summary_path.exists():
+        return False
+    basis = ((rec.load_meta().get("processing") or {}).get("summary") or {}).get("speaker_names")
+    if isinstance(basis, dict) and basis:
+        # compare with the names the summary was actually written with (a re-identification, a restore or
+        # a correction back to the old name must neither diverge silently nor leave a stale flag)
+        then = {k: v for k, v in basis.items() if k != SELF_SPEAKER_ID}
+        now = {k: v for k, v in speaker_names(after).items()
+               if k != SELF_SPEAKER_ID and (k in then or bool(getattr(after[k], "name", None)))}
+        outdated = then != now
+        rec.update_meta(["processing", "summary", "speakers_outdated"], outdated)
+        return outdated
+    if speaker_names(before) == speaker_names(after):
         return False
     rec.update_meta(["processing", "summary", "speakers_outdated"], True)
     return True

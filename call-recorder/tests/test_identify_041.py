@@ -65,7 +65,8 @@ def test_declined_rooms_and_unanswered_optional_attendees_do_not_count():
     kinds = {c.person.name: (c.expected, c.excluded, c.why) for c in candidates.classify(people, event)}
     assert kinds["Kunde, Karl"][:2] == (True, False)
     assert kinds["Raum Elbe 3.12"][:2] == (False, True)
-    assert kinds["Abgesagt, Anna"] == (False, True, "abgesagt")
+    # review 0.4.1: not expected, but still a candidate - people join although they declined
+    assert kinds["Abgesagt, Anna"] == (False, False, "abgesagt")
     assert kinds["Optional, Otto"] == (False, False, "optional, keine Zusage")  # may still be matched
     assert kinds["Zusage, Zoe"][:2] == (True, False)
     assert candidates.classify(people, {"attendee_status": "kaputt"})  # robust against odd meta.json
@@ -121,13 +122,16 @@ def test_single_participant_with_extra_entries_and_a_fragment(store: ProfileStor
     assert out["S1"].name == "Kunde, Karl" and out["S2"].name == ""
 
 
-def test_single_participant_who_sounds_like_a_known_colleague_is_named_but_not_learned(store: ProfileStore):
+def test_single_participant_who_sounds_like_a_known_colleague_is_a_question_not_a_name(store: ProfileStore):
+    # review of 0.4.1: "a colleague came instead" was named after the invitee all the same - a confident wrong
+    # name in the summary. Now it is pre-selected (one click) with the colleague as suggestion; nothing learned.
     store.learn("Kunde, Karl", "karl@kunde.de", axis(5), "m", recording="r0", speaker="S1", source="manual")
     store.learn("Bernd Muster", "bernd@firma.de", axis(6), "m", recording="r1", speaker="S1", source="manual")
     out = run(store, [Voice("S1", mix(6, 5, 0.95), 30.0)], [Person("Kunde, Karl", "karl@kunde.de")])
     o = out["S1"]
-    assert o.name == "Kunde, Karl" and o.learn == "" and o.suggestion is not None and o.suggestion[0] == "Bernd Muster"
-    assert "klingt eher wie Bernd Muster" in o.why
+    assert o.name == "" and o.learn == "" and o.preselect == "Kunde, Karl"
+    assert o.suggestion is not None and o.suggestion[0] == "Bernd Muster"
+    assert "Bernd Muster" in o.why and "bitte bestätigen" in o.why.casefold()
 
 
 def test_participant_restricted_threshold_below_the_old_bar(store: ProfileStore):
@@ -215,17 +219,34 @@ def test_one_to_one_with_a_declined_attendee_is_named_and_learned(tmp_path: Path
     rec.update_meta(["event"], {"id": "e", "subject": "x", "attendee_status": {
         "anna@firma.de": {"type": "required", "response": "declined"}}})
     pipeline, _, _ = make_pipeline(store)
-    result = pipeline.run(rec)
+    pipeline.run(rec)
     sp = {sid: s for sid, s in rec.load_speakers().items() if sid != "ME"}
     assert list(sp) == ["S1"] and sp["S1"].name == "Kunde, Karl" and sp["S1"].rule == "single"
-    assert result.unassigned_speakers == 0
+    # no voice evidence yet (first call with Karl): named, but to be confirmed before the summary
+    assert sp["S1"].needs_confirmation
     karl = store.find("Kunde, Karl", "karl@kunde.de", "fake-embedder")
     assert karl is not None and [c.source for c in karl.contributions] == ["sole"]
     assert [h["how"] for h in karl.history] == ["single"]
     ident = rec.load_meta()["processing"]["identification"]
     assert ident["rule"] == "participants-v3" and ident["expected"] == 1
-    assert ident["decisions"]["S1"]["decision"] == "named"
+    assert ident["decisions"]["S1"]["decision"] == "named" and ident["decisions"]["S1"]["confirm"] is True
     assert "einzige weitere Person" in recognition_text(rec)
+    assert "vor der Zusammenfassung bitte bestätigen" in recognition_text(rec)
+
+
+def test_declined_attendee_who_joins_is_not_merged_into_the_invitee(tmp_path: Path, store: ProfileStore):
+    # review of 0.4.1: the speaker limit counted only expected people, so a declined colleague who joined
+    # anyway was merged into the invitee's voice and her text carried the invitee's name
+    rec = recording_with_voices(tmp_path / "r", 330, 760)  # two clearly different voices
+    set_participants(rec, [Person("Kunde, Karl", "karl@kunde.de"), Person("Abgesagt, Anna", "anna@firma.de")])
+    rec.update_meta(["event"], {"id": "e", "subject": "x", "attendee_status": {
+        "anna@firma.de": {"type": "required", "response": "declined"}}})
+    pipeline, _, _ = make_pipeline(store)
+    pipeline.run(rec)
+    sp = {sid: s for sid, s in rec.load_speakers().items() if sid != "ME"}
+    assert set(sp) == {"S1", "S2"}
+    assert not any(s.name == "Kunde, Karl" and s.rule == "single" for s in sp.values())
+    assert not (rec.load_meta()["processing"]["diarization"]["bound"]).get("merged")
 
 
 def test_suggestion_confirmed_links_profile_and_history_counts(tmp_path: Path, store: ProfileStore):
@@ -291,12 +312,15 @@ def test_repair_merges_links_and_rebuilds(tmp_path: Path, store: ProfileStore):
     assert legacy is not None
     rp = repair.plan(store, tmp_path / "r1")
     text = "\n".join(rp.lines())
-    assert "dieselbe Person" in text and "Profil „Anna“ ist Müller, Anna" in text
+    assert "Profil „Anna“ ist Müller, Anna" in text
+    # review of 0.4.1: the same full name under two addresses is NOT merged automatically (two colleagues can
+    # share a name); the naming dialog offers that link as a pre-selection ("alias") instead
+    assert "dieselbe Person" not in text
     repair.apply(store, rp)
     assert not repair.is_due()
     anna = store.find("Müller, Anna", "anna.mueller@firma.de", "fake-embedder")
     assert anna is not None and anna.matches_person(Person("Anna"))
-    assert len([p for p in store.all_profiles() if p.matches_person(Person("Bernd Muster"))]) == 1
+    assert len([p for p in store.all_profiles() if p.matches_person(Person("Bernd Muster"))]) == 2
 
 
 def test_typed_first_name_becomes_the_participant(tmp_path: Path, store: ProfileStore):

@@ -384,7 +384,8 @@ def review_speakers(
             from callrec.speakers.identify import RULE_TEXT
 
             info += f"\nautomatisch: {RULE_TEXT.get(ov.rule, 'Stimmprofil')}" + (
-                f" ({ov.score:.2f})" if ov.score is not None else "")
+                f" ({ov.score:.2f})" if ov.score is not None else " (ohne Stimmvergleich)") + (
+                "\nunsicher – bitte bestätigen" if ov.needs_confirmation else "")
         elif not ov.name and ov.preselect_name:
             info += "\nVorschlag" + (f" ({ov.preselect_score:.2f})" if ov.preselect_score is not None else "")
         elif ov.source == "self_echo":
@@ -410,7 +411,7 @@ def review_speakers(
         combo = ttk.Combobox(win, textvariable=name_var, values=row_choices(rec, profiles, ov, all_profiles), width=44)
         combo.grid(row=i, column=3, sticky="nw", **PAD)
         # an automatic match is only learned when you confirm it here (never for a short fragment)
-        keep_var = tk.BooleanVar(value=ov.source != "auto" and not ov.minor)
+        keep_var = tk.BooleanVar(value=(ov.source != "auto" or ov.needs_confirmation) and not ov.minor)
         chk = ttk.Checkbutton(win, variable=keep_var)
         chk.grid(row=i, column=4, sticky="n", **PAD)
         rows.append((ov.id, name_var, keep_var))
@@ -563,7 +564,7 @@ def show_text(root: Any, title: str, text: str) -> None:
 
 def manage_profiles(root: tk.Tk, profiles: ProfileStore, rebuild: Callable[[str], str] | None = None,
                     recordings_root: Path | None = None, reidentify: Callable[[], object] | None = None,
-                    repair: Callable[[], object] | None = None) -> None:
+                    repair: Callable[[], object] | None = None, restore: Callable[[], object] | None = None) -> None:
     """``rebuild(profile_id) -> message``: rebuild a profile from your assignments in the recordings."""
     win = tk.Toplevel(root)
     win.title("Stimmprofile (biometrische Daten)")
@@ -715,6 +716,12 @@ def manage_profiles(root: tk.Tk, profiles: ProfileStore, rebuild: Callable[[str]
             refresh()
 
         ttk.Button(bar2, text="Reparieren …", command=do_repair).pack(side="left", padx=4)
+    if restore is not None:
+        def do_restore() -> None:
+            restore()
+            refresh()
+
+        ttk.Button(bar2, text="Sicherung wiederherstellen …", command=do_restore).pack(side="left", padx=4)
     ttk.Button(bar2, text="Schließen", command=win.destroy).pack(side="right", padx=4)
     refresh()
     _modal(win)

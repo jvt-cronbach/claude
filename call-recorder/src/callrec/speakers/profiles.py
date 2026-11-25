@@ -316,6 +316,21 @@ class ProfileStore:
         payload = {"version": 2, "profiles": [p.to_dict() for p in profiles.values()]}
         self._p.save(json.dumps(payload, ensure_ascii=False))
 
+    def snapshot(self) -> str:
+        """Everything the store holds, as the text that is persisted (for a backup before a bulk change)."""
+        with self._lock:
+            profiles = self._load()
+            return json.dumps({"version": 2, "profiles": [p.to_dict() for p in profiles.values()]}, ensure_ascii=False)
+
+    def restore_snapshot(self, text: str) -> int:
+        """Replace the store with a :meth:`snapshot` (undo of a bulk change). Returns the profile count."""
+        data = json.loads(text)
+        restored = {d["id"]: VoiceProfile.from_dict(d) for d in data.get("profiles", [])}
+        with self._lock:
+            self._profiles = restored
+            self._save()
+            return len(restored)
+
     # -- queries -----------------------------------------------------------
     def all_profiles(self) -> list[VoiceProfile]:
         with self._lock:

@@ -50,6 +50,10 @@ IDENTIFY_RULE = "participants-v3"  # 0.4.1: relative decision among participants
 # the merged speaker is still named after the only participant, but teaches no voice profile
 SOLE_MIN_MERGE_SIMILARITY = 0.3
 LEGACY_ALL_THRESHOLD, LEGACY_ALL_MARGIN = 0.55, 0.08  # match_scope = "all_profiles": at least these
+# an unnamed cluster is merged into one you named (re-run with a speaker limit) only when it is clearly the
+# same voice split in two (measured 0.90-0.98) - 0.4.1 had tied this to match_threshold, lowered to 0.45,
+# which lets a different person on the same kind of device (0.47-0.75) be filed under your decision
+NAMED_MERGE_MIN = 0.80
 PARALLEL_DIAR_THREADS = 2  # speaker separation alongside the transcription
 PARALLEL_MIN_CORES = 6  # without a benchmark: parallel only from this many physical cores
 PAUSE_POLL_S = 5.0
@@ -856,10 +860,13 @@ class Pipeline:
         sc = self.cfg.speakers
         classified = self.classified_participants(rec)
         participants = [c.person for c in classified if not c.excluded]
-        # expected voices: declined people, rooms, distribution lists and optional attendees without an
-        # answer do not count (they kept one voice split in two and the single-participant rule off)
+        # the limit counts everybody who can be a voice (rooms and distribution lists cannot). People who
+        # declined or did not answer are not *expected* (single-participant rule, elimination), but they do
+        # join: counting only the expected ones merged a declined person's voice into an invitee's, whose name
+        # it then carried (0.4.1 before this review). Down to the expected count only clusters that are
+        # clearly one voice split in two are merged (soft_bound)
         n_expected = sum(1 for c in classified if c.expected) or len(participants)
-        bound = (n_expected + sc.extra_remote_speakers
+        bound = (len(participants) + sc.extra_remote_speakers
                  if sc.limit_to_participants and participants and not lifted else None)
         report = trackcheck.check(rec.load_asr("mic"), rec.load_asr("remote"), raw_turns, raw_emb,
                                   rec.load_self_embedding(), rec.load_trackcheck().get("signal"), meta.get("devices"))
@@ -871,10 +878,12 @@ class Pipeline:
 
         fragments = minor_ids(raw_turns, sc.min_named_speech_s, set(keep))
         exclude |= fragments
+        soft = (n_expected + sc.extra_remote_speakers if bound is not None and n_expected < len(participants)
+                else None)
         res = merge_to_bound(raw_turns, raw_emb, speech_seconds(raw_turns), bound, keep_apart, exclude,
-                             named_merge_min=sc.match_threshold)
+                             named_merge_min=max(sc.match_threshold, NAMED_MERGE_MIN), soft_bound=soft)
         raw_n = len({t.speaker for t in raw_turns})
-        info: dict[str, Any] = {"participants": n_expected if participants else 0, "bound": bound, "lifted": lifted,
+        info: dict[str, Any] = {"participants": len(participants), "expected": n_expected if participants else 0, "bound": bound, "lifted": lifted,
                                 "raw_speakers": raw_n, "speakers": len({t.speaker for t in res.turns}),
                                 "merged": res.merged, "fragments": sorted(fragments), "changed": False}
         same = [(t.start, t.end, t.speaker) for t in res.turns] == \
@@ -972,7 +981,8 @@ class Pipeline:
             "fragments": sorted(fragments),
             "min_named_speech_s": sc.min_named_speech_s,
             "decisions": {sid: {"match": o.name, "rule": o.rule, "reason": o.why, "score": o.score,
-                                "learn": o.learn, **o.explain} for sid, o in outcomes.items()},
+                                "learn": o.learn, "confirm": o.confirm, **o.explain}
+                          for sid, o in outcomes.items()},
             "trackcheck": report.to_dict(),
         }
         return speakers, ident, learn
@@ -1016,6 +1026,7 @@ class Pipeline:
             if o.name:
                 info.name, info.email, info.profile_id = o.name, o.email, o.profile_id
                 info.score, info.source, info.rule = o.score, SOURCE_AUTO, o.rule
+                info.needs_confirmation = o.confirm
                 info.note = o.why
                 if o.suggestion is not None:  # named after the invitation, but the voice sounds like somebody else
                     info.suggested_name, info.suggested_email = o.suggestion[0], o.suggestion[1]
@@ -1232,8 +1243,11 @@ class Pipeline:
         spoken, unassigned, _silent = speaker_lists(utterances, speakers)
         result.unassigned_speakers = len(unassigned)
         # for the recording list of the main window (cheap to read, no utterances needed)
+        with_text = {u.speaker for u in utterances}
+        unconfirmed = sum(1 for s in speakers.values() if s.source == SOURCE_AUTO and s.name and s.needs_confirmation
+                          and not s.minor and s.id in with_text)
         rec.update_meta(["processing", "speakers"], {"spoken": len(spoken), "unassigned": len(unassigned),
-                                                     "at": _now_iso()})
+                                                     "unconfirmed": unconfirmed, "at": _now_iso()})
         n2, new = write_version(rec, "transcript", md, fp, settings)
         if new and n2 > 1:
             result.messages.append(f"Neue Transkript-Version v{n2} erstellt (vorherige bleibt als transcript.v{n2 - 1}.md erhalten).")

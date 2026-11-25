@@ -44,7 +44,8 @@ class DialogPort(Protocol):
 
     def manage_profiles(self, profiles: Any, rebuild: Callable[[str], str] | None = None,
                         recordings_root: Any = None, reidentify: Callable[[], object] | None = None,
-                        repair: Callable[[], object] | None = None) -> None: ...
+                        repair: Callable[[], object] | None = None,
+                        restore: Callable[[], object] | None = None) -> None: ...
 
     def edit_settings(self, base: Any, mics: list[str], outs: list[str], save: Callable[[Any], None],
                       initial_tab: str = "", autostart: Any = None) -> bool: ...
@@ -126,11 +127,12 @@ class TkDialogPort:
 
     def manage_profiles(self, profiles: Any, rebuild: Callable[[str], str] | None = None,
                         recordings_root: Any = None, reidentify: Callable[[], object] | None = None,
-                        repair: Callable[[], object] | None = None) -> None:
+                        repair: Callable[[], object] | None = None,
+                        restore: Callable[[], object] | None = None) -> None:
         from callrec.ui import dialogs
 
         dialogs.manage_profiles(self._root(), profiles, rebuild=rebuild, recordings_root=recordings_root,
-                                reidentify=reidentify, repair=repair)
+                                reidentify=reidentify, repair=repair, restore=restore)
 
     def edit_settings(self, base: Any, mics: list[str], outs: list[str], save: Callable[[Any], None],
                       initial_tab: str = "", autostart: Any = None) -> bool:

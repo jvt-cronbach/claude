@@ -238,6 +238,28 @@ def cmd_profiles(args: argparse.Namespace) -> int:
             return 1
         print("\n".join(repair.apply(store, rp)))
         return 0
+    if args.action == "restore":
+        from callrec.speakers import backup
+
+        latest = backup.latest()
+        print(backup.describe(latest))
+        if latest is None:
+            return 1
+        if not args.yes and input("Wiederherstellen? (ja/nein) ").strip().lower() != "ja":
+            print("Nichts geändert.")
+            return 1
+        n, folders = backup.restore(store, latest)
+        from callrec.factory import build_pipeline
+        from callrec.recording import Recording
+        from callrec.review import mark_summary_outdated
+
+        pipeline = build_pipeline(load_config(), store)
+        for folder in folders:
+            rec = Recording(folder)
+            mark_summary_outdated(rec, {}, rec.load_speakers())
+            pipeline.run(rec, {"render"})
+        print(f"{n} Stimmprofil(e) und die Sprecherdaten von {len(folders)} Aufnahme(n) wiederhergestellt.")
+        return 0
     if args.action == "delete":
         if not args.key:
             raise SystemExit("Bitte Name, E-Mail oder ID angeben")
@@ -451,11 +473,15 @@ def cmd_reidentify(args: argparse.Namespace) -> int:
     recs = list_recordings(cfg.recordings_path()) if args.all else [_recording(f) for f in args.folders]
     if not recs:
         raise SystemExit("Bitte Ordner angeben oder --all")
-    pipeline = build_pipeline(cfg, profile_store())
+    from callrec.speakers import backup
+
+    store = profile_store()
+    pipeline = build_pipeline(cfg, store)
+    recs = [r for r in recs if r.speakers_path.exists() and r.embeddings_path.exists()]
+    b = backup.create(store, recs, f"Sprecher neu erkennen ({len(recs)} Aufnahmen)")
+    print(f"Sicherung: {b} ('callrec profiles restore' stellt sie wieder her)")
     done = 0
     for rec in recs:
-        if not rec.speakers_path.exists() or not rec.embeddings_path.exists():
-            continue
         before = {sid: s.display for sid, s in rec.load_speakers().items()}
         archive_speakers(rec)
         pipeline.run(rec, {"identify", "render"})
@@ -1152,7 +1178,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     pf = sub.add_parser("profiles", help="Stimmprofile anzeigen/löschen")
     pf.add_argument("action", choices=["list", "show", "stats", "reset", "rebuild", "never", "always", "normal",
-                                       "repair", "delete", "delete-all"])
+                                       "repair", "restore", "delete", "delete-all"])
     pf.add_argument("key", nargs="?")
     pf.add_argument("--yes", action="store_true")
     pf.set_defaults(func=cmd_profiles)

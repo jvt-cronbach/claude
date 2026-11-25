@@ -458,9 +458,21 @@ class AppActions:
         return str(out)
 
     def reidentifiable(self) -> list[Recording]:
-        return [r for r in list_recordings(self.cfg.recordings_path())
-                if r.speakers_path.exists() and r.embeddings_path.exists() and not self.controller.is_busy(r)
-                and not self.retention_busy(r)]
+        from callrec.retention import SCOPE_AUDIO_TRANSCRIPT, pending_scope, removed_scope
+
+        out = []
+        for r in list_recordings(self.cfg.recordings_path()):
+            if not (r.speakers_path.exists() and r.embeddings_path.exists()) or self.controller.is_busy(r) \
+                    or self.retention_busy(r):
+                continue
+            try:
+                meta = r.load_meta()
+            except (OSError, ValueError):
+                continue
+            if removed_scope(meta) == SCOPE_AUDIO_TRANSCRIPT or pending_scope(meta):
+                continue  # deleted (or being deleted) by retention: nothing to re-identify
+            out.append(r)
+        return out
 
     def reidentify_all(self, ask: bool = True) -> int:
         """ "Sprecher neu erkennen" for every recording that still has speaker data, with the current rules
@@ -478,6 +490,11 @@ class AppActions:
                 "Zuordnungen bleiben unverändert; geänderte Namen markieren eine vorhandene Zusammenfassung als "
                 "veraltet."):
             return 0
+        from callrec.speakers import backup
+
+        # the profiles change with every re-run (automatic contributions are replaced): one backup of the store
+        # and of each recording's speaker data first - "Sicherung wiederherstellen" undoes the whole run
+        backup.create(self.profiles, recs, f"Sprecher neu erkennen ({len(recs)} Aufnahmen)")
         for rec in recs:
             archive_speakers(rec)
             self.controller.process(rec, frozenset({"identify", "render"}))
@@ -501,7 +518,8 @@ class AppActions:
             return []
         text = ("Die Sprechererkennung arbeitet ab dieser Version mit neuen Regeln. Die vorhandenen Stimmprofile "
                 "lassen sich einmalig aus den eigenen Zuordnungen neu aufbauen:\n\n• " + "\n• ".join(rp.lines())
-                + "\n\nJetzt übernehmen? (Später: Stimmprofile verwalten → „Reparieren“)")
+                + "\n\nVorher wird eine Sicherung angelegt; „Stimmprofile verwalten → Sicherung wiederherstellen“ "
+                "macht alles rückgängig.\n\nJetzt übernehmen? (Später: Stimmprofile verwalten → „Reparieren“)")
         if not self.dialogs.ask_yes_no("Stimmprofile reparieren", text):
             repair.mark_done("declined")
             return []
@@ -518,11 +536,38 @@ class AppActions:
         if rp.empty:
             self.dialogs.show_text("Stimmprofile reparieren", "\n".join(rp.lines()))
             return []
-        if not self.dialogs.ask_yes_no("Stimmprofile reparieren", "\n".join(rp.lines()) + "\n\nÜbernehmen?"):
+        if not self.dialogs.ask_yes_no("Stimmprofile reparieren", "\n".join(rp.lines()) + "\n\nVorher wird eine "
+                                       "Sicherung angelegt („Sicherung wiederherstellen“).\n\nÜbernehmen?"):
             return []
         done = repair.apply(self.profiles, rp)
         self.dialogs.show_text("Stimmprofile repariert", "\n".join(done))
         return done
+
+    def restore_speaker_backup(self, ask: bool = True) -> str:
+        """Undo the last repair / bulk re-identification: profile store and speaker data of the recordings."""
+        from callrec.review import mark_summary_outdated
+        from callrec.speakers import backup
+
+        b = backup.latest()
+        if b is None:
+            self.ui.notify("Sicherung wiederherstellen", "Keine Sicherung vorhanden.")
+            return ""
+        if ask and not self.dialogs.ask_yes_no("Sicherung wiederherstellen", backup.describe(b) + "\n\nAlle "
+                                               "Stimmprofile und die Sprecherzuordnungen dieser Aufnahmen auf diesen "
+                                               "Stand zurücksetzen? Danach geänderte Zuordnungen gehen verloren."):
+            return ""
+        n, folders = backup.restore(self.profiles, b)
+        for folder in folders:
+            rec = Recording(folder)
+            try:
+                mark_summary_outdated(rec, {}, rec.load_speakers())
+            except (OSError, ValueError):
+                pass
+            self.controller.process(rec, frozenset({"render"}))
+        text = f"{n} Stimmprofil(e) und die Sprecherdaten von {len(folders)} Aufnahme(n) wiederhergestellt."
+        self.ui.notify("Sicherung wiederhergestellt", text)
+        self._changed(None)
+        return text
 
     def schedule_profile_repair(self, delay_ms: int = 25000) -> None:
         self._after(delay_ms, self.offer_profile_repair)
@@ -820,7 +865,8 @@ class AppActions:
         self.dialogs.manage_profiles(self.profiles,
                                      rebuild=lambda pid: rebuild_profile(self.profiles, pid, self.cfg.recordings_path()),
                                      recordings_root=self.cfg.recordings_path(),
-                                     reidentify=lambda: self.reidentify_all(), repair=self.repair_profiles)
+                                     reidentify=lambda: self.reidentify_all(), repair=self.repair_profiles,
+                                     restore=lambda: self.restore_speaker_backup())
 
     # -- files --------------------------------------------------------
     def _open(self, path: Any) -> bool:

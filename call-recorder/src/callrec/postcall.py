@@ -4,8 +4,9 @@ After a stop the user is asked once "Aufnahme beendet – jetzt vollständig ver
 the steps as checkboxes. "Vollständig verarbeiten" runs, as one chain:
 
     transcribe (+ speaker separation/recognition)
-    -> IF a speaker with text is still unassigned: the assignment dialog (with "Überspringen")
-    -> summary (so the names are in it)
+    -> IF a speaker with text is still unassigned, or an automatic name is uncertain
+       (``speakers.confirm_below``): the assignment dialog (with "Überspringen")
+    -> summary (so the names are in it) - not while an uncertain automatic name is unconfirmed
     -> hand-over of the summary to SharePoint
 
 The hand-over in this chain is authorised by the user's choice for this recording in that
@@ -243,6 +244,18 @@ class ProcessingChain:
                 return
             self.post(lambda: self._do_review(rec))
         elif stage == STAGE_SUMMARY:
+            n = _unconfirmed(rec)
+            if n > 0:
+                # an uncertain automatic name (speakers.confirm_below) must not reach the summary - and through
+                # it the assistant - unchecked: wait until it is confirmed in "Sprecher zuordnen"
+                why = (f"{n} automatisch vergebene(r) Sprechername(n) noch nicht bestätigt – nach dem Bestätigen "
+                       "„Zusammenfassung neu erstellen“")
+                self._save(rec, summary_problem=why)
+                self._log(rec, f"Zusammenfassung wartet: {why}")
+                self.notify("Sprecher bestätigen", f"{rec.title()}: {why}")
+                self.changed(rec)
+                self._next(rec, STAGE_SUMMARY)
+                return
             self.submit(rec, frozenset({"summarize"}), lambda job, res, err: self._job_done(rec, stage, res, err, job))
         elif stage == STAGE_HANDOFF:
             self.run_in_background(lambda: self._do_handoff(rec))
@@ -348,10 +361,21 @@ class ProcessingChain:
 
 
 def _unassigned_with_text(rec: Recording) -> int:
+    """Voices the dialog must be shown for: unassigned speakers with text, and automatic names that are
+    not sure enough (``speakers.confirm_below``) - they are shown "bitte bestätigen"."""
     from callrec.library import read_info
 
-    n = read_info(rec.folder).speakers_unassigned
-    return int(n or 0)
+    info = read_info(rec.folder)
+    return int(info.speakers_unassigned or 0) + int(info.speakers_unconfirmed or 0)
+
+
+def _unconfirmed(rec: Recording) -> int:
+    from callrec.library import read_info
+
+    try:
+        return int(read_info(rec.folder).speakers_unconfirmed or 0)
+    except (OSError, ValueError):
+        return 0
 
 
 def mark_deferred(rec: Recording) -> None:

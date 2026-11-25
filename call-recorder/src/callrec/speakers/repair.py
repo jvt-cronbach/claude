@@ -6,12 +6,17 @@ without a calendar entry ("Anna") was never linked to the calendar identity ("M�
 competed with the first; profiles of versions before the provenance change hold entries of
 unknown origin. The repair
 
-1. merges profiles of the same person (same full name, same e-mail domain or one without address),
+1. merges profiles of the same person (the same address with compatible names, or the same full name
+   where one side has no address) unless their voices are clearly different - never the same name under
+   two different addresses (two colleagues can share a name),
 2. links profiles typed as a first name to the one participant of the recordings they were
    assigned in (only when every such recording points to the same person),
 3. rebuilds each profile from your own assignments (manual/confirmed) in the recordings that still
-   have speaker data - entries of an earlier version without origin are dropped when at least
+   have speaker data and that the profile already learned from (an assignment made without "Stimme
+   merken" is never added) - entries of an earlier version without origin are dropped when at least
    two of your own assignments exist; automatic entries of recordings without speaker data stay.
+
+Before anything changes the whole profile store is backed up (:mod:`callrec.speakers.backup`).
 
 Recordings older than ``retention.max_age_days`` (default 7 days) no longer have speaker data
 (the whole data folder is deleted), so only recent recordings can contribute.
@@ -39,6 +44,7 @@ class RepairPlan:
     rebuilds: list[tuple[str, list[Contribution], str]] = field(default_factory=list)  # (profile id, contribs, text)
     recordings: int = 0
     with_speaker_data: int = 0
+    notes: list[str] = field(default_factory=list)  # what was deliberately left alone
 
     @property
     def empty(self) -> bool:
@@ -48,6 +54,7 @@ class RepairPlan:
         out = [f"{self.with_speaker_data} von {self.recordings} Aufnahmen haben noch Sprecherdaten (ältere wurden "
                "durch das automatische Löschen entfernt und können nicht beitragen)."]
         out += [t for _a, _b, t in self.merges] + [t for _p, _x, t in self.links] + [t for _p, _c, t in self.rebuilds]
+        out += self.notes
         if self.empty:
             out.append("Keine Änderung nötig.")
         return out
@@ -67,13 +74,38 @@ def mark_done(result: str) -> None:
     p.write_text(json.dumps({"result": result}), encoding="utf-8")
 
 
-def _same_person_loose(a: Any, b: Any) -> bool:
+MERGE_MIN_VOICE = 0.35  # below this the two profiles' closest references are clearly different voices
+
+
+def _same_person_for_merge(a: Any, b: Any) -> str:
+    """Why two profiles are the same person ("" = not sure enough to merge them without asking).
+
+    Only an identity that cannot belong to two people: the same address *and* compatible names (a shared
+    mailbox - "info@kunde.de" - used by two people is not one person), or the same full name where one
+    side has no address at all (a name typed once, then the calendar identity). The same full name under
+    two different addresses is NOT merged automatically - two colleagues can share a name; that link is
+    offered as a pre-selection in the naming dialog instead (``probable_same`` "alias")."""
+    ea, eb = a.email.strip().casefold(), b.email.strip().casefold()
     ta, tb = name_tokens(a.name), name_tokens(b.name)
-    if len(ta) < 2 or ta != tb:
-        return False
-    da = a.email.rsplit("@", 1)[-1].casefold() if "@" in a.email else ""
-    db = b.email.rsplit("@", 1)[-1].casefold() if "@" in b.email else ""
-    return not da or not db or da == db
+    if ea and eb:
+        return "same address" if ea == eb and (not ta or not tb or ta == tb or ta < tb or tb < ta) else ""
+    if (ea or eb) and len(ta) >= 2 and ta == tb:
+        return "typed name"
+    if not ea and not eb and ta and ta == tb:
+        return "same name"
+    return ""
+
+
+def _voices_compatible(a: Any, b: Any) -> bool:
+    """No merge of two profiles whose voices are clearly different (one would teach the other a stranger)."""
+    import numpy as np
+
+    from callrec.speakers.profiles import _normalize
+
+    ra = [_normalize(c.embedding) for c in a.contributions]
+    rb = [_normalize(c.embedding) for c in b.contributions]
+    pairs = [float(np.dot(x, y)) for x in ra for y in rb if x.shape == y.shape]
+    return not pairs or max(pairs) >= MERGE_MIN_VOICE
 
 
 def plan(store: ProfileStore, recordings_root: Path) -> RepairPlan:
@@ -89,7 +121,12 @@ def plan(store: ProfileStore, recordings_root: Path) -> RepairPlan:
         for b in profiles[i + 1:]:
             if a.id in gone or b.id in gone or a.model_id != b.model_id:
                 continue
-            if a.matches_person(b.person) or _same_person_loose(a, b):
+            why = _same_person_for_merge(a, b)
+            if why and not _voices_compatible(a, b):
+                rp.notes.append(f"{a.name} <{a.email or '–'}> und {b.name} <{b.email or '–'}>: nicht zusammengeführt "
+                                "– die Stimmen sind deutlich verschieden.")
+                continue
+            if why:
                 keep, other = (a, b) if len(a.contributions) >= len(b.contributions) else (b, a)
                 rp.merges.append((keep.id, other.id, f"{other.name} <{other.email or '–'}> und {keep.name} "
                                                      f"<{keep.email or '–'}> sind dieselbe Person: zusammengeführt."))
@@ -119,7 +156,10 @@ def plan(store: ProfileStore, recordings_root: Path) -> RepairPlan:
                     hits = [q for q in participants if probable_same(p.name, "", q.name, q.email) == "first_name"]
                     if len(hits) == 1:
                         link_votes.setdefault(p.id, []).append(hits[0])
-                if sid in embeddings and model_id == p.model_id:
+                # only what the profile already learned from this speaker: an assignment you made without
+                # "Stimme merken" (or with too little speech, or a fragment) was deliberately not learned
+                held = any(c.recording == rec.uid and c.speaker == sid for c in p.contributions)
+                if sid in embeddings and model_id == p.model_id and held and not info.minor:
                     if speech is None:
                         speech = speech_seconds(load_turns(rec))
                     found.setdefault(p.id, []).append(Contribution(
@@ -160,7 +200,12 @@ def _rebuilt(current: list[Contribution], mine: list[Contribution]) -> list[Cont
 
 
 def apply(store: ProfileStore, rp: RepairPlan) -> list[str]:
+    """Carry out the plan - after a backup of the whole profile store (one-click restore)."""
+    from callrec.speakers import backup
+
     out: list[str] = []
+    if not rp.empty:
+        backup.create(store, [], "Reparatur der Stimmprofile")
     for keep, other, text in rp.merges:
         if store.merge(keep, other) is not None:
             out.append(text)

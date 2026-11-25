@@ -57,16 +57,26 @@ class Params:
     # (and only against an existing profile of the invitee) makes it a question
     single_guard_margin: float = 0.15
     single_guard_min: float = 0.75
-    # ... without a profile of the invitee: named anyway, but no profile is created from a voice this
-    # close to somebody else's profile
-    no_learn_other: float = 0.90
+    # ... without a profile of the invitee: a known voice of somebody else this close makes it a
+    # pre-selected question (0.4.1 named anyway: "colleague came instead" became a confident wrong name)
+    single_other: float = 0.70
+    # ... and no profile is created/taught from a voice this close to somebody else's profile (0.4.0
+    # did not learn when another profile matched at 0.55; 0.4.1 had raised this to 0.90)
+    no_learn_other: float = 0.55
+    # an automatic name whose voice evidence is below this (or that rests on the invitation / elimination
+    # alone, without a profile) needs your confirmation before the summary is written (0 = never)
+    confirm_below: float = 0.75
     # elimination with a remaining participant without a profile: a known uninvited voice this close blocks it
     elimination_other: float = 0.80
     min_match_speech_s: float = 6.0
     min_learn_speech_s: float = 12.0
-    learn_threshold: float = 0.55  # an automatic profile match teaches the profile from this score
+    learn_threshold: float = 0.75  # an automatic match teaches the profile from this score (config: auto_update_threshold)
     suggest_min: float = 0.30  # pre-select a candidate from this score
     adhoc_suggest: float = 0.70  # no participant list: pre-select a known voice only from this score
+    # "immer erkennen" names somebody who is NOT invited: the relative bar among the participants (0.45) is far
+    # too low for that (different people on the same kind of device score up to 0.75) - below this it is a
+    # suggestion only
+    always_min: float = 0.75
     # an open voice this close to a voice already named in this call: one person split in two? (two
     # clusters of the diarization are below ~0.6 by construction; a split person is usually far above)
     duplicate_sim: float = 0.80
@@ -80,7 +90,7 @@ class Params:
                         ("alone_threshold", "alone_threshold"), ("guard_margin", "guard_margin"),
                         ("min_match_speech_s", "min_match_speech_s"), ("min_learn_speech_s", "min_learn_speech_s"),
                         ("learn_threshold", "auto_update_threshold"), ("single", "single_participant_rule"),
-                        ("elimination", "elimination_rule")):
+                        ("elimination", "elimination_rule"), ("confirm_below", "confirm_below")):
             if hasattr(sc, attr):
                 setattr(p, k, type(getattr(p, k))(getattr(sc, attr)))
         return p
@@ -106,6 +116,7 @@ class Outcome:
     rule: str = ""
     score: float | None = None
     learn: str = ""  # "" | "sole" | "auto": what the profile learns from this decision
+    confirm: bool = False  # named automatically, but not sure enough: you confirm it before the summary
     preselect: str = ""  # pre-filled in the dialog (you confirm with one click)
     preselect_email: str = ""
     preselect_profile_id: str = ""  # profile to learn into when you confirm (a free-text profile)
@@ -321,10 +332,33 @@ def identify(voices: list[Voice], cands: list[Cand], others: list[VoiceProfile],
         own = scores.get(v.sid, {}).get(cands.index(c))
         g = guard(v.sid, own, single=True)
         never = any(p.mode == "never" for p in c.hard)
+        w_s = world.get(v.sid)
         if never:
             o.preselect, o.preselect_email, o.preselect_score = c.label, c.person.email, _r(own)
             o.why = f"{c.label}: „nie automatisch“ eingestellt – bitte bestätigen"
             explain(o, "never")
+        elif own is not None and own < P.threshold and v.speech_s >= P.min_match_speech_s:
+            # the invitee has a voice profile and this voice does not match it: somebody else may have come
+            # (a colleague instead, the invitee never joined) - a question with one click, never a name
+            o.preselect, o.preselect_email, o.preselect_score = c.label, c.person.email, _r(own)
+            if w_s is not None and w_s[0] >= P.guard_min:
+                o.suggestion = (w_s[1].name, w_s[1].email, float(w_s[0]))
+            o.why = (f"einzige weitere Person des Termins ist {c.label}, aber die Stimme passt nicht zu deren "
+                     f"Stimmprofil ({own:.2f}, nötig {P.threshold:.2f})"
+                     + (f"; klingt eher wie {o.suggestion[0]} ({o.suggestion[2]:.2f}, nicht eingeladen)"
+                        if o.suggestion is not None else "") + " – kam jemand anderes? Bitte bestätigen")
+            explain(o, "mismatch", own_score=_r(own), reason=o.why)
+        elif g is not None or (own is None and w_s is not None and w_s[0] >= P.single_other
+                               and v.speech_s >= P.min_match_speech_s):
+            gg = g if g is not None else w_s
+            assert gg is not None
+            o.preselect, o.preselect_email, o.preselect_score = c.label, c.person.email, _r(own)
+            o.suggestion = (gg[1].name, gg[1].email, float(gg[0]))
+            o.why = (f"einzige weitere Person des Termins ist {c.label}, die Stimme klingt aber eher wie "
+                     f"{gg[1].name} ({gg[0]:.2f}, nicht eingeladen)"
+                     + (f" als wie das Stimmprofil von {c.label} ({own:.2f})" if own is not None else "")
+                     + " – bitte bestätigen")
+            explain(o, "guard", rival=gg[1].name, rival_score=_r(gg[0]), own_score=_r(own), reason=o.why)
         else:
             name_as(o, c, RULE_SINGLE, own)
             linked = ""
@@ -335,11 +369,7 @@ def identify(voices: list[Voice], cands: list[Cand], others: list[VoiceProfile],
                     own = ps
                     o.score = _r(ps)
             doubt = ""
-            if g is not None:  # named all the same (the invitation is strong evidence), but not learned
-                o.suggestion = (g[1].name, g[1].email, float(g[0]))
-                doubt = (f"klingt eher wie {g[1].name} ({g[0]:.2f}, nicht eingeladen) als wie {c.label}"
-                         f" ({own:.2f}) – bitte prüfen")
-            elif merged_apart:
+            if merged_apart:
                 doubt = "mehrere unterschiedliche Stimmen zusammengefasst"
             elif mic_unreliable:
                 doubt = "Mikrofonspur unzuverlässig"
@@ -347,9 +377,15 @@ def identify(voices: list[Voice], cands: list[Cand], others: list[VoiceProfile],
                 doubt = f"zu wenig Sprache zum Lernen ({v.speech_s:.0f} s, mindestens {P.min_learn_speech_s:.0f} s)"
             elif v.embedding is None:
                 doubt = "keine Stimmmerkmale"
-            elif own is None and world.get(v.sid) is not None and world[v.sid][0] >= P.no_learn_other:  # type: ignore[index]
-                doubt = f"Stimme sehr ähnlich zu {world[v.sid][1].name} ({world[v.sid][0]:.2f})"  # type: ignore[index]
+            elif w_s is not None and w_s[0] >= max(P.no_learn_other, own if own is not None else -1.0):
+                doubt = f"Stimme ähnlich zu {w_s[1].name} ({w_s[0]:.2f}, nicht eingeladen)"
+            elif own is not None and own < P.learn_threshold:
+                doubt = f"Stimme passt nur schwach zum Stimmprofil ({own:.2f}, Lernen ab {P.learn_threshold:.2f})"
             o.learn = "" if doubt else "sole"
+            # the name rests on the invitation; without voice evidence (no profile yet, or a weak match) you
+            # confirm it once before the summary is written
+            o.confirm = P.confirm_below > 0 and (own is None or own < P.confirm_below or merged_apart or (
+                w_s is not None and own is not None and w_s[0] >= own - P.margin))
             o.why = RULE_TEXT[RULE_SINGLE] + (f" (Stimmprofil {own:.2f})" if own is not None else "") + (
                 f"; Profil „{linked}“ mit {c.label} verknüpft" if linked else "") + (
                 f"; Stimmprofil nicht aktualisiert: {doubt}" if doubt else "")
@@ -375,11 +411,23 @@ def identify(voices: list[Voice], cands: list[Cand], others: list[VoiceProfile],
         rival_col = None if rival_col is None or rival_col <= -9 else rival_col
         if s < P.threshold or gap < P.margin:
             continue  # explained below (still open)
+        if c.kind == "always" and s < P.always_min:
+            continue  # not invited: only a clear match names them (explained below)
         if guard(sid, s) is not None:
             continue
         name_as(o, c, RULE_ALWAYS if c.kind == "always" else RULE_PROFILE, s)
         sure = s >= P.learn_threshold and gap >= 2 * P.margin
         o.learn = "auto" if sure and voices_by[sid].speech_s >= P.min_learn_speech_s and not mic_unreliable else ""
+        # the relative decision cannot rule out (a) somebody NOT invited whose profile is about as close, or
+        # (b) an invited person without a profile (the voice may be theirs - nothing to compare with): both
+        # were the wrong names of the adversarial series of the review (a twin-like colleague instead, the
+        # invitee absent and the profiled participant silent)
+        w_p = world.get(sid)
+        rival_out = w_p is not None and w_p[0] >= s - P.margin
+        unprofiled_alt = any(not x.hard and x.expected for x in free if x is not c)
+        o.confirm = P.confirm_below > 0 and (s < P.confirm_below or rival_out or unprofiled_alt)
+        if rival_out:
+            o.learn = ""
         o.why = (f"Stimmprofil {c.label} {s:.2f}"
                  + (f", nächste Person {rival_row:.2f}" if rival_row is not None else "")
                  + (f", andere Stimme {rival_col:.2f}" if rival_col is not None else "")
@@ -424,8 +472,16 @@ def identify(voices: list[Voice], cands: list[Cand], others: list[VoiceProfile],
             o.preselect, o.preselect_email, o.preselect_score = c.label, c.person.email, _r(own)
             o.why = f"übrig ist nur {c.label} („nie automatisch“ eingestellt) – bitte bestätigen"
             explain(o, "never")
+        elif own is not None and own < P.threshold:
+            # the remaining participant has a profile and this voice does not match it: an uninvited person
+            # (or the remaining participant did not speak) - a question, not a name
+            o.preselect, o.preselect_email, o.preselect_score = c.label, c.person.email, _r(own)
+            o.why = (f"übrig ist nur {c.label}, aber die Stimme passt nicht zu deren Stimmprofil ({own:.2f}, nötig "
+                     f"{P.threshold:.2f}) – bitte bestätigen")
+            explain(o, "mismatch", own_score=_r(own), reason=o.why)
         else:
             name_as(o, c, RULE_ELIMINATION, own)
+            o.confirm = P.confirm_below > 0 and (own is None or own < P.confirm_below)
             o.why = RULE_TEXT[RULE_ELIMINATION] + (f" (Stimmprofil {own:.2f})" if own is not None else "")
             explain(o, "named")
 
@@ -551,10 +607,14 @@ def explain_lines(e: dict[str, Any] | None, name: str = "", source: str = "") ->
     elif d == "blocked":
         out.append(f"Nicht zur Zuordnung angeboten: {e.get('reason', '')}")
     elif d == "named":
-        out.append(f"Automatisch: {name or '?'} – Regel: {RULE_TEXT.get(rule, rule)}")
+        sc = e.get("score")
+        out.append(f"Automatisch: {name or '?'} – Regel: {RULE_TEXT.get(rule, rule)}"
+                   + (f" – Ähnlichkeit {sc:.2f}" if isinstance(sc, (int, float)) else " – ohne Stimmvergleich"))
+        if e.get("confirm"):
+            out.append("Unsicher: vor der Zusammenfassung bitte bestätigen")
         if e.get("no_learn"):
             out.append(f"Stimmprofil nicht aktualisiert: {e['no_learn']}")
-    elif d in ("open", "guard", "duplicate", "never"):
+    elif d in ("open", "guard", "duplicate", "never", "mismatch"):
         out.append("Nicht automatisch zugeordnet: " + str(e.get("reason") or {
             "guard": f"klingt eher wie {e.get('rival')} ({e.get('rival_score')}) – nicht eingeladen",
             "duplicate": f"ähnelt {e.get('duplicate_of')} ({e.get('duplicate_sim')})",

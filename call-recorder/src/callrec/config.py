@@ -161,8 +161,17 @@ class SpeakerConfig:
     elimination_rule: bool = True
     invitee_bonus: float = 0.05  # only in match_scope = "all_profiles"
     auto_update_on_match: bool = True
-    # an automatic profile match teaches the profile from this score on (with a clear margin)
-    auto_update_threshold: float = 0.55
+    # an automatic profile match teaches the profile from this score on (with a clear margin). Kept at the
+    # 0.4.0 value: different people through the same kind of device score up to 0.75 (measured), and an
+    # automatic match nobody looked at must not teach a profile the wrong voice - confirming a name in the
+    # dialog teaches it in any case
+    auto_update_threshold: float = 0.75
+    # an automatic name with less voice evidence than this (similarity to the person's profile; a name given
+    # by the invitation or by elimination without a matching profile counts as 0) is shown for confirmation
+    # before the summary is written, and the guided processing waits for it (0 = never ask). Default = the
+    # bar for learning without asking (auto_update_threshold): below ~0.75 a match is within the measured range
+    # of a *different* person on the same kind of device, so the name is not verified by the voice
+    confirm_below: float = 0.75
 
 
 @dataclass
@@ -384,6 +393,8 @@ class Config:
             raise ConfigError("speakers.match_scope muss 'participants' oder 'all_profiles' sein")
         if not 0.0 <= sp.match_margin < 0.5 or min(sp.min_match_speech_s, sp.min_learn_speech_s, sp.min_named_speech_s) < 0:
             raise ConfigError("speakers.match_margin muss zwischen 0 und 0,5 liegen, min_*_speech_s >= 0")
+        if not 0.0 <= sp.confirm_below <= 1.0:
+            raise ConfigError("speakers.confirm_below muss zwischen 0 und 1 liegen")
         if not sp.auto_update_threshold < 1.0:
             raise ConfigError("speakers.auto_update_threshold muss kleiner als 1 sein")
         if sp.auto_update_threshold < sp.match_threshold:
@@ -765,14 +776,14 @@ def migrate_consent_section_file(path: Path) -> bool:
 SPEAKER_RULES_NOTE = (
     "Sprechererkennung (0.4.1): Bekannte Personen werden jetzt deutlich öfter automatisch erkannt – es "
     "konkurrieren nur noch die Teilnehmenden des Termins, ein Profil hält mehrere Stimmproben (Geräte), und bei "
-    "genau einer weiteren Person wird deren Name immer vergeben. Die bisherigen Standardwerte in config.toml "
-    "(Schwelle 0,55, Abstand 0,08, 8 s / 20 s Sprache, Nachschärfen ab 0,75) wurden auf die neuen umgestellt; "
+    "genau einer weiteren Person wird deren Name vergeben, wenn die Stimme nicht dagegen spricht; unsichere "
+    "automatische Namen werden vor der Zusammenfassung zur Bestätigung angezeigt. Die bisherigen Standardwerte in config.toml "
+    "(Schwelle 0,55, Abstand 0,08, 8 s / 20 s Sprache) wurden auf die neuen umgestellt; "
     "selbst geänderte Werte bleiben. Warum eine Stimme (nicht) erkannt wurde, steht im Dialog „Sprecher zuordnen“."
 )
 # 0.4.0 template defaults (written into every config.toml) -> 0.4.1 defaults; other values are a choice
 SPEAKER_DEFAULTS_041 = {"match_threshold": (0.55, 0.45), "match_margin": (0.08, 0.06),
-                        "min_match_speech_s": (8.0, 6.0), "min_learn_speech_s": (20.0, 12.0),
-                        "auto_update_threshold": (0.75, 0.55)}
+                        "min_match_speech_s": (8.0, 6.0), "min_learn_speech_s": (20.0, 12.0)}
 MIGRATION_NOTES = MIGRATION_NOTES | {SPEAKER_RULES_NOTE}
 _KEY_LINE = re.compile(r"^(?P<key>[a-z_]+)\s*=\s*(?P<value>[0-9.]+)\s*(#.*)?$")
 
@@ -1068,7 +1079,10 @@ elimination_rule = true
 invitee_bonus = 0.05
 auto_update_on_match = true
 # Eine automatische Erkennung verbessert das Profil ab dieser Ähnlichkeit (bei deutlichem Abstand)
-auto_update_threshold = 0.55
+auto_update_threshold = 0.75
+# Automatisch vergebene Namen mit weniger Stimm-Ähnlichkeit (oder nur aus der Einladung / per Ausschluss ohne
+# passendes Stimmprofil) vor der Zusammenfassung bestätigen lassen; die Verarbeitung wartet darauf (0 = nie)
+confirm_below = 0.75
 
 [transcript]
 # Zeitstempel: "hh:mm:ss", "mm:ss" oder "none"

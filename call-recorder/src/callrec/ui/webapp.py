@@ -428,14 +428,31 @@ class WebCore:
         elif action == "reidentify":
             n = self.loop.call(lambda: self.actions.reidentify_all(ask=False))
             text = f"{n} Aufnahme(n) werden mit den aktuellen Regeln neu erkannt (eigene Zuordnungen bleiben)."
-        elif action == "repair":
+        elif action in ("repair_preview", "repair"):
             from callrec.speakers import repair
 
             rp = repair.plan(store, self.cfg.recordings_path())
+            if action == "repair_preview":  # what would change - shown for confirmation before anything changes
+                return {"profiles": profiles(store, self.cfg.recordings_path()), "text": "\n".join(rp.lines()),
+                        "empty": rp.empty, "backup": self._backup_text()}
             text = "\n".join(repair.apply(store, rp) if not rp.empty else rp.lines())
+            if not rp.empty:
+                text += "\n\nVorher wurde eine Sicherung angelegt („Sicherung wiederherstellen“)."
+        elif action == "restore":
+            text = self.loop.call(lambda: self.actions.restore_speaker_backup(ask=False)) or "Keine Sicherung vorhanden."
         elif action != "list":
             return {"error": "Unbekannte Aktion"}
-        return {"profiles": profiles(store, self.cfg.recordings_path()), "text": text}
+        return {"profiles": profiles(store, self.cfg.recordings_path()), "text": text, "backup": self._backup_text()}
+
+    @staticmethod
+    def _backup_text() -> str:
+        from callrec.speakers import backup
+
+        try:
+            b = backup.latest()
+        except OSError:
+            return ""
+        return backup.describe(b) if b else ""
 
     # ------------------------------------------------------------------ window state, restart
     def save_window_state(self, state: dict[str, Any]) -> None:

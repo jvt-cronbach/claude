@@ -223,6 +223,9 @@ class SpeakerInfo:
     rule: str = ""
     preselect_profile_id: str = ""
     preselect_score: float | None = None
+    # 0.4.1: named automatically, but below speakers.confirm_below (or by the invitation / elimination alone,
+    # without a matching voice profile): the guided processing asks you before the summary is written
+    needs_confirmation: bool = False
 
     @property
     def display(self) -> str:
@@ -234,6 +237,7 @@ class SpeakerInfo:
         self.preselect_name = ""
         self.preselect_profile_id = ""
         self.preselect_score = None
+        self.needs_confirmation = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -259,4 +263,5 @@ class SpeakerInfo:
             rule=str(d.get("rule", "")),
             preselect_profile_id=str(d.get("preselect_profile_id", "")),
             preselect_score=float(d["preselect_score"]) if d.get("preselect_score") is not None else None,
+            needs_confirmation=bool(d.get("needs_confirmation", False)),
         )

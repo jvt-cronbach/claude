@@ -54,6 +54,8 @@ class RecordingInfo:
     has_transcript: bool = False
     speakers_unassigned: int | None = None  # None = speakers not determined yet
     speakers_spoken: int = 0
+    # named automatically but uncertain (SpeakerInfo.needs_confirmation): confirm before the summary
+    speakers_unconfirmed: int = 0
     has_summary: bool = False
     summary_versions: int = 0
     summary_problem: str = ""  # why the last summary attempt produced nothing
@@ -213,11 +215,14 @@ def read_info(folder: Path) -> RecordingInfo:
     elif isinstance(sp, dict) and "unassigned" in sp:
         info.speakers_unassigned = int(sp.get("unassigned") or 0)
         info.speakers_spoken = int(sp.get("spoken") or 0)
+        info.speakers_unconfirmed = int(sp.get("unconfirmed") or 0)
     elif rec.speakers_path.exists():  # older recordings: approximate from speakers.json
         try:
             speakers = rec.load_speakers()
             remote = [s for s in speakers.values() if s.id not in ("ME", "S?")]
             info.speakers_unassigned = sum(1 for s in remote if not s.name and not s.minor)
+            info.speakers_unconfirmed = sum(1 for s in remote if s.name and s.source == "auto"
+                                            and s.needs_confirmation and not s.minor)
             info.speakers_spoken = len(remote)
         except (OSError, ValueError, KeyError):
             pass
@@ -414,6 +419,9 @@ def status_description(info: RecordingInfo) -> str:
     if info.speakers_state() == OPEN:
         n = info.speakers_unassigned
         parts.append(f"{n} Stimme(n) noch keiner Person zugeordnet („Sprecher zuordnen“).")
+    if info.speakers_unconfirmed:
+        parts.append(f"{info.speakers_unconfirmed} automatisch vergebene(r) Name(n) unsicher – bitte in „Sprecher "
+                     "zuordnen“ bestätigen (die Zusammenfassung der geführten Verarbeitung wartet darauf).")
     if info.summary_outdated:
         parts.append("Die Zusammenfassung beruht auf alten Sprechernamen – „Zusammenfassung neu erstellen“"
                      + (" und danach erneut an SharePoint übergeben." if info.handoff else "."))

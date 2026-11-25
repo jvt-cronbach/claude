@@ -40,12 +40,16 @@ def merge_to_bound(
     keep_apart: dict[str, str] | None = None,
     exclude: set[str] | None = None,
     named_merge_min: float = -1.0,
+    soft_bound: int | None = None,
+    soft_min: float = 0.80,
 ) -> BoundResult:
     """``bound``: maximum number of remote speakers (None = no limit). ``keep_apart``: raw id ->
     name you assigned (clusters with different names are never merged). ``exclude``: raw ids that
     are neither counted nor merged (your own voice on the remote track). ``named_merge_min``: an
     unnamed cluster joins a cluster you named only with at least this similarity - a different
-    voice must not be filed under your decision (the bound is then not reached)."""
+    voice must not be filed under your decision (the bound is then not reached). ``soft_bound``: merge
+    further down to this count, but only clusters at least ``soft_min`` alike - one voice split in two
+    (measured 0.90-0.98), never two people (people invited who declined or did not answer may still come)."""
     keep_apart = keep_apart or {}
     exclude = exclude or set()
     order = list(dict.fromkeys(t.speaker for t in sorted(turns, key=lambda t: (t.start, t.end))))
@@ -58,7 +62,13 @@ def merge_to_bound(
     def active() -> list[str]:
         return [s for s in order if group[s] == s and s not in exclude]
 
-    while bound is not None and len(active()) > max(bound, 1):
+    def hard() -> bool:
+        return bound is not None and len(active()) > max(bound, 1)
+
+    def soft() -> bool:
+        return soft_bound is not None and len(active()) > max(soft_bound, 1)
+
+    while hard() or soft():
         reps = active()
         best: tuple[float, str, str] | None = None
         for i, a in enumerate(reps):
@@ -75,6 +85,8 @@ def merge_to_bound(
                     best = (sim, a, b)
         if best is None:
             break  # only clusters you named differently are left
+        if not hard() and best[0] < soft_min:
+            break  # below the hard limit only one voice split in two is merged
         sim, a, b = best
         if a in cent and b in cent:
             cent[a] = _norm(cent[a] * weight[a] + cent[b] * weight[b])

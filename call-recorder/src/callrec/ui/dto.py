@@ -229,12 +229,15 @@ def speaker_review(rec: Recording, profiles: Any, speaker_cfg: Any, in_chain: bo
             "score": ov.score, "talk": fmt_ts(ov.talk_time_s, "mm:ss"), "talk_s": ov.talk_time_s,
             "utterances": ov.utterances, "sample": ov.sample_text, "note": ov.note if not ov.name else "",
             "suggested": ov.suggested_name, "self_suspect": ov.self_suspect,
-            "keep": ov.source != "auto" and not ov.minor,  # an automatic match is only learned when confirmed here
+            # an automatic match is only learned when confirmed here; an uncertain one shown "bitte bestätigen" is
+            # pre-ticked: taking it over confirms the person, and then the voice may be learned (undoable)
+            "keep": (ov.source != "auto" or ov.needs_confirmation) and not ov.minor,
             "can_play": audio is not None and bool(ov.samples),
             "minor": ov.minor, "speech": f"{ov.speech_s:.1f}".replace(".", ","),
             "sample_info": _sample_info(ov), "sample_count": len(ov.samples),
             "choices": choices, "_samples": ov.samples, "_track": "remote",
             "rule": ov.rule, "rule_text": RULE_TEXT.get(ov.rule, "") if ov.source == "auto" and ov.name else "",
+            "confirm": ov.needs_confirmation,
             "preselect": ov.preselect_name if not ov.name else "", "preselect_score": ov.preselect_score,
             "explain": explain_lines(ov.explain, ov.name, ov.source),
         })

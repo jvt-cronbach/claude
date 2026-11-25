@@ -231,6 +231,7 @@ def test_unchanged_auto_match_is_not_confirmed_silently(tmp_path: Path, store: P
     rec2 = recording_with_voices(tmp_path / "r2", 550, 330)
     cfg = short_cfg()
     cfg.speakers.auto_update_on_match = False
+    cfg.speakers.confirm_below = 0.0  # (an uncertain name shown "bitte bestätigen" is confirmed by taking it over)
     pipeline, _, _ = make_pipeline(store, cfg=cfg)
     pipeline.run(rec2)
     sp = rec2.load_speakers()
@@ -416,16 +417,16 @@ def test_two_participant_call_has_one_remote_speaker_named_after_the_participant
     res = pipeline.run(rec)
     sp = rec.load_speakers()
     remote = {sid: s for sid, s in sp.items() if sid != "ME"}
-    assert list(remote) == ["S1"] and remote["S1"].name == "Kunde, Karl" and remote["S1"].source == "auto"
-    assert res.unassigned_speakers == 0 and any("begrenzt" in m for m in res.messages)
+    assert list(remote) == ["S1"] and any("begrenzt" in m for m in res.messages)
     md = rec.transcript_path.read_text(encoding="utf-8")
     assert "Anna Beispiel" not in md and "Bernd Muster" not in md and "Sprecher 2" not in md
-    assert any("Kunde, Karl:" in line for line in summ.seen[-1])
     meta = rec.load_meta()["processing"]["diarization"]["bound"]
     assert meta["bound"] == 1 and meta["raw_speakers"] == 2 and meta["speakers"] == 1
-    # the two merged clusters sound exactly like Bernd and Anna: named Karl, but Karl's profile learns nothing
+    # the merged voice sounds exactly like Bernd (known, not invited): review of 0.4.1 - not named Karl
+    # automatically any more, but Karl is pre-selected (one click); Karl's profile learns nothing
+    assert remote["S1"].name == "" and remote["S1"].preselect_name == "Kunde, Karl"
+    assert res.unassigned_speakers == 1
     assert store.find("Karl Kunde", "karl@kunde.de", "fake-embedder") is None
-    assert "Stimmprofil nicht aktualisiert" in remote["S1"].note
 
 
 def test_sole_participant_learns_only_a_voice_that_is_plausibly_theirs(tmp_path: Path, store: ProfileStore):
@@ -449,8 +450,9 @@ def test_sole_participant_learns_only_a_voice_that_is_plausibly_theirs(tmp_path:
     set_participants(sub, [Person("Kunde, Karl", "karl@kunde.de")])
     pipeline.run(sub)
     s1 = sub.load_speakers()["S1"]
-    # 0.4.1: named after the invitation all the same, the doubt is shown and nothing is learned
-    assert s1.name == "Kunde, Karl" and "Stimmprofil nicht aktualisiert: klingt eher wie Bernd Muster" in s1.note
+    # review of 0.4.1: not named after the invitation any more (the voice does not match Karl's profile):
+    # Karl pre-selected, Bernd suggested, nothing learned
+    assert s1.name == "" and s1.preselect_name == "Kunde, Karl" and "bitte bestätigen" in s1.note.casefold()
     assert s1.suggested_name == "Bernd Muster"
     assert all(c.recording != sub.uid for c in store.find("Karl Kunde", "karl@kunde.de", "fake-embedder").contributions)  # type: ignore[union-attr]
 
@@ -501,11 +503,15 @@ def test_recheck_fixes_an_old_recording_with_foreign_names(tmp_path: Path, store
 
     rec.save_embeddings({"S1": onehot(11), "S2": onehot(6)}, "fake-embedder")
     rec.update_meta(["processing", "identification"], None)
+    # ... and the summary that version wrote with those names
+    rec.update_meta(["processing", "summary", "speaker_names"], {"ME": "Ich", "S1": "Bernd Muster", "S2": "Anna Beispiel"})
     changes = pipeline.preview_identification(rec)
-    assert ("Sprecher 1", "Bernd Muster", "Kunde, Karl") in changes
+    # the foreign names go; the merged voice sounds like Bernd (not invited): Karl only pre-selected (review 0.4.1)
+    assert any(c[0] == "Sprecher 1" and c[1] == "Bernd Muster" and "Kunde, Karl" in c[2] for c in changes)
     assert any(c[0] == "Sprecher 2" and c[1] == "Anna Beispiel" and "zusammengelegt" in c[2] for c in changes)
     pipeline.run(rec, {"identify", "render"})
-    assert {s.name for sid, s in rec.load_speakers().items() if sid != "ME"} == {"Kunde, Karl"}
+    remote = [s for sid, s in rec.load_speakers().items() if sid != "ME"]
+    assert [s.name for s in remote] == [""] and remote[0].preselect_name == "Kunde, Karl"
     assert rec.load_raw_diarization() is not None  # the original diarization is kept for "Weitere Sprecher"
     from callrec.library import read_info, status_description
 
@@ -601,7 +607,8 @@ def test_sole_participant_without_profile_whose_voice_is_somebody_known(tmp_path
     pipeline, _, _ = make_pipeline(store)
     pipeline.run(rec)
     s1 = rec.load_speakers()["S1"]
-    assert s1.name == "Neu, Nora" and "Stimme sehr ähnlich zu Bernd Muster" in s1.note
+    # review of 0.4.1: a known (uninvited) voice instead of the invitee is a question, not Nora's name
+    assert s1.name == "" and s1.preselect_name == "Neu, Nora" and s1.suggested_name == "Bernd Muster"
     assert store.find("Nora Neu", "nora@kunde.de", "fake-embedder") is None
 
 

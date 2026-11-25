@@ -3,7 +3,8 @@
 The participant list of a recording is what the start dialog showed (organizer + attendees of the
 calendar entry, or entered by you). For recognising voices it is too coarse:
 
-* a person who **declined** is not in the call;
+* a person who **declined** is usually not in the call (not expected, but still a candidate: people
+  join although they declined);
 * a **meeting room** or a **distribution list** invited by address is no voice at all;
 * an **optional** attendee who never answered the invitation often does not join.
 
@@ -28,7 +29,7 @@ ACCEPTED = ("accepted", "tentativelyaccepted", "tentative", "organizer")
 class Participant:
     person: Person
     expected: bool  # counts for the single-participant rule and the speaker limit
-    excluded: bool  # cannot be a voice (declined, room, distribution list)
+    excluded: bool  # cannot be a voice (room, distribution list)
     why: str = ""  # German, for the explanation ("abgesagt", "optional, keine Zusage", ...)
 
 
@@ -57,7 +58,9 @@ def classify(participants: list[Person], event: dict[str, Any] | None) -> list[P
         elif kind in ("resource", "group") or looks_like_room_or_list(p):
             out.append(Participant(p, False, True, "Raum oder Verteiler"))
         elif response == "declined":
-            out.append(Participant(p, False, True, "abgesagt"))
+            # not expected - but people who declined do join and speak: still a candidate a voice may be
+            # matched with (0.4.1 excluded them, so their voice was merged into an invitee's or named after one)
+            out.append(Participant(p, False, False, "abgesagt"))
         elif kind == "optional" and response not in ACCEPTED:
             out.append(Participant(p, False, False, "optional, keine Zusage"))
         else:
